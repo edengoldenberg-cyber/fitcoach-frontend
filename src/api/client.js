@@ -9,7 +9,10 @@
 
 import { base44 as _base44 } from './base44Client';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_BASE44_APP_BASE_URL ||
+  'http://localhost:3001';
 
 // ─── Re-export base44 ─────────────────────────────────────────────────────────
 

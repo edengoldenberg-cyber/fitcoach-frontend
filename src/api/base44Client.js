@@ -8,7 +8,10 @@
  * Points to fitcoach-server (localhost:3001 in dev, VITE_API_BASE_URL in prod).
  */
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  import.meta.env.VITE_BASE44_APP_BASE_URL ||
+  'http://localhost:3001';
 
 // ─── Token store (module-level, survives re-renders) ─────────────────────────
 let _accessToken = typeof localStorage !== 'undefined'

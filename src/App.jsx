@@ -25,6 +25,7 @@ import CoachAsTrainee from './pages/CoachAsTrainee';
 import AccessLink from './pages/AccessLink';
 import SetPassword from './pages/SetPassword';
 import LoginWithPassword from './pages/LoginWithPassword';
+import ResetPassword from './pages/ResetPassword';
 import DebugPage from './pages/DebugPage';
 import DebugCrashes from './pages/DebugCrashes';
 import TraineeQA from './pages/TraineeQA';
@@ -291,7 +292,7 @@ const AuthenticatedApp = () => {
   }, [user?.id, trainee?.id]);
 
   // Check if we're on a special page that should NOT redirect to login
-  const isPublicRoute = ['/AccessLink', '/SetPassword', '/LoginWithPassword', '/AccessCodeLogin', '/login', '/Login', '/MagicLogin'].some(
+  const isPublicRoute = ['/AccessLink', '/SetPassword', '/LoginWithPassword', '/AccessCodeLogin', '/ResetPassword', '/login', '/Login', '/MagicLogin'].some(
     p => location.pathname.startsWith(p)
   ) || location.search.includes('token=');
 
@@ -460,6 +461,7 @@ const AuthenticatedApp = () => {
       <Route path="/AccessLink" element={<AccessLink />} />
       <Route path="/SetPassword" element={<SetPassword />} />
       <Route path="/LoginWithPassword" element={<LoginWithPassword />} />
+      <Route path="/ResetPassword" element={<ResetPassword />} />
       <Route path="/DebugPage" element={<AdminRoute><LayoutWrapper currentPageName="DebugPage"><DebugPage /></LayoutWrapper></AdminRoute>} />
       <Route path="/DebugCrashes" element={<AdminRoute><LayoutWrapper currentPageName="DebugCrashes"><DebugCrashes /></LayoutWrapper></AdminRoute>} />
       <Route path="/TraineeQA" element={<AdminRoute><LayoutWrapper currentPageName="TraineeQA"><TraineeQA /></LayoutWrapper></AdminRoute>} />
