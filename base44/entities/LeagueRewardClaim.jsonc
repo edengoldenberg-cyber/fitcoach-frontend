@@ -1,0 +1,69 @@
+{
+  "name": "LeagueRewardClaim",
+  "type": "object",
+  "properties": {
+    "reward_id": {
+      "type": "string"
+    },
+    "reward_title": {
+      "type": "string"
+    },
+    "reward_type": {
+      "type": "string",
+      "enum": [
+        "individual",
+        "group",
+        "streak",
+        "mission",
+        "participation"
+      ]
+    },
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "trainee_name": {
+      "type": "string"
+    },
+    "sponsor": {
+      "type": "string"
+    },
+    "claim_code": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unlocked",
+        "claimed",
+        "redeemed",
+        "cancelled"
+      ],
+      "default": "claimed"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "redeemed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cancelled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "managed_by_coach_email": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "reward_id",
+    "reward_title",
+    "trainee_email",
+    "claim_code",
+    "status"
+  ]
+}

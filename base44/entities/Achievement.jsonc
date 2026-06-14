@@ -1,0 +1,64 @@
+{
+  "name": "Achievement",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "achievement_type": {
+      "type": "string",
+      "enum": [
+        "first_meal",
+        "first_workout",
+        "first_water",
+        "streak_3_days",
+        "streak_7_days",
+        "streak_14_days",
+        "streak_30_days",
+        "perfect_day",
+        "perfect_week",
+        "perfect_month",
+        "10_workouts",
+        "25_workouts",
+        "50_workouts",
+        "100_workouts",
+        "weight_loss_1kg",
+        "weight_loss_5kg",
+        "weight_loss_10kg",
+        "protein_champion",
+        "hydration_master",
+        "early_bird",
+        "consistency_king"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "icon": {
+      "type": "string",
+      "description": "emoji or icon name"
+    },
+    "tier": {
+      "type": "string",
+      "enum": [
+        "bronze",
+        "silver",
+        "gold",
+        "platinum"
+      ],
+      "default": "bronze"
+    },
+    "earned_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "achievement_type",
+    "title"
+  ]
+}

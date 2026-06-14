@@ -1,0 +1,128 @@
+{
+  "name": "NotificationJob",
+  "type": "object",
+  "properties": {
+    "notification_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9 \u05dc\u05d4\u05ea\u05e8\u05d0\u05d4 (UUID)"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df \u05e9\u05d4\u05d4\u05ea\u05e8\u05d0\u05d4 \u05de\u05d9\u05d5\u05e2\u05d3\u05ea \u05dc\u05d5"
+    },
+    "trainee_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05ea\u05d0\u05de\u05df \u05dc\u05ea\u05e6\u05d5\u05d2\u05d4"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "meal_missing",
+        "workout_missing",
+        "water_missing",
+        "weigh_in_missing",
+        "weekly_summary",
+        "system_alert",
+        "custom",
+        "coach_message"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "in_app",
+        "push_phone",
+        "whatsapp",
+        "email"
+      ],
+      "default": "in_app",
+      "description": "\u05e2\u05e8\u05d5\u05e5 \u05d4\u05e9\u05dc\u05d9\u05d7\u05d4"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "processing",
+        "sent",
+        "failed",
+        "skipped",
+        "deduped",
+        "cancelled"
+      ],
+      "default": "queued",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05e9\u05dc\u05d9\u05d7\u05d4"
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d0\u05de\u05d5\u05e8 \u05dc\u05d4\u05d9\u05e9\u05dc\u05d7"
+    },
+    "payload": {
+      "type": "object",
+      "description": "\u05ea\u05d5\u05db\u05df \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4 \u05d4\u05de\u05dc\u05d0",
+      "properties": {
+        "title_he": {
+          "type": "string"
+        },
+        "body_he": {
+          "type": "string"
+        },
+        "action_url": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        }
+      }
+    },
+    "dedupe_key": {
+      "type": "string",
+      "description": "\u05de\u05e4\u05ea\u05d7 \u05dc\u05d6\u05d9\u05d4\u05d5\u05d9 \u05db\u05e4\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea (user_email+type+date+channel)"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05db\u05de\u05d4 \u05e0\u05d9\u05e1\u05d9\u05d5\u05e0\u05d5\u05ea \u05e0\u05e2\u05e9\u05d5"
+    },
+    "last_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d4\u05d9\u05d4 \u05d4\u05e0\u05d9\u05e1\u05d9\u05d5\u05df \u05d4\u05d0\u05d7\u05e8\u05d5\u05df"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e0\u05e9\u05dc\u05d7\u05d4 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4"
+    },
+    "error_code": {
+      "type": "string",
+      "description": "\u05e7\u05d5\u05d3 \u05e9\u05d2\u05d9\u05d0\u05d4 \u05d0\u05dd \u05e0\u05db\u05e9\u05dc"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05e9\u05d2\u05d9\u05d0\u05d4 \u05de\u05e4\u05d5\u05e8\u05d8\u05ea"
+    },
+    "notification_receipt_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc NotificationReceipt \u05e9\u05e0\u05d5\u05e6\u05e8"
+    },
+    "rule_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05db\u05dc\u05dc \u05e9\u05d9\u05e6\u05e8 \u05d0\u05ea \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "is_test": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05d6\u05d5 \u05d4\u05ea\u05e8\u05d0\u05ea \u05d1\u05d3\u05d9\u05e7\u05d4"
+    }
+  },
+  "required": [
+    "notification_id",
+    "user_email",
+    "type",
+    "channel",
+    "status",
+    "payload"
+  ]
+}

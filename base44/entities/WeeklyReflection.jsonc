@@ -1,0 +1,26 @@
+{
+  "name": "WeeklyReflection",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "week_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "what_was_hard": {
+      "type": "string"
+    },
+    "what_succeeded": {
+      "type": "string"
+    },
+    "next_week_goal": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "week_start_date"
+  ]
+}

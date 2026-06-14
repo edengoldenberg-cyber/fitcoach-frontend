@@ -1,0 +1,36 @@
+{
+  "name": "ShapeLeagueStandingArchive",
+  "type": "object",
+  "properties": {
+    "archive_type": {
+      "type": "string",
+      "enum": [
+        "group_rankings",
+        "personal_rankings",
+        "full_month"
+      ]
+    },
+    "season_id": {
+      "type": "string"
+    },
+    "snapshot": {
+      "type": "object"
+    },
+    "created_by_coach_id": {
+      "type": "string"
+    },
+    "created_by_coach_email": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "archive_type",
+    "snapshot",
+    "created_by_coach_id",
+    "created_at"
+  ]
+}

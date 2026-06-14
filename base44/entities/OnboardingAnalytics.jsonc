@@ -1,0 +1,84 @@
+{
+  "name": "OnboardingAnalytics",
+  "type": "object",
+  "properties": {
+    "user_email": {
+      "type": "string",
+      "description": "User email"
+    },
+    "role_type": {
+      "type": "string",
+      "enum": [
+        "trainee",
+        "coach"
+      ],
+      "default": "trainee",
+      "description": "Onboarding audience"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Unique onboarding session id"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "started",
+        "step_viewed",
+        "action_completed",
+        "success_shown",
+        "skipped",
+        "completed",
+        "quit"
+      ],
+      "description": "Analytics event type"
+    },
+    "step_id": {
+      "type": "string",
+      "description": "Current onboarding step id"
+    },
+    "step_index": {
+      "type": "number",
+      "description": "Current step index"
+    },
+    "completion_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "Onboarding completion percentage"
+    },
+    "duration_seconds": {
+      "type": "number",
+      "description": "Elapsed onboarding duration in seconds"
+    },
+    "first_successful_action": {
+      "type": "string",
+      "description": "First completed user action"
+    },
+    "skipped_steps": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "description": "Skipped onboarding steps"
+    },
+    "quit_step": {
+      "type": "string",
+      "description": "Step where the user quit"
+    },
+    "confusion_signal": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether the event suggests confusion or friction"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional event metadata"
+    }
+  },
+  "required": [
+    "user_email",
+    "role_type",
+    "session_id",
+    "event_type"
+  ]
+}

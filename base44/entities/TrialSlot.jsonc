@@ -1,0 +1,54 @@
+{
+  "name": "TrialSlot",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "trainingType": {
+      "type": "string",
+      "enum": [
+        "STRENGTH",
+        "PILATES",
+        "HYBRID"
+      ],
+      "default": "STRENGTH"
+    },
+    "coachName": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "startTime": {
+      "type": "string",
+      "description": "HH:MM"
+    },
+    "endTime": {
+      "type": "string",
+      "description": "HH:MM"
+    },
+    "capacity": {
+      "type": "number",
+      "default": 10
+    },
+    "bookedCount": {
+      "type": "number",
+      "default": 0
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "coach_email",
+    "title",
+    "date",
+    "startTime"
+  ]
+}

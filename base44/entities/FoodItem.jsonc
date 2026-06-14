@@ -1,0 +1,188 @@
+{
+  "name": "FoodItem",
+  "type": "object",
+  "properties": {
+    "name_he": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05d5\u05e6\u05e8 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea"
+    },
+    "normalized_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05de\u05e0\u05d5\u05e8\u05de\u05dc \u05dc\u05d6\u05d9\u05d4\u05d5\u05d9 \u05db\u05e4\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea (\u05dc\u05dc\u05d0 unique - \u05d4key \u05d4\u05d5\u05d0 normalized_name+category)"
+    },
+    "name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05d5\u05e6\u05e8 \u05d1\u05d0\u05e0\u05d2\u05dc\u05d9\u05ea"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05dc\u05d1\u05d5\u05df",
+        "\u05e4\u05d7\u05de\u05d9\u05de\u05d4",
+        "\u05e9\u05d5\u05de\u05df",
+        "\u05de\u05de\u05e8\u05d7",
+        "\u05d7\u05dc\u05d1 \u05d5\u05de\u05d5\u05e6\u05e8\u05d9\u05d5",
+        "\u05d9\u05e8\u05e7\u05d5\u05ea",
+        "\u05e4\u05d9\u05e8\u05d5\u05ea",
+        "\u05e7\u05d8\u05e0\u05d9\u05d5\u05ea",
+        "\u05d3\u05d2\u05e0\u05d9\u05dd",
+        "\u05de\u05e9\u05e7\u05d0\u05d5\u05ea",
+        "\u05de\u05ea\u05d5\u05e7\u05d9\u05dd",
+        "\u05de\u05e0\u05d5\u05ea \u05de\u05d5\u05db\u05e0\u05d5\u05ea",
+        "\u05ea\u05d5\u05e1\u05e4\u05d9\u05dd",
+        "\u05e8\u05d8\u05d1\u05d9\u05dd"
+      ],
+      "default": "\u05de\u05e0\u05d5\u05ea \u05de\u05d5\u05db\u05e0\u05d5\u05ea",
+      "description": "\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d9\u05ea \u05de\u05d6\u05d5\u05df"
+    },
+    "per100_kcal": {
+      "type": "number",
+      "description": "\u05e7\u05dc\u05d5\u05e8\u05d9\u05d5\u05ea \u05dc-100 \u05d2\u05e8\u05dd"
+    },
+    "per100_protein": {
+      "type": "number",
+      "description": "\u05d7\u05dc\u05d1\u05d5\u05df \u05dc-100 \u05d2\u05e8\u05dd"
+    },
+    "per100_carbs": {
+      "type": "number",
+      "description": "\u05e4\u05d7\u05de\u05d9\u05de\u05d5\u05ea \u05dc-100 \u05d2\u05e8\u05dd"
+    },
+    "per100_fat": {
+      "type": "number",
+      "description": "\u05e9\u05d5\u05de\u05df \u05dc-100 \u05d2\u05e8\u05dd"
+    },
+    "brand": {
+      "type": "string",
+      "default": "",
+      "description": "\u05de\u05d5\u05ea\u05d2 (\u05e8\u05d9\u05e7 \u05e2\u05d1\u05d5\u05e8 \u05de\u05d5\u05e6\u05e8\u05d9\u05dd \u05d2\u05e0\u05e8\u05d9\u05d9\u05dd)"
+    },
+    "is_generic": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05de\u05d5\u05e6\u05e8 \u05d2\u05e0\u05e8\u05d9 (\u05dc\u05d0 \u05de\u05d5\u05ea\u05d2\u05d9)"
+    },
+    "product_line": {
+      "type": "string",
+      "description": "\u05e7\u05d5 \u05de\u05d5\u05e6\u05e8\u05d9\u05dd (\u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9, \u05dc\u05de\u05e9\u05dc: Light, Zero, Organic)"
+    },
+    "barcodes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05d1\u05e8\u05e7\u05d5\u05d3\u05d9\u05dd \u05dc\u05de\u05d5\u05e6\u05e8"
+    },
+    "serving_grams": {
+      "type": "number",
+      "description": "\u05d2\u05e8\u05de\u05d9\u05dd \u05dc\u05de\u05e0\u05d4 \u05e1\u05d8\u05e0\u05d3\u05e8\u05d8\u05d9\u05ea"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05de\u05d5\u05e6\u05e8 \u05e4\u05e2\u05d9\u05dc"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "import",
+        "label",
+        "verified",
+        "openfoodfacts"
+      ],
+      "default": "manual",
+      "description": "\u05de\u05e7\u05d5\u05e8 \u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd"
+    },
+    "import_batch_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 batch \u05e9\u05dc \u05d9\u05d9\u05d1\u05d5\u05d0 (UUID)"
+    },
+    "imported_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "imported_by": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05de\u05e9\u05ea\u05de\u05e9 \u05e9\u05d1\u05d9\u05e6\u05e2 \u05d0\u05ea \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "country_israel": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05de\u05d5\u05e6\u05e8 \u05d9\u05e9\u05e8\u05d0\u05dc\u05d9"
+    },
+    "last_synced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05e1\u05e0\u05db\u05e8\u05d5\u05df \u05d0\u05d7\u05e8\u05d5\u05df"
+    },
+    "is_portion_based": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05de\u05d5\u05e6\u05e8 \u05dc\u05e4\u05d9 \u05de\u05e0\u05d4 (\u05d1\u05de\u05e7\u05d5\u05dd 100 \u05d2\u05e8\u05dd)"
+    },
+    "portion_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05e0\u05d4 (\u05dc\u05d3\u05d5\u05d2\u05de\u05d4: '\u05de\u05e0\u05d4 \u05de\u05dc\u05d0\u05d4', '\u05db\u05e8\u05d9\u05da \u05d0\u05d7\u05d3')"
+    },
+    "portion_weight_grams": {
+      "type": "number",
+      "description": "\u05de\u05e9\u05e7\u05dc \u05de\u05e0\u05d4 \u05d0\u05d7\u05ea \u05d1\u05d2\u05e8\u05de\u05d9\u05dd"
+    },
+    "is_suggest_favorite": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05de\u05d5\u05e2\u05d3\u05e3 \u05dc\u05d4\u05e6\u05e2\u05d5\u05ea \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9\u05d5\u05ea \u05dc\u05de\u05ea\u05d0\u05de\u05e0\u05d9\u05dd"
+    },
+    "suggest_meal_tags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "\u05d1\u05d5\u05e7\u05e8",
+          "\u05e6\u05d4\u05e8\u05d9\u05d9\u05dd",
+          "\u05e2\u05e8\u05d1",
+          "\u05d1\u05d9\u05e0\u05d9\u05d9\u05dd"
+        ]
+      },
+      "description": "\u05ea\u05d2\u05d9\u05d5\u05ea \u05d0\u05e8\u05d5\u05d7\u05d5\u05ea \u05de\u05ea\u05d0\u05d9\u05de\u05d5\u05ea (\u05d1\u05d5\u05e7\u05e8/\u05e6\u05d4\u05e8\u05d9\u05d9\u05dd/\u05e2\u05e8\u05d1/\u05d1\u05d9\u05e0\u05d9\u05d9\u05dd)",
+      "default": []
+    },
+    "suggest_role": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05dc\u05d1\u05d5\u05df",
+        "\u05e4\u05d7\u05de\u05d9\u05de\u05d4",
+        "\u05e9\u05d5\u05de\u05df",
+        "\u05d9\u05e8\u05e7/\u05d7\u05d5\u05e4\u05e9\u05d9",
+        "\u05de\u05ea\u05d5\u05e7/\u05e4\u05d9\u05e0\u05d5\u05e7"
+      ],
+      "description": "\u05ea\u05e4\u05e7\u05d9\u05d3 \u05d1\u05e7\u05d5\u05de\u05d1\u05d9\u05e0\u05e6\u05d9\u05d4 (\u05d7\u05dc\u05d1\u05d5\u05df/\u05e4\u05d7\u05de\u05d9\u05de\u05d4/\u05e9\u05d5\u05de\u05df/\u05d9\u05e8\u05e7/\u05d7\u05d5\u05e4\u05e9\u05d9/\u05de\u05ea\u05d5\u05e7)"
+    },
+    "suggest_priority": {
+      "type": "number",
+      "default": 3,
+      "description": "\u05e2\u05d3\u05d9\u05e4\u05d5\u05ea \u05dc\u05d4\u05e6\u05e2\u05d5\u05ea (1-5, 5=\u05d2\u05d1\u05d5\u05d4 \u05d1\u05d9\u05d5\u05ea\u05e8)"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "URL \u05e9\u05dc \u05ea\u05de\u05d5\u05e0\u05ea \u05d4\u05de\u05d5\u05e6\u05e8"
+    },
+    "ai_learning_notes": {
+      "type": "string",
+      "description": "\u05e0\u05d9\u05ea\u05d5\u05d7 \u05d5\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d6\u05e6\u05d9\u05d4 \u05e9\u05dc AI \u05dc\u05de\u05d5\u05e6\u05e8"
+    },
+    "learned_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d4\u05de\u05e2\u05e8\u05db\u05ea \u05d4\u05ea\u05d7\u05d9\u05dc\u05d4 \u05dc\u05dc\u05de\u05d5\u05d3 \u05de\u05d4\u05de\u05d5\u05e6\u05e8"
+    }
+  },
+  "required": [
+    "name_he",
+    "per100_kcal",
+    "per100_protein",
+    "per100_carbs",
+    "per100_fat"
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "name": "ShapeLeagueMission",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Mission date (UTC/Jerusalem timezone)"
+    },
+    "mission_type": {
+      "type": "string",
+      "enum": [
+        "activity",
+        "nutrition",
+        "steps",
+        "hydration",
+        "combo",
+        "group"
+      ],
+      "description": "Type of mission"
+    },
+    "title_he": {
+      "type": "string",
+      "description": "Mission title in Hebrew"
+    },
+    "description_he": {
+      "type": "string",
+      "description": "Mission description"
+    },
+    "emoji": {
+      "type": "string"
+    },
+    "target_activity": {
+      "type": "string",
+      "description": "Activity to complete (if activity type)"
+    },
+    "target_value": {
+      "type": "number",
+      "description": "Target: minutes/km/cups/etc"
+    },
+    "unit": {
+      "type": "string",
+      "description": "minutes, km, cups, steps, etc"
+    },
+    "bonus_points": {
+      "type": "number",
+      "default": 15,
+      "description": "Bonus points for completing mission"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "default": "medium"
+    },
+    "is_group_mission": {
+      "type": "boolean",
+      "default": false
+    },
+    "group_target_members": {
+      "type": "number",
+      "description": "For group missions: how many must complete"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "date",
+    "mission_type",
+    "title_he",
+    "emoji",
+    "target_value"
+  ]
+}

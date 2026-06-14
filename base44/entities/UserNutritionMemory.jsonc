@@ -1,0 +1,148 @@
+{
+  "name": "UserNutritionMemory",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "food_id": {
+      "type": "string"
+    },
+    "user_food_item_id": {
+      "type": "string"
+    },
+    "food_name": {
+      "type": "string"
+    },
+    "normalized_name": {
+      "type": "string",
+      "description": "Normalized food name used as the deduplication key (lowercased, diacritics removed, whitespace collapsed)"
+    },
+    "calories_per_100g": {
+      "type": "number"
+    },
+    "protein_per_100g": {
+      "type": "number"
+    },
+    "carbs_per_100g": {
+      "type": "number"
+    },
+    "fat_per_100g": {
+      "type": "number"
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0
+    },
+    "favorite": {
+      "type": "boolean",
+      "default": false
+    },
+    "default_quantity": {
+      "type": "number"
+    },
+    "default_unit": {
+      "type": "string"
+    },
+    "meal_type": {
+      "type": "string",
+      "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+      ]
+    },
+    "time_of_day_bucket": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "noon",
+        "afternoon",
+        "evening",
+        "night"
+      ]
+    },
+    "common_serving_sizes": {
+      "type": "object"
+    },
+    "meal_timing_habits": {
+      "type": "object"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "search",
+        "ai",
+        "photo",
+        "ai_correction",
+        "quick_log"
+      ],
+      "default": "search"
+    },
+    "original_ai_name": {
+      "type": "string"
+    },
+    "original_ai_text": {
+      "type": "string"
+    },
+    "source_text_segment": {
+      "type": "string"
+    },
+    "original_ai_estimate": {
+      "type": "object"
+    },
+    "corrected_name": {
+      "type": "string"
+    },
+    "corrected_quantity": {
+      "type": "number"
+    },
+    "corrected_unit": {
+      "type": "string"
+    },
+    "corrected_grams": {
+      "type": "number"
+    },
+    "corrected_calories": {
+      "type": "number"
+    },
+    "corrected_protein": {
+      "type": "number"
+    },
+    "corrected_carbs": {
+      "type": "number"
+    },
+    "corrected_fat": {
+      "type": "number"
+    },
+    "correction_count": {
+      "type": "number",
+      "default": 0
+    },
+    "last_corrected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "corrected_macros": {
+      "type": "object"
+    },
+    "image_context": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_email"
+  ]
+}

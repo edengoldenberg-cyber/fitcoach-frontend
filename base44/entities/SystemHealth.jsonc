@@ -1,0 +1,61 @@
+{
+  "name": "SystemHealth",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "Coach this health record belongs to"
+    },
+    "lastInboundWebhookReceivedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of last real inbound webhook event"
+    },
+    "lastInboundWebhookMessageText": {
+      "type": "string",
+      "description": "Preview of last inbound message"
+    },
+    "lastInboundWebhookLeadId": {
+      "type": "string",
+      "description": "Lead ID matched from last inbound event"
+    },
+    "lastInboundWebhookSuccess": {
+      "type": "boolean",
+      "default": false,
+      "description": "Was the last inbound webhook processed successfully"
+    },
+    "lastInboundWebhookProvider": {
+      "type": "string",
+      "description": "Provider name e.g. GREEN_API"
+    },
+    "inboundPipelineStatus": {
+      "type": "string",
+      "enum": [
+        "NOT_RECEIVED",
+        "RECEIVED_NOT_PARSED",
+        "PARSED_NOT_MATCHED",
+        "MATCHED_SUCCESSFULLY"
+      ],
+      "description": "Current inbound pipeline status"
+    },
+    "lastInboundRawPayload": {
+      "type": "string",
+      "description": "Raw JSON payload from last webhook (truncated to 2000 chars)"
+    },
+    "lastInboundParseSuccess": {
+      "type": "boolean",
+      "description": "Was the last webhook payload parsed successfully"
+    },
+    "lastInboundLeadMatched": {
+      "type": "boolean",
+      "description": "Was a lead matched from the last inbound webhook"
+    },
+    "lastInboundFailureReason": {
+      "type": "string",
+      "description": "Exact failure reason if pipeline did not complete"
+    }
+  },
+  "required": [
+    "coach_email"
+  ]
+}

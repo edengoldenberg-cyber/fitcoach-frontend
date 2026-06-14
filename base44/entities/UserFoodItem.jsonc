@@ -1,0 +1,159 @@
+{
+  "name": "UserFoodItem",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Base44 user id of creator/owner"
+    },
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee owner for personal foods"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach owner for coach foods"
+    },
+    "visibility": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "coach",
+        "global"
+      ],
+      "default": "personal",
+      "description": "Who can reuse this food"
+    },
+    "food_name": {
+      "type": "string"
+    },
+    "normalized_name": {
+      "type": "string",
+      "description": "Normalized name for duplicate prevention"
+    },
+    "brand_name": {
+      "type": "string"
+    },
+    "serving_size": {
+      "type": "number"
+    },
+    "unit": {
+      "type": "string"
+    },
+    "calories_per_100g": {
+      "type": "number"
+    },
+    "protein_per_100g": {
+      "type": "number"
+    },
+    "carbs_per_100g": {
+      "type": "number"
+    },
+    "fat_per_100g": {
+      "type": "number"
+    },
+    "created_by_user": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0
+    },
+    "often_edited_count": {
+      "type": "number",
+      "default": 0
+    },
+    "often_deleted_count": {
+      "type": "number",
+      "default": 0
+    },
+    "ai_correction_notes": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "search",
+        "ai_correction",
+        "coach",
+        "global"
+      ],
+      "default": "manual"
+    },
+    "original_ai_name": {
+      "type": "string"
+    },
+    "original_ai_text": {
+      "type": "string"
+    },
+    "source_text_segment": {
+      "type": "string"
+    },
+    "original_ai_estimate": {
+      "type": "object"
+    },
+    "corrected_name": {
+      "type": "string"
+    },
+    "corrected_quantity": {
+      "type": "number"
+    },
+    "corrected_unit": {
+      "type": "string"
+    },
+    "corrected_grams": {
+      "type": "number"
+    },
+    "corrected_calories": {
+      "type": "number"
+    },
+    "corrected_protein": {
+      "type": "number"
+    },
+    "corrected_carbs": {
+      "type": "number"
+    },
+    "corrected_fat": {
+      "type": "number"
+    },
+    "correction_count": {
+      "type": "number",
+      "default": 0
+    },
+    "last_corrected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "corrected_macros": {
+      "type": "object"
+    },
+    "image_context": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "food_name",
+    "normalized_name",
+    "visibility",
+    "calories_per_100g",
+    "protein_per_100g",
+    "carbs_per_100g",
+    "fat_per_100g"
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "name": "GroupWorkoutSession",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05e4\u05e8\u05e1\u05dd"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df \u05d4\u05e7\u05d1\u05d5\u05e6\u05ea\u05d9"
+    },
+    "title": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d0\u05d9\u05de\u05d5\u05df (\u05dc\u05de\u05e9\u05dc: \u05d1\u05d5\u05e7\u05e8, \u05db\u05d5\u05d7 \u05e2\u05dc\u05d9\u05d5\u05df, \u05e4\u05d5\u05dc \u05d1\u05d0\u05d3\u05d9)"
+    },
+    "description": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "start_time": {
+      "type": "string",
+      "description": "\u05e9\u05e2\u05ea \u05d4\u05ea\u05d7\u05dc\u05d4 (HH:MM)"
+    },
+    "end_time": {
+      "type": "string",
+      "description": "\u05e9\u05e2\u05ea \u05e1\u05d9\u05d5\u05dd (HH:MM)"
+    },
+    "group_tag": {
+      "type": "string",
+      "description": "\u05ea\u05d2 \u05e7\u05d1\u05d5\u05e6\u05d4 (\u05e7\u05d1\u05d5\u05e6\u05d4 A, \u05de\u05ea\u05d7\u05d9\u05dc\u05d9\u05dd, \u05de\u05ea\u05e7\u05d3\u05de\u05d9\u05dd)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published",
+        "archived"
+      ],
+      "default": "draft",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e4\u05d5\u05e8\u05e1\u05dd"
+    },
+    "notes": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05db\u05dc\u05dc\u05d9\u05d5\u05ea"
+    }
+  },
+  "required": [
+    "coach_email",
+    "date",
+    "title"
+  ]
+}

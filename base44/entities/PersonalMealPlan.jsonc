@@ -1,0 +1,166 @@
+{
+  "name": "PersonalMealPlan",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05d0\u05d9\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "preferences_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05e2\u05d3\u05e4\u05d5\u05ea \u05e9\u05e2\u05dc \u05d1\u05e1\u05d9\u05e1\u05df \u05e0\u05d5\u05e6\u05e8\u05d4 \u05d4\u05ea\u05db\u05e0\u05d9\u05ea"
+    },
+    "plan_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05ea\u05db\u05e0\u05d9\u05ea"
+    },
+    "is_weekly": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05d6\u05d4 \u05ea\u05e4\u05e8\u05d9\u05d8 \u05e9\u05d1\u05d5\u05e2\u05d9"
+    },
+    "daily_calories": {
+      "type": "number",
+      "description": "\u05e1\u05d4\"\u05db \u05e7\u05dc\u05d5\u05e8\u05d9\u05d5\u05ea \u05d9\u05d5\u05de\u05d9"
+    },
+    "daily_protein": {
+      "type": "number",
+      "description": "\u05e1\u05d4\"\u05db \u05d7\u05dc\u05d1\u05d5\u05df \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    },
+    "daily_carbs": {
+      "type": "number",
+      "description": "\u05e1\u05d4\"\u05db \u05e4\u05d7\u05de\u05d9\u05de\u05d5\u05ea \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    },
+    "daily_fat": {
+      "type": "number",
+      "description": "\u05e1\u05d4\"\u05db \u05e9\u05d5\u05de\u05df \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    },
+    "meals": {
+      "type": "array",
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05d4\u05d0\u05e8\u05d5\u05d7\u05d5\u05ea (\u05dc\u05d9\u05d5\u05dd \u05d9\u05d7\u05d9\u05d3)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "meal_name": {
+            "type": "string"
+          },
+          "meal_time": {
+            "type": "string"
+          },
+          "meal_calories": {
+            "type": "number"
+          },
+          "meal_protein": {
+            "type": "number"
+          },
+          "meal_carbs": {
+            "type": "number"
+          },
+          "meal_fat": {
+            "type": "number"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "food_item": {
+                  "type": "string"
+                },
+                "quantity_grams": {
+                  "type": "number"
+                },
+                "quantity_description": {
+                  "type": "string"
+                },
+                "calories": {
+                  "type": "number"
+                },
+                "protein": {
+                  "type": "number"
+                },
+                "carbs": {
+                  "type": "number"
+                },
+                "fat": {
+                  "type": "number"
+                },
+                "alternatives": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "food_item": {
+                        "type": "string"
+                      },
+                      "quantity_grams": {
+                        "type": "number"
+                      },
+                      "quantity_description": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "weekly_days": {
+      "type": "array",
+      "description": "\u05d9\u05de\u05d9 \u05d4\u05e9\u05d1\u05d5\u05e2 (\u05dc\u05ea\u05e4\u05e8\u05d9\u05d8 \u05e9\u05d1\u05d5\u05e2\u05d9)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "day_name": {
+            "type": "string"
+          },
+          "day_index": {
+            "type": "number"
+          },
+          "is_eating_out_day": {
+            "type": "boolean"
+          },
+          "daily_calories": {
+            "type": "number"
+          },
+          "daily_protein": {
+            "type": "number"
+          },
+          "daily_carbs": {
+            "type": "number"
+          },
+          "daily_fat": {
+            "type": "number"
+          },
+          "meals": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "ai_notes": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05d5\u05d4\u05de\u05dc\u05e6\u05d5\u05ea \u05de\u05d4-AI"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05ea\u05db\u05e0\u05d9\u05ea \u05e4\u05e2\u05d9\u05dc\u05d4"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "meals"
+  ]
+}

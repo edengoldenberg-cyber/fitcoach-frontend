@@ -1,0 +1,113 @@
+{
+  "name": "WhatsAppEventLog",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "breakfast_check",
+        "lunch_check",
+        "dinner_check",
+        "water_check",
+        "recovery_3day",
+        "recovery_7day",
+        "reinforcement_meal",
+        "reinforcement_water"
+      ],
+      "description": "What triggered this event"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "message_sent",
+        "reminder_skipped",
+        "reinforcement_sent",
+        "recovery_sent"
+      ],
+      "description": "What actually happened"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When decision was made"
+    },
+    "message_sent": {
+      "type": "string",
+      "description": "Full message text (if sent)"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why message was sent (e.g., 'breakfast_not_logged', 'water_below_target')"
+    },
+    "blocked_reason": {
+      "type": "string",
+      "description": "Why message was NOT sent (e.g., 'daily_limit_reached', 'user_inactive')"
+    },
+    "user_state": {
+      "type": "object",
+      "description": "User state when decision made",
+      "properties": {
+        "meals_logged_today": {
+          "type": "number"
+        },
+        "water_logged_today": {
+          "type": "number"
+        },
+        "daily_water_target": {
+          "type": "number"
+        },
+        "last_login_hours_ago": {
+          "type": "number"
+        },
+        "last_message_type": {
+          "type": "string"
+        },
+        "messages_sent_today": {
+          "type": "number"
+        },
+        "is_in_recovery_mode": {
+          "type": "boolean"
+        },
+        "recovery_day": {
+          "type": "number"
+        }
+      }
+    },
+    "decision_metadata": {
+      "type": "object",
+      "description": "Extra decision data",
+      "properties": {
+        "check_time": {
+          "type": "string"
+        },
+        "meal_type": {
+          "type": "string"
+        },
+        "competing_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "selected_reason": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "trigger_type",
+    "event_type",
+    "timestamp"
+  ]
+}

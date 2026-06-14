@@ -1,0 +1,54 @@
+{
+  "name": "TrialBooking",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "leadName": {
+      "type": "string"
+    },
+    "leadPhone": {
+      "type": "string"
+    },
+    "slotId": {
+      "type": "string",
+      "description": "FK to TrialSlot"
+    },
+    "slotTitle": {
+      "type": "string"
+    },
+    "slotDate": {
+      "type": "string"
+    },
+    "slotStartTime": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "BOOKED",
+        "CANCELLED",
+        "COMPLETED",
+        "NO_SHOW"
+      ],
+      "default": "BOOKED"
+    },
+    "bookedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "coach_email",
+    "leadId",
+    "slotId"
+  ]
+}

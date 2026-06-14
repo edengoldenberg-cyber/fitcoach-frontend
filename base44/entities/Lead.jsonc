@@ -1,0 +1,293 @@
+{
+  "name": "Lead",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "Email of the coach who owns this lead"
+    },
+    "firstName": {
+      "type": "string",
+      "description": "First name of the lead"
+    },
+    "lastName": {
+      "type": "string",
+      "description": "Last name of the lead"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Raw phone as received from webhook"
+    },
+    "phoneRaw": {
+      "type": "string",
+      "description": "Raw phone exactly as received from Facebook"
+    },
+    "phoneE164": {
+      "type": "string",
+      "description": "Normalized E.164 phone e.g. +972XXXXXXXXX"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email address"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "manual_test",
+        "facebook",
+        "website",
+        "whatsapp",
+        "referral",
+        "landing_page",
+        "imported",
+        "other"
+      ],
+      "default": "manual",
+      "description": "How the lead was acquired"
+    },
+    "isSimulatorLead": {
+      "type": "boolean",
+      "default": false,
+      "description": "true = simulator mode only, false = real WhatsApp delivery allowed. Main authority for simulator behavior."
+    },
+    "activeResponderOwner": {
+      "type": "string",
+      "enum": [
+        "AI",
+        "FLOW",
+        "SCRIPT",
+        "MANUAL"
+      ],
+      "description": "Explicit per-lead response owner override. When set, overrides default AIBrainConfig routing. When absent, default routing applies unchanged."
+    },
+    "waOnly": {
+      "type": "boolean",
+      "default": false,
+      "description": "Lead explicitly prefers WhatsApp only \u2014 no phone calls. Detected automatically from inbound text. When true, AI suppresses phone-call CTA and stays in WhatsApp mode."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "NEW",
+        "CONTACTED",
+        "FOLLOWUP_1",
+        "FOLLOWUP_2",
+        "NO_RESPONSE",
+        "INTERESTED",
+        "CALL_REQUESTED",
+        "BOOKED",
+        "CLOSED",
+        "INVALID_PHONE",
+        "ERROR",
+        "new",
+        "contacted",
+        "trial_scheduled",
+        "trial_done",
+        "closed",
+        "not_relevant",
+        "closed_no_response"
+      ],
+      "default": "NEW",
+      "description": "Current status of the lead"
+    },
+    "leadScore": {
+      "type": "number",
+      "default": 0,
+      "description": "Lead intelligence score 0-100"
+    },
+    "leadTemperature": {
+      "type": "string",
+      "enum": [
+        "HOT",
+        "WARM",
+        "COLD"
+      ],
+      "default": "COLD"
+    },
+    "personalityType": {
+      "type": "string",
+      "enum": [
+        "analytical",
+        "emotional",
+        "skeptical",
+        "impulsive"
+      ],
+      "description": "Detected personality type from conversation"
+    },
+    "intelligence": {
+      "type": "object",
+      "description": "Extracted intent signals: goal, pain, motivation, budget, urgency",
+      "properties": {
+        "goal": {
+          "type": "string"
+        },
+        "pain": {
+          "type": "string"
+        },
+        "motivation": {
+          "type": "string"
+        },
+        "budget": {
+          "type": "string"
+        },
+        "urgency": {
+          "type": "string"
+        }
+      }
+    },
+    "scriptSessionId": {
+      "type": "string",
+      "description": "Unique ID for the current script conversation session"
+    },
+    "activeScriptId": {
+      "type": "string",
+      "description": "ID of the currently active script (main or skeptical)"
+    },
+    "activeScriptType": {
+      "type": "string",
+      "enum": [
+        "main",
+        "skeptical"
+      ],
+      "description": "Type of active script being used"
+    },
+    "currentScriptStage": {
+      "type": "number",
+      "description": "Stage order the AI is currently at \u2014 prevents regression to stage 1"
+    },
+    "scriptStartedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the AI script session was first started"
+    },
+    "collectedAnswers": {
+      "type": "object",
+      "description": "Structured answers collected from lead conversation",
+      "properties": {
+        "goal": {
+          "type": "string",
+          "description": "What the lead wants to achieve (lose weight, gain muscle, etc.)"
+        },
+        "schedule_preference": {
+          "type": "string",
+          "description": "Preferred training schedule (mornings, evenings, etc.)"
+        },
+        "training_background": {
+          "type": "string",
+          "description": "Lead's training experience level"
+        },
+        "readiness": {
+          "type": "string",
+          "description": "How ready the lead is to start (immediately, next month, etc.)"
+        },
+        "objection": {
+          "type": "string",
+          "description": "Any objections or concerns raised"
+        },
+        "preferred_contact_time": {
+          "type": "string",
+          "description": "Best time to contact the lead"
+        },
+        "additional_notes": {
+          "type": "string",
+          "description": "Any other relevant information"
+        }
+      }
+    },
+    "call_scheduled": {
+      "type": "boolean",
+      "default": false,
+      "description": "PART 5: Whether a sales call has been scheduled"
+    },
+    "call_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "PART 5: Scheduled call date and time"
+    },
+    "call_status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "completed",
+        "no_answer",
+        "cancelled"
+      ],
+      "description": "PART 5: Status of the scheduled call"
+    },
+    "reminder_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "PART 6: Nudnik toggle - whether to send call reminders"
+    },
+    "reminder_sent": {
+      "type": "boolean",
+      "default": false,
+      "description": "PART 7: Whether pre-call reminder was sent"
+    },
+    "followup_attempts_count": {
+      "type": "number",
+      "default": 0,
+      "description": "PART 9: Number of follow-up attempts after no response"
+    },
+    "last_followup_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "PART 9: When the last follow-up was sent"
+    },
+    "waOptOut": {
+      "type": "boolean",
+      "default": false
+    },
+    "formName": {
+      "type": "string"
+    },
+    "leadId": {
+      "type": "string"
+    },
+    "adId": {
+      "type": "string"
+    },
+    "campaignId": {
+      "type": "string"
+    },
+    "lastMessageAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastInboundAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "errorReason": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "whatsapp_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fields_raw": {
+      "type": "object"
+    },
+    "answers": {
+      "type": "object"
+    },
+    "form_id": {
+      "type": "string"
+    },
+    "page_id": {
+      "type": "string"
+    },
+    "facebook_lead_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "coach_email",
+    "firstName",
+    "phone"
+  ]
+}

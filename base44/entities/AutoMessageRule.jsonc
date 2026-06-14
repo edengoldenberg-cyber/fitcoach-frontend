@@ -1,0 +1,113 @@
+{
+  "name": "AutoMessageRule",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Rule name"
+    },
+    "is_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "schedule_type": {
+      "type": "string",
+      "enum": [
+        "daily",
+        "weekly"
+      ],
+      "default": "daily"
+    },
+    "time_of_day": {
+      "type": "string",
+      "description": "HH:MM format"
+    },
+    "days_of_week": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "0=Sunday, 6=Saturday"
+    },
+    "audience_type": {
+      "type": "string",
+      "enum": [
+        "all",
+        "selected",
+        "filter"
+      ],
+      "default": "all"
+    },
+    "selected_trainee_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "filter_type": {
+      "type": "string",
+      "enum": [
+        "no_nutrition_today",
+        "no_water_today",
+        "no_workout_week",
+        "inactive_2_days",
+        "metrics_outlier",
+        "none"
+      ],
+      "default": "none"
+    },
+    "title_template": {
+      "type": "string"
+    },
+    "message_template": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "\u05ea\u05d6\u05db\u05d5\u05e8\u05ea",
+        "\u05e2\u05d9\u05d3\u05d5\u05d3",
+        "\u05de\u05e9\u05d9\u05de\u05d4",
+        "\u05db\u05dc\u05dc\u05d9"
+      ],
+      "default": "\u05ea\u05d6\u05db\u05d5\u05e8\u05ea"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "in_app",
+        "whatsapp",
+        "both"
+      ],
+      "default": "in_app"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "open_nutrition",
+        "open_water",
+        "open_workout",
+        "open_metrics",
+        "open_chat_ai",
+        "none"
+      ],
+      "default": "none"
+    },
+    "action_label": {
+      "type": "string"
+    },
+    "last_run_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "coach_email",
+    "name",
+    "title_template",
+    "message_template"
+  ]
+}

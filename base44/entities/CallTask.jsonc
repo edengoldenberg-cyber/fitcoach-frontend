@@ -1,0 +1,81 @@
+{
+  "name": "CallTask",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "leadName": {
+      "type": "string",
+      "description": "Denormalized lead name"
+    },
+    "leadPhone": {
+      "type": "string",
+      "description": "Denormalized lead phone"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach who owns this task"
+    },
+    "assignedTo": {
+      "type": "string",
+      "enum": [
+        "Eden",
+        "Orly",
+        "unassigned"
+      ],
+      "default": "unassigned",
+      "description": "Who is responsible for this call"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "OPEN",
+        "IN_PROGRESS",
+        "DONE",
+        "MISSED",
+        "NO_ANSWER"
+      ],
+      "default": "OPEN"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "default": "MEDIUM"
+    },
+    "reason": {
+      "type": "string",
+      "description": "Why this task was created"
+    },
+    "dueAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "callOutcome": {
+      "type": "string",
+      "enum": [
+        "NO_ANSWER",
+        "INTERESTED",
+        "BOOKED",
+        "NOT_RELEVANT",
+        "FOLLOW_UP_NEEDED"
+      ]
+    }
+  },
+  "required": [
+    "leadId",
+    "coach_email"
+  ]
+}

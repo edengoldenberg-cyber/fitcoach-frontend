@@ -1,0 +1,61 @@
+{
+  "name": "SalesScriptStage",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "script_id": {
+      "type": "string",
+      "description": "FK to SalesScript"
+    },
+    "stage_order": {
+      "type": "number",
+      "description": "Order of this stage (1, 2, 3...)"
+    },
+    "stage_name": {
+      "type": "string",
+      "description": "Short label for this stage"
+    },
+    "question_text": {
+      "type": "string",
+      "description": "Question the AI should ask the lead"
+    },
+    "purpose": {
+      "type": "string",
+      "enum": [
+        "goal",
+        "experience",
+        "motivation",
+        "main_concern",
+        "interest_level",
+        "custom"
+      ],
+      "description": "What this question captures"
+    },
+    "crm_field": {
+      "type": "string",
+      "description": "Key to store in lead.answers (e.g. goal, experience, motivation)"
+    },
+    "objection_response": {
+      "type": "string",
+      "description": "How AI should respond if lead resists or deflects this question"
+    },
+    "suggest_call": {
+      "type": "boolean",
+      "default": false,
+      "description": "Suggest a sales call after this stage"
+    },
+    "escalate_to_human": {
+      "type": "boolean",
+      "default": false,
+      "description": "Escalate to human at this stage"
+    }
+  },
+  "required": [
+    "coach_email",
+    "script_id",
+    "stage_order",
+    "question_text"
+  ]
+}

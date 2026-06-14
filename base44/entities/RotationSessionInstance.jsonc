@@ -1,0 +1,43 @@
+{
+  "name": "RotationSessionInstance",
+  "type": "object",
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05d4\u05e9\u05de\u05ea \u05d4\u05ea\u05db\u05e0\u05d9\u05ea"
+    },
+    "category_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d9\u05ea \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "category_letter": {
+      "type": "string",
+      "description": "\u05d0\u05d5\u05ea \u05d4\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d4 (A/B/C)"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "in_progress",
+        "completed",
+        "skipped"
+      ],
+      "default": "ready",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d4\u05d5\u05e9\u05dc\u05dd"
+    }
+  },
+  "required": [
+    "assignment_id",
+    "category_letter"
+  ]
+}

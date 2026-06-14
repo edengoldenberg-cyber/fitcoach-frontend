@@ -1,0 +1,88 @@
+{
+  "name": "WorkoutTemplate",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05d9\u05e6\u05e8 \u05d0\u05ea \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea"
+    },
+    "template_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea"
+    },
+    "description": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea"
+    },
+    "exercises": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "exercise_id": {
+            "type": "string"
+          },
+          "exercise_name": {
+            "type": "string"
+          },
+          "order_index": {
+            "type": "number"
+          },
+          "sets": {
+            "type": "number"
+          },
+          "reps": {
+            "type": "string"
+          },
+          "weight": {
+            "type": "number"
+          },
+          "rest_seconds": {
+            "type": "number"
+          },
+          "tempo": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "video_url": {
+            "type": "string"
+          },
+          "muscle_group": {
+            "type": "string"
+          },
+          "setsData": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "set": {
+                  "type": "number"
+                },
+                "reps": {
+                  "type": "number"
+                },
+                "weight": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd \u05d1\u05ea\u05d1\u05e0\u05d9\u05ea",
+      "default": []
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea \u05e4\u05e2\u05d9\u05dc\u05d4"
+    }
+  },
+  "required": [
+    "coach_email",
+    "template_name",
+    "exercises"
+  ]
+}

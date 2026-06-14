@@ -1,0 +1,132 @@
+{
+  "name": "Notification",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "trainee",
+        "coach",
+        "system"
+      ],
+      "default": "trainee",
+      "description": "\u05ea\u05d7\u05d5\u05dd \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "meal_missing",
+        "workout_missing",
+        "water_missing",
+        "weekly_summary",
+        "system_alert",
+        "custom",
+        "coach_message"
+      ],
+      "default": "custom",
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "title_he": {
+      "type": "string",
+      "description": "\u05db\u05d5\u05ea\u05e8\u05ea \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea"
+    },
+    "body_he": {
+      "type": "string",
+      "description": "\u05d2\u05d5\u05e3 \u05d4\u05d4\u05d5\u05d3\u05e2\u05d4"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unread",
+        "read",
+        "archived"
+      ],
+      "default": "unread",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "critical"
+      ],
+      "default": "info",
+      "description": "\u05e8\u05de\u05ea \u05d7\u05d5\u05de\u05e8\u05d4"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "auto",
+        "coach",
+        "system"
+      ],
+      "default": "auto",
+      "description": "\u05de\u05e7\u05d5\u05e8 \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "fingerprint": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9 \u05dc\u05de\u05e0\u05d9\u05e2\u05ea \u05db\u05e4\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea (email+type+date+scope)"
+    },
+    "action_url": {
+      "type": "string",
+      "description": "\u05e7\u05d9\u05e9\u05d5\u05e8 \u05dc\u05de\u05e1\u05da \u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9"
+    },
+    "action_type": {
+      "type": "string",
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4 (open_nutrition, open_workout, \u05d5\u05db\u05d5')"
+    },
+    "action_label": {
+      "type": "string",
+      "description": "\u05ea\u05d5\u05d5\u05d9\u05ea \u05db\u05e4\u05ea\u05d5\u05e8 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4"
+    },
+    "due_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05d5\u05e2\u05d3 \u05d9\u05e2\u05d3"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e0\u05e9\u05dc\u05d7\u05d4"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e0\u05e7\u05e8\u05d0\u05d4"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d4\u05d5\u05e2\u05d1\u05e8\u05d4 \u05dc\u05d0\u05e8\u05db\u05d9\u05d5\u05df"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "\u05de\u05d9\u05d3\u05e2 \u05e0\u05d5\u05e1\u05e3"
+    },
+    "rule_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05db\u05dc\u05dc \u05e9\u05d9\u05e6\u05e8 \u05d0\u05ea \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    },
+    "channel_sent": {
+      "type": "string",
+      "enum": [
+        "in_app",
+        "push",
+        "whatsapp",
+        "email"
+      ],
+      "default": "in_app",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05e5 \u05e9\u05d1\u05d5 \u05e0\u05e9\u05dc\u05d7\u05d4 \u05d4\u05d4\u05ea\u05e8\u05d0\u05d4"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "title_he",
+    "body_he"
+  ]
+}

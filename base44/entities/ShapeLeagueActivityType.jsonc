@@ -1,0 +1,60 @@
+{
+  "name": "ShapeLeagueActivityType",
+  "type": "object",
+  "properties": {
+    "emoji": {
+      "type": "string",
+      "description": "Activity emoji icon"
+    },
+    "name_he": {
+      "type": "string",
+      "description": "Activity name in Hebrew"
+    },
+    "name_en": {
+      "type": "string",
+      "description": "Activity name in English"
+    },
+    "base_points": {
+      "type": "number",
+      "description": "Base points awarded for this activity"
+    },
+    "unit": {
+      "type": "string",
+      "enum": [
+        "minutes",
+        "km",
+        "reps",
+        "count"
+      ],
+      "description": "Measurement unit"
+    },
+    "points_per_unit": {
+      "type": "number",
+      "default": 1,
+      "description": "Points multiplier per unit"
+    },
+    "min_duration": {
+      "type": "number",
+      "default": 5,
+      "description": "Minimum minutes required to count"
+    },
+    "max_daily_points": {
+      "type": "number",
+      "description": "Cap points per day for this activity"
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "cooldown_minutes": {
+      "type": "number",
+      "default": 0,
+      "description": "Cooldown between logging same activity"
+    }
+  },
+  "required": [
+    "name_he",
+    "base_points",
+    "unit"
+  ]
+}

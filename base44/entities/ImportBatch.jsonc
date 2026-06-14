@@ -1,0 +1,80 @@
+{
+  "name": "ImportBatch",
+  "type": "object",
+  "properties": {
+    "file_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05e7\u05d5\u05d1\u05e5 \u05d4\u05de\u05e7\u05d5\u05e8\u05d9"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05de\u05e9\u05ea\u05de\u05e9 \u05e9\u05d1\u05d9\u05e6\u05e2 \u05d0\u05ea \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "rolled_back",
+        "deleted",
+        "failed",
+        "stopped"
+      ],
+      "default": "running",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "rows_total": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d5\u05ea \u05db\u05d5\u05dc\u05dc \u05d1\u05e7\u05d5\u05d1\u05e5"
+    },
+    "rows_processed": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e2\u05d5\u05d1\u05d3\u05d5 \u05e2\u05d3 \u05db\u05d4"
+    },
+    "rows_added": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e0\u05d5\u05e1\u05e4\u05d5"
+    },
+    "rows_updated": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e2\u05d5\u05d3\u05db\u05e0\u05d5"
+    },
+    "rows_failed": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d5\u05ea \u05e9\u05e0\u05db\u05e9\u05dc\u05d5"
+    },
+    "progress_percent": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05d0\u05d7\u05d5\u05d6 \u05d4\u05ea\u05e7\u05d3\u05de\u05d5\u05ea 0-100"
+    },
+    "last_error": {
+      "type": "string",
+      "description": "\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d0\u05d7\u05e8\u05d5\u05e0\u05d4"
+    },
+    "stopped_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e0\u05e2\u05e6\u05e8 \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "cancel_requested": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05ea\u05d1\u05e7\u05e9 \u05d1\u05d9\u05d8\u05d5\u05dc \u05e9\u05dc \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    },
+    "cancelled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d1\u05d5\u05d8\u05dc \u05d4\u05d9\u05d9\u05d1\u05d5\u05d0"
+    }
+  },
+  "required": [
+    "file_name",
+    "created_by"
+  ]
+}

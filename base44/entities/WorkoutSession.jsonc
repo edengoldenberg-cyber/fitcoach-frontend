@@ -1,0 +1,62 @@
+{
+  "name": "WorkoutSession",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df - REQUIRED for trainee isolation"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df (\u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9)"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df (YYYY-MM-DD \u05d1\u05e9\u05e2\u05d5\u05df \u05de\u05e7\u05d5\u05de\u05d9, \u05dc\u05d0 ISO)"
+    },
+    "title": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "duration_minutes": {
+      "type": "number",
+      "description": "\u05de\u05e9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df \u05d1\u05d3\u05e7\u05d5\u05ea"
+    },
+    "rpe": {
+      "type": "number",
+      "description": "Rate of Perceived Exertion (1-10)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05db\u05dc\u05dc\u05d9\u05d5\u05ea \u05e2\u05dc \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "coach_rating": {
+      "type": "number",
+      "description": "\u05d3\u05d9\u05e8\u05d5\u05d2 \u05d0\u05d9\u05db\u05d5\u05ea \u05d1\u05d9\u05e6\u05d5\u05e2 \u05de\u05d4\u05de\u05d0\u05de\u05df (1-5)"
+    },
+    "coach_feedback": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05d4\u05de\u05d0\u05de\u05df \u05e2\u05dc \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "in_progress",
+        "completed",
+        "sent"
+      ],
+      "default": "in_progress",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "source_daily_workout_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05d0\u05d9\u05de\u05d5\u05df \u05d4\u05d9\u05d5\u05de\u05d9 \u05de\u05de\u05e0\u05d5 \u05d4\u05d5\u05e2\u05ea\u05e7"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date"
+  ]
+}

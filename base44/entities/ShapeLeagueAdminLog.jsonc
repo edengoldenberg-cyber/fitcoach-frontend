@@ -1,0 +1,40 @@
+{
+  "name": "ShapeLeagueAdminLog",
+  "type": "object",
+  "properties": {
+    "action_type": {
+      "type": "string",
+      "description": "Admin action key"
+    },
+    "coach_id": {
+      "type": "string"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "target_trainee_id": {
+      "type": "string"
+    },
+    "target_group_id": {
+      "type": "string"
+    },
+    "before_state": {
+      "type": "object"
+    },
+    "after_state": {
+      "type": "object"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "action_type",
+    "coach_id",
+    "timestamp"
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "name": "NutritionTargets",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "daily_calories": {
+      "type": "number",
+      "description": "Daily calorie target"
+    },
+    "daily_protein_g": {
+      "type": "number",
+      "description": "Daily protein target in grams"
+    },
+    "daily_carbs_g": {
+      "type": "number",
+      "description": "Daily carbs target in grams"
+    },
+    "daily_fat_g": {
+      "type": "number",
+      "description": "Daily fat target in grams"
+    },
+    "daily_water_ml": {
+      "type": "number",
+      "description": "Daily water target in milliliters"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "questionnaire",
+        "coach_manual",
+        "auto_calculated"
+      ],
+      "default": "questionnaire",
+      "description": "Where the targets came from"
+    },
+    "questionnaire_data": {
+      "type": "object",
+      "description": "Raw questionnaire responses used for calculation",
+      "properties": {
+        "weight_kg": {
+          "type": "number"
+        },
+        "height_cm": {
+          "type": "number"
+        },
+        "birth_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "gender": {
+          "type": "string",
+          "enum": [
+            "male",
+            "female"
+          ]
+        },
+        "activity_routine": {
+          "type": "string",
+          "enum": [
+            "sedentary",
+            "light_activity",
+            "moderate_activity",
+            "active",
+            "very_active"
+          ]
+        },
+        "training_days_per_week": {
+          "type": "integer"
+        },
+        "training_type": {
+          "type": "string",
+          "enum": [
+            "strength",
+            "pilates",
+            "cardio",
+            "mixed",
+            "none"
+          ]
+        },
+        "goal": {
+          "type": "string",
+          "enum": [
+            "fat_loss",
+            "maintenance",
+            "muscle_gain",
+            "recomposition"
+          ]
+        },
+        "pace": {
+          "type": "string",
+          "enum": [
+            "slow",
+            "moderate",
+            "aggressive"
+          ]
+        },
+        "dietary_notes": {
+          "type": "string"
+        },
+        "restrictions": {
+          "type": "string"
+        }
+      }
+    },
+    "calculation_method": {
+      "type": "string",
+      "description": "Method used for calculation (e.g., 'mifflin_st_jeor')",
+      "default": "mifflin_st_jeor"
+    },
+    "bmr": {
+      "type": "number",
+      "description": "Basal Metabolic Rate (calculated intermediate)"
+    },
+    "tdee": {
+      "type": "number",
+      "description": "Total Daily Energy Expenditure (calculated intermediate)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When targets were last updated"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Coach notes or internal notes"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "daily_calories",
+    "daily_protein_g",
+    "daily_carbs_g",
+    "daily_fat_g",
+    "daily_water_ml"
+  ]
+}

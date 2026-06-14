@@ -1,0 +1,41 @@
+{
+  "name": "ShapeLeagueBlockedPlayer",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "trainee_name": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "blocked_by_coach_id": {
+      "type": "string"
+    },
+    "blocked_by_coach_email": {
+      "type": "string"
+    },
+    "blocked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "unblocked_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "blocked_by_coach_id",
+    "blocked_at"
+  ]
+}

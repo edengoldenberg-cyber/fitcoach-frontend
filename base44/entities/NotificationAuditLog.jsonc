@@ -1,0 +1,125 @@
+{
+  "name": "NotificationAuditLog",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "notification_type": {
+      "type": "string"
+    },
+    "source_system": {
+      "type": "string",
+      "enum": [
+        "SHAPE_LEAGUE",
+        "HYDRATION_REMINDER",
+        "AI_RETENTION",
+        "STREAK_WARNING",
+        "WORKOUT_REMINDER",
+        "COACH_MESSAGE",
+        "NUTRITION_NUDGE",
+        "IN_APP",
+        "PUSH",
+        "WHATSAPP",
+        "SYSTEM"
+      ],
+      "default": "SYSTEM"
+    },
+    "title": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    },
+    "trigger_reason": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sending",
+        "sent",
+        "delivered",
+        "opened",
+        "failed",
+        "cancelled",
+        "duplicate_blocked"
+      ],
+      "default": "queued"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "provider_response": {
+      "type": "string"
+    },
+    "device_type": {
+      "type": "string"
+    },
+    "app_version": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "in_app",
+        "push",
+        "whatsapp",
+        "email",
+        "system"
+      ],
+      "default": "in_app"
+    },
+    "deduplication_key": {
+      "type": "string"
+    },
+    "blocked_reason": {
+      "type": "string"
+    },
+    "cooldown_minutes": {
+      "type": "number"
+    },
+    "related_notification_id": {
+      "type": "string"
+    },
+    "related_queue_id": {
+      "type": "string"
+    },
+    "send_pipeline": {
+      "type": "string"
+    },
+    "debug_payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "notification_type",
+    "source_system",
+    "title",
+    "body",
+    "trigger_reason",
+    "created_at",
+    "status",
+    "deduplication_key"
+  ]
+}

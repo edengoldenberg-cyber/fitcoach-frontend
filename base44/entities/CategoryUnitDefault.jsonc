@@ -1,0 +1,51 @@
+{
+  "name": "CategoryUnitDefault",
+  "type": "object",
+  "properties": {
+    "category": {
+      "type": "string",
+      "description": "\u05e7\u05d8\u05d2\u05d5\u05e8\u05d9\u05d9\u05ea \u05de\u05d6\u05d5\u05df (\u05d7\u05dc\u05d1\u05d5\u05df, \u05e4\u05d7\u05de\u05d9\u05de\u05d4, \u05d5\u05db\u05d5')"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d9\u05d7\u05d9\u05d3\u05ea \u05d4\u05de\u05d9\u05d3\u05d4 (FK -> FoodUnit \u05d0\u05d5 PortionReference)"
+    },
+    "unit_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4 \u05dc\u05ea\u05e6\u05d5\u05d2\u05d4"
+    },
+    "grams_per_unit": {
+      "type": "number",
+      "description": "\u05d2\u05e8\u05de\u05d9\u05dd \u05dc\u05d9\u05d7\u05d9\u05d3\u05d4"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "approx"
+      ],
+      "default": "approx",
+      "description": "\u05e8\u05de\u05ea \u05d3\u05d9\u05d5\u05e7 - exact=\u05de\u05d3\u05d5\u05d9\u05e7, approx=\u05d4\u05e2\u05e8\u05db\u05d4"
+    },
+    "subtype_keywords": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d9\u05dc\u05d5\u05ea \u05de\u05e4\u05ea\u05d7 \u05d1\u05e9\u05dd \u05d4\u05de\u05d5\u05e6\u05e8 \u05dc\u05d4\u05ea\u05d0\u05de\u05d4 (\u05dc\u05d3\u05d5\u05d2\u05de\u05d4: ['\u05d0\u05d5\u05e8\u05d6', '\u05de\u05d1\u05d5\u05e9\u05dc'])"
+    },
+    "note": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea"
+    },
+    "created_by": {
+      "type": "string",
+      "description": "\u05de\u05d9 \u05d9\u05e6\u05e8 \u05d0\u05ea \u05d1\u05e8\u05d9\u05e8\u05ea \u05d4\u05de\u05d7\u05d3\u05dc"
+    }
+  },
+  "required": [
+    "category",
+    "unit_id",
+    "grams_per_unit"
+  ]
+}

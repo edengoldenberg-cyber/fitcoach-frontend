@@ -1,0 +1,35 @@
+{
+  "name": "ShapeLeaguePointAdjustment",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "points_delta": {
+      "type": "number"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "coach_id": {
+      "type": "string"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "points_delta",
+    "reason",
+    "coach_id",
+    "created_at"
+  ]
+}

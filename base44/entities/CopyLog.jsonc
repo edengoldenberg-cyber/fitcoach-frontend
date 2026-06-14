@@ -1,0 +1,61 @@
+{
+  "name": "CopyLog",
+  "type": "object",
+  "properties": {
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "copy_exercise",
+        "remove_exercise",
+        "copy_all"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "target_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d9\u05e2\u05d3"
+    },
+    "daily_workout_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d0\u05d9\u05de\u05d5\u05df \u05d9\u05d5\u05de\u05d9"
+    },
+    "exercise_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc"
+    },
+    "payload_json": {
+      "type": "object",
+      "description": "\u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05e9\u05e9\u05dc\u05d7\u05e0\u05d5"
+    },
+    "status_code": {
+      "type": "number",
+      "description": "\u05e7\u05d5\u05d3 \u05e1\u05d8\u05d8\u05d5\u05e1 HTTP"
+    },
+    "response_text": {
+      "type": "string",
+      "description": "\u05ea\u05e9\u05d5\u05d1\u05ea \u05d4\u05e9\u05e8\u05ea"
+    },
+    "error_text": {
+      "type": "string",
+      "description": "\u05d8\u05e7\u05e1\u05d8 \u05e9\u05d2\u05d9\u05d0\u05d4"
+    },
+    "success": {
+      "type": "boolean",
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05e6\u05dc\u05d9\u05d7"
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "\u05de\u05e9\u05da \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4 \u05d1\u05de\u05d9\u05dc\u05d9\u05e9\u05e0\u05d9\u05d5\u05ea"
+    }
+  },
+  "required": [
+    "action_type",
+    "trainee_email",
+    "success"
+  ]
+}

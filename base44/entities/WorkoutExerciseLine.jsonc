@@ -1,0 +1,47 @@
+{
+  "name": "WorkoutExerciseLine",
+  "type": "object",
+  "properties": {
+    "workout_session_id": {
+      "type": "string",
+      "description": "FK to WorkoutSession"
+    },
+    "exercise_id": {
+      "type": "string",
+      "description": "FK to Exercise (optional)"
+    },
+    "custom_name": {
+      "type": "string",
+      "description": "Exercise name (custom or from library)"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "Order in workout"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Exercise notes"
+    },
+    "angle": {
+      "type": "string",
+      "description": "Angle (e.g., \u05e9\u05d8\u05d5\u05d7, \u05e0\u05d8\u05d5\u05d9, \u05e9\u05d9\u05e4\u05d5\u05e2)"
+    },
+    "target_reps_min": {
+      "type": "number",
+      "description": "Target min reps"
+    },
+    "target_reps_max": {
+      "type": "number",
+      "description": "Target max reps"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "Video URL"
+    }
+  },
+  "required": [
+    "workout_session_id",
+    "custom_name",
+    "order_index"
+  ]
+}

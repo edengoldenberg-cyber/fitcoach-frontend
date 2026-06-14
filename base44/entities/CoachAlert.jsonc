@@ -1,0 +1,90 @@
+{
+  "name": "CoachAlert",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "Email of the coach"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "trainee_name": {
+      "type": "string",
+      "description": "Name of the trainee"
+    },
+    "alert_type": {
+      "type": "string",
+      "enum": [
+        "inactive_3_days",
+        "declining_metrics",
+        "excellent_performance"
+      ],
+      "description": "Type of alert"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium"
+    },
+    "title": {
+      "type": "string",
+      "description": "Alert title"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Detailed summary of the issue/success"
+    },
+    "data_snapshot": {
+      "type": "object",
+      "description": "Relevant data for the alert"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "done",
+        "archived"
+      ],
+      "default": "open",
+      "description": "Alert status"
+    },
+    "is_read": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether coach has read the alert"
+    },
+    "is_dismissed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether coach dismissed the alert"
+    },
+    "action_taken_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When coach took action"
+    },
+    "resolved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When alert was resolved"
+    },
+    "resolved_by": {
+      "type": "string",
+      "description": "Coach email who resolved"
+    }
+  },
+  "required": [
+    "coach_email",
+    "trainee_email",
+    "trainee_name",
+    "alert_type",
+    "title",
+    "summary"
+  ]
+}

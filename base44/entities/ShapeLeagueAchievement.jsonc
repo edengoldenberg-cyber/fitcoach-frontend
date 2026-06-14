@@ -1,0 +1,54 @@
+{
+  "name": "ShapeLeagueAchievement",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "achievement_key": {
+      "type": "string",
+      "description": "Unique key e.g. first_workout, top_10"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "workout",
+        "nutrition",
+        "water",
+        "league",
+        "group",
+        "consistency"
+      ],
+      "description": "Achievement category"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Emoji icon"
+    },
+    "title": {
+      "type": "string",
+      "description": "Display title in Hebrew"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description in Hebrew"
+    },
+    "unlocked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this achievement was unlocked"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "achievement_key",
+    "category",
+    "title"
+  ]
+}

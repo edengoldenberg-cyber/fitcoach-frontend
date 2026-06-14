@@ -1,0 +1,99 @@
+{
+  "name": "DailyWorkout",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df \u05d4\u05d9\u05d5\u05de\u05d9"
+    },
+    "title_he": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "description_he": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "published"
+      ],
+      "default": "draft",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e4\u05d5\u05e8\u05e1\u05dd"
+    },
+    "exercises": {
+      "type": "array",
+      "description": "\u05de\u05e2\u05e8\u05da \u05ea\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd \u05d5\u05e1\u05d8\u05d9\u05dd \u05db\u05d5\u05dc\u05dc \u05e7\u05d9\u05d1\u05d5\u05e6\u05d9 \u05e1\u05d5\u05e4\u05e8-\u05e1\u05d8/\u05d8\u05e8\u05d9-\u05e1\u05d8/\u05e1\u05d1\u05d1",
+      "items": {
+        "type": "object",
+        "properties": {
+          "exercise_name": {
+            "type": "string"
+          },
+          "sets": {
+            "type": "number"
+          },
+          "set_type": {
+            "type": "string",
+            "enum": [
+              "reps",
+              "time"
+            ]
+          },
+          "reps_min": {
+            "type": "number"
+          },
+          "reps_max": {
+            "type": "number"
+          },
+          "time_seconds": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "group_type": {
+            "type": "string",
+            "enum": [
+              "superset",
+              "triset",
+              "circuit"
+            ]
+          },
+          "group_label": {
+            "type": "string"
+          },
+          "group_order": {
+            "type": "number"
+          },
+          "round_count": {
+            "type": "number"
+          },
+          "rest_after_round_seconds": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "coach_email",
+    "date",
+    "title_he"
+  ]
+}

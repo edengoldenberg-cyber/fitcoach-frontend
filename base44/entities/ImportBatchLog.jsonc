@@ -1,0 +1,32 @@
+{
+  "name": "ImportBatchLog",
+  "type": "object",
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4-batch"
+    },
+    "level": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warn",
+        "error"
+      ],
+      "default": "info",
+      "description": "\u05e8\u05de\u05ea \u05d7\u05d5\u05de\u05e8\u05d4"
+    },
+    "message": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05d4\u05dc\u05d5\u05d2"
+    },
+    "row_number": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e9\u05d5\u05e8\u05d4 (\u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9)"
+    }
+  },
+  "required": [
+    "batch_id",
+    "message"
+  ]
+}

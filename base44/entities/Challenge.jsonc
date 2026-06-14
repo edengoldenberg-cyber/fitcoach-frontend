@@ -1,0 +1,37 @@
+{
+  "name": "Challenge",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "water",
+        "nutrition",
+        "workout",
+        "general"
+      ]
+    },
+    "target_value": {
+      "type": "number"
+    },
+    "duration_days": {
+      "type": "number",
+      "default": 7
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "title",
+    "type",
+    "target_value"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "name": "WaterEntry",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Linked Trainee ID for reliable coach/trainee sync"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Linked auth user ID for reliable sync"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "amount_ml": {
+      "type": "number"
+    },
+    "container_type": {
+      "type": "string",
+      "enum": [
+        "disposable_cup",
+        "small_bottle",
+        "large_bottle",
+        "custom"
+      ]
+    },
+    "time": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date",
+    "amount_ml"
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "name": "BodyMeasurement",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "weight_kg": {
+      "type": "number"
+    },
+    "body_fat_percent": {
+      "type": "number"
+    },
+    "muscle_mass_kg": {
+      "type": "number"
+    },
+    "water_percent": {
+      "type": "number"
+    },
+    "body_age": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date"
+  ]
+}

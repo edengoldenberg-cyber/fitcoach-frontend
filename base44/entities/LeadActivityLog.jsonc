@@ -1,0 +1,52 @@
+{
+  "name": "LeadActivityLog",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "activityType": {
+      "type": "string",
+      "enum": [
+        "LEAD_CREATED",
+        "FLOW_STARTED",
+        "STEP_SENT",
+        "STEP_ADVANCED",
+        "WHATSAPP_INBOUND",
+        "CALL_TASK_CREATED",
+        "CALL_TASK_COMPLETED",
+        "TRIAL_BOOKING_CREATED",
+        "STATUS_CHANGED",
+        "FLOW_PAUSED",
+        "FLOW_RESUMED",
+        "FLOW_COMPLETED",
+        "FLOW_STOPPED",
+        "USER_NOTE"
+      ]
+    },
+    "activitySource": {
+      "type": "string",
+      "enum": [
+        "SYSTEM",
+        "WHATSAPP",
+        "FLOW",
+        "USER"
+      ],
+      "default": "SYSTEM"
+    },
+    "message": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "leadId",
+    "activityType"
+  ]
+}

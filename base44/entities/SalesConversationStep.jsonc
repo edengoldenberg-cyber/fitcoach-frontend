@@ -1,0 +1,80 @@
+{
+  "name": "SalesConversationStep",
+  "type": "object",
+  "properties": {
+    "flowId": {
+      "type": "string",
+      "description": "FK to SalesConversationFlow"
+    },
+    "stepOrder": {
+      "type": "number",
+      "description": "Order of this step in the flow (1, 2, 3...)"
+    },
+    "messageText": {
+      "type": "string",
+      "description": "Message to send. Supports {{name}}, {{phone}}, {{studioName}}, {{bookingLink}}, {{scheduleLink}}"
+    },
+    "waitForReply": {
+      "type": "boolean",
+      "default": false,
+      "description": "Pause flow until lead replies"
+    },
+    "delayMinutes": {
+      "type": "number",
+      "default": 0,
+      "description": "Delay in minutes before sending this step (0 = immediate)"
+    },
+    "replyContains": {
+      "type": "string",
+      "description": "Optional keyword(s) to match in reply before proceeding"
+    },
+    "nextStepId": {
+      "type": "string",
+      "description": "Override next step ID (if branching)"
+    },
+    "actionType": {
+      "type": "string",
+      "enum": [
+        "SEND_MESSAGE",
+        "SET_STATUS",
+        "SEND_BOOKING_LINK",
+        "SEND_SCHEDULE_LINK",
+        "CREATE_CALL_TASK"
+      ],
+      "default": "SEND_MESSAGE",
+      "description": "Action to perform at this step"
+    },
+    "actionValue": {
+      "type": "string",
+      "description": "Value for the action (e.g. status name, link URL)"
+    },
+    "replyTimeoutMinutes": {
+      "type": "number",
+      "description": "Minutes to wait for reply before timeout action fires. Only relevant when waitForReply=true."
+    },
+    "onTimeoutAction": {
+      "type": "string",
+      "enum": [
+        "SEND_FOLLOWUP",
+        "ADVANCE_STEP",
+        "STOP"
+      ],
+      "default": "SEND_FOLLOWUP",
+      "description": "What to do when reply timeout expires"
+    },
+    "timeoutMessage": {
+      "type": "string",
+      "description": "Follow-up message to send on timeout (used when onTimeoutAction=SEND_FOLLOWUP). Falls back to original messageText if empty."
+    },
+    "maxFollowups": {
+      "type": "number",
+      "default": 1,
+      "description": "Maximum number of follow-up messages to send before giving up"
+    }
+  },
+  "required": [
+    "flowId",
+    "stepOrder",
+    "messageText"
+  ]
+}

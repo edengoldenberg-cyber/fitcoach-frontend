@@ -1,0 +1,59 @@
+{
+  "name": "UserPointsDaily",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date (YYYY-MM-DD, Israel timezone)"
+    },
+    "workout_points": {
+      "type": "number",
+      "default": 0,
+      "description": "+30 once per day for logging a workout"
+    },
+    "meal_points": {
+      "type": "number",
+      "default": 0,
+      "description": "+10 per meal, max 30 per day"
+    },
+    "water_points": {
+      "type": "number",
+      "default": 0,
+      "description": "+15 once when daily water target is reached"
+    },
+    "bonus_points": {
+      "type": "number",
+      "default": 0,
+      "description": "+20 if perfect day (workout + 3 meals + water)"
+    },
+    "total_points": {
+      "type": "number",
+      "default": 0,
+      "description": "workout + meal + water + bonus"
+    },
+    "meals_logged_count": {
+      "type": "number",
+      "default": 0,
+      "description": "How many meal point events were counted today"
+    },
+    "bonus_calculated": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether end-of-day bonus was already calculated"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "date"
+  ]
+}

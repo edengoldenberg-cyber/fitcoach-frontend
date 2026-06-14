@@ -1,0 +1,23 @@
+{
+  "name": "FoodUnit",
+  "type": "object",
+  "properties": {
+    "name_he": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea",
+      "unique": true
+    },
+    "default_grams": {
+      "type": "number",
+      "description": "\u05d2\u05e8\u05de\u05d9\u05dd \u05dc\u05d9\u05d7\u05d9\u05d3\u05d4 (\u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc)"
+    },
+    "description": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4"
+    }
+  },
+  "required": [
+    "name_he",
+    "default_grams"
+  ]
+}

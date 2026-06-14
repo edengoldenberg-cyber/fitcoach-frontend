@@ -1,0 +1,60 @@
+{
+  "name": "AIConversationLog",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "ai_status": {
+      "type": "string",
+      "enum": [
+        "AI_ACTIVE",
+        "AI_ESCALATED",
+        "HUMAN_REVIEW"
+      ],
+      "default": "AI_ACTIVE",
+      "description": "Current AI conversation status"
+    },
+    "last_user_message": {
+      "type": "string",
+      "description": "Last message received from lead"
+    },
+    "last_ai_reply": {
+      "type": "string",
+      "description": "Last AI-generated reply"
+    },
+    "last_prompt_summary": {
+      "type": "string",
+      "description": "Summary of prompt used"
+    },
+    "brain_config_id": {
+      "type": "string",
+      "description": "ID of the AIBrainConfig used"
+    },
+    "send_status": {
+      "type": "string",
+      "description": "Status of the last send attempt"
+    },
+    "escalation_reason": {
+      "type": "string",
+      "description": "Why it was escalated"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Error message if any"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When AI last processed this lead"
+    }
+  },
+  "required": [
+    "leadId",
+    "coach_email"
+  ]
+}

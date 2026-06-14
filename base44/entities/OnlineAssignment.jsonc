@@ -1,0 +1,70 @@
+{
+  "name": "OnlineAssignment",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "coach_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05de\u05d0\u05de\u05df"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "DAILY",
+        "ROTATION"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e9\u05d9\u05d5\u05da"
+    },
+    "program_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05ea\u05d5\u05db\u05e0\u05d9\u05ea (\u05e8\u05e7 \u05dc-ROTATION)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "SENT",
+        "ACTIVE",
+        "DONE",
+        "CANCELLED"
+      ],
+      "default": "ACTIVE",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05e9\u05d9\u05d5\u05da"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05ea\u05d7\u05dc\u05d4"
+    },
+    "active_from_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05e4\u05e2\u05dc\u05d4"
+    },
+    "next_slot": {
+      "type": "string",
+      "description": "\u05d4\u05d0\u05d9\u05de\u05d5\u05df \u05d4\u05d1\u05d0 (A/B/C) - \u05e8\u05e7 \u05dc-ROTATION"
+    },
+    "last_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05d4\u05d5\u05e9\u05dc\u05dd \u05d0\u05d9\u05de\u05d5\u05df \u05d0\u05d7\u05e8\u05d5\u05df"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "coach_email",
+    "mode",
+    "status"
+  ]
+}

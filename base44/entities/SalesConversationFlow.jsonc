@@ -1,0 +1,40 @@
+{
+  "name": "SalesConversationFlow",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Flow name"
+    },
+    "isDefault": {
+      "type": "boolean",
+      "default": false,
+      "description": "Is this the default flow for all leads"
+    },
+    "studioId": {
+      "type": "string",
+      "description": "Optional studio/coach identifier"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach email owner"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "flowResponseMode": {
+      "type": "string",
+      "enum": [
+        "FLOW_ONLY",
+        "FLOW_THEN_AI",
+        "AI_ONLY"
+      ],
+      "default": "FLOW_ONLY",
+      "description": "How this flow interacts with AI. FLOW_ONLY=flow handles all. FLOW_THEN_AI=AI takes over after flow completes. AI_ONLY=AI handles directly."
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

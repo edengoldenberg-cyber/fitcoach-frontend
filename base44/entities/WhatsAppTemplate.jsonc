@@ -1,0 +1,42 @@
+{
+  "name": "WhatsAppTemplate",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "key": {
+      "type": "string",
+      "description": "Unique key per coach e.g. lead_welcome"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human readable name"
+    },
+    "message_text": {
+      "type": "string",
+      "description": "Supports {{firstName}}, {{fullName}}, {{coachName}}, {{studioName}}, {{phone}}, {{todayDate}}, {{link}}, {{missingType}}"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "lead",
+        "reminder",
+        "birthday",
+        "motivation",
+        "system"
+      ],
+      "default": "system"
+    }
+  },
+  "required": [
+    "coach_email",
+    "key",
+    "name",
+    "message_text"
+  ]
+}

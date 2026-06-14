@@ -1,0 +1,23 @@
+{
+  "name": "ExerciseAlias",
+  "type": "object",
+  "properties": {
+    "exercise_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc Exercise"
+    },
+    "alias_text": {
+      "type": "string",
+      "description": "\u05d8\u05e7\u05e1\u05d8 \u05de\u05d9\u05dc\u05ea \u05e0\u05e8\u05d3\u05e4\u05ea"
+    },
+    "normalized_alias": {
+      "type": "string",
+      "description": "\u05d4\u05d8\u05e7\u05e1\u05d8 \u05de\u05e0\u05d5\u05e8\u05de\u05dc \u05dc\u05d7\u05d9\u05e4\u05d5\u05e9"
+    }
+  },
+  "required": [
+    "exercise_id",
+    "alias_text",
+    "normalized_alias"
+  ]
+}

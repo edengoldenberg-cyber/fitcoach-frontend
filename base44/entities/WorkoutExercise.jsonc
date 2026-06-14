@@ -1,0 +1,32 @@
+{
+  "name": "WorkoutExercise",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "muscle_group": {
+      "type": "string",
+      "enum": [
+        "chest",
+        "back",
+        "shoulders",
+        "biceps",
+        "triceps",
+        "legs",
+        "abs",
+        "full_body"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "muscle_group"
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "name": "ActivityLog",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "activity_type": {
+      "type": "string",
+      "enum": [
+        "walking",
+        "running",
+        "cycling",
+        "strength",
+        "functional",
+        "other"
+      ]
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "intensity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "calories_burned": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date",
+    "activity_type",
+    "duration_minutes",
+    "intensity"
+  ]
+}

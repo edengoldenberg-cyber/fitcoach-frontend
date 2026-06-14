@@ -1,0 +1,82 @@
+{
+  "name": "NotificationRule",
+  "type": "object",
+  "properties": {
+    "is_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05db\u05dc\u05dc \u05e4\u05e2\u05d9\u05dc"
+    },
+    "rule_type": {
+      "type": "string",
+      "enum": [
+        "meal_missing",
+        "water_missing",
+        "workout_missing",
+        "weekly_summary_not_shared",
+        "inactivity_24h"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05db\u05dc\u05dc"
+    },
+    "target_scope": {
+      "type": "string",
+      "enum": [
+        "all",
+        "selected"
+      ],
+      "default": "all",
+      "description": "\u05d4\u05d9\u05e7\u05e3 \u05d9\u05e2\u05d3 - \u05db\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05e0\u05d9\u05dd \u05d0\u05d5 \u05e0\u05d1\u05d7\u05e8\u05d9\u05dd"
+    },
+    "target_trainee_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea IDs \u05e9\u05dc \u05de\u05ea\u05d0\u05de\u05e0\u05d9\u05dd \u05e1\u05e4\u05e6\u05d9\u05e4\u05d9\u05d9\u05dd"
+    },
+    "schedule_time_1": {
+      "type": "string",
+      "description": "\u05e9\u05e2\u05ea \u05e9\u05dc\u05d9\u05d7\u05d4 \u05e8\u05d0\u05e9\u05d5\u05e0\u05d4 (HH:MM)"
+    },
+    "schedule_time_2": {
+      "type": "string",
+      "description": "\u05e9\u05e2\u05ea \u05e9\u05dc\u05d9\u05d7\u05d4 \u05e9\u05e0\u05d9\u05d9\u05d4 (HH:MM)"
+    },
+    "schedule_time_3": {
+      "type": "string",
+      "description": "\u05e9\u05e2\u05ea \u05e9\u05dc\u05d9\u05d7\u05d4 \u05e9\u05dc\u05d9\u05e9\u05d9\u05ea (HH:MM)"
+    },
+    "threshold_value": {
+      "type": "number",
+      "description": "\u05e2\u05e8\u05da \u05e1\u05e3 (\u05dc\u05d3\u05d5\u05d2\u05de\u05d4: \u05de\u05e1\u05e4\u05e8 \u05db\u05d5\u05e1\u05d5\u05ea \u05de\u05d9\u05dd \u05de\u05d9\u05e0\u05d9\u05de\u05dc\u05d9)"
+    },
+    "channel_priority": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "in_app",
+          "whatsapp",
+          "email"
+        ]
+      },
+      "default": [
+        "in_app",
+        "email"
+      ],
+      "description": "\u05e1\u05d3\u05e8 \u05e2\u05d3\u05d9\u05e4\u05d5\u05ea \u05e2\u05e8\u05d5\u05e6\u05d9\u05dd"
+    },
+    "message_template_he": {
+      "type": "string",
+      "description": "\u05ea\u05d1\u05e0\u05d9\u05ea \u05d4\u05d5\u05d3\u05e2\u05d4 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea \u05e2\u05dd \u05de\u05e9\u05ea\u05e0\u05d9\u05dd"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05d9\u05e6\u05e8 \u05d0\u05ea \u05d4\u05db\u05dc\u05dc"
+    }
+  },
+  "required": [
+    "rule_type",
+    "message_template_he"
+  ]
+}

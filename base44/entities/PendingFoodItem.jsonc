@@ -1,0 +1,97 @@
+{
+  "name": "PendingFoodItem",
+  "type": "object",
+  "properties": {
+    "proposed_by_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df \u05e9\u05d4\u05e6\u05d9\u05e2"
+    },
+    "proposed_by_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05ea\u05d0\u05de\u05df \u05e9\u05d4\u05e6\u05d9\u05e2"
+    },
+    "name_he": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05de\u05d5\u05e6\u05e8 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05dc\u05d1\u05d5\u05df",
+        "\u05e4\u05d7\u05de\u05d9\u05de\u05d4",
+        "\u05e9\u05d5\u05de\u05df",
+        "\u05de\u05de\u05e8\u05d7",
+        "\u05d7\u05dc\u05d1 \u05d5\u05de\u05d5\u05e6\u05e8\u05d9\u05d5",
+        "\u05d9\u05e8\u05e7\u05d5\u05ea",
+        "\u05e4\u05d9\u05e8\u05d5\u05ea",
+        "\u05e7\u05d8\u05e0\u05d9\u05d5\u05ea",
+        "\u05d3\u05d2\u05e0\u05d9\u05dd",
+        "\u05de\u05e9\u05e7\u05d0\u05d5\u05ea",
+        "\u05de\u05ea\u05d5\u05e7\u05d9\u05dd",
+        "\u05de\u05e0\u05d5\u05ea \u05de\u05d5\u05db\u05e0\u05d5\u05ea",
+        "\u05ea\u05d5\u05e1\u05e4\u05d9\u05dd",
+        "\u05e8\u05d8\u05d1\u05d9\u05dd"
+      ],
+      "default": "\u05de\u05e0\u05d5\u05ea \u05de\u05d5\u05db\u05e0\u05d5\u05ea"
+    },
+    "per100_kcal": {
+      "type": "number"
+    },
+    "per100_protein": {
+      "type": "number"
+    },
+    "per100_carbs": {
+      "type": "number"
+    },
+    "per100_fat": {
+      "type": "number"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "barcode": {
+      "type": "string",
+      "description": "\u05d1\u05e8\u05e7\u05d5\u05d3 \u05d1\u05d5\u05d3\u05d3"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "\u05ea\u05de\u05d5\u05e0\u05ea \u05d4\u05de\u05d5\u05e6\u05e8"
+    },
+    "notes": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea \u05de\u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected"
+      ],
+      "default": "pending"
+    },
+    "reviewed_by": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05d1\u05d3\u05e7"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rejection_reason": {
+      "type": "string"
+    },
+    "food_item_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05de\u05d5\u05e6\u05e8 \u05e9\u05e0\u05d5\u05e6\u05e8 \u05d1\u05d0\u05d9\u05e9\u05d5\u05e8"
+    }
+  },
+  "required": [
+    "proposed_by_email",
+    "name_he",
+    "per100_kcal",
+    "per100_protein",
+    "per100_carbs",
+    "per100_fat"
+  ]
+}

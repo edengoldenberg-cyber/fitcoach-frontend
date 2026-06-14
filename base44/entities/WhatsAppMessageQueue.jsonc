@@ -1,0 +1,86 @@
+{
+  "name": "WhatsAppMessageQueue",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "to_phone_e164": {
+      "type": "string"
+    },
+    "to_name": {
+      "type": "string"
+    },
+    "context_type": {
+      "type": "string",
+      "enum": [
+        "lead",
+        "trainee",
+        "system"
+      ],
+      "default": "system"
+    },
+    "context_id": {
+      "type": "string"
+    },
+    "template_key": {
+      "type": "string"
+    },
+    "rendered_text": {
+      "type": "string"
+    },
+    "provider_type": {
+      "type": "string",
+      "default": "mock"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "queued",
+        "sending",
+        "sent",
+        "provider_unconfirmed",
+        "failed",
+        "cancelled"
+      ],
+      "default": "queued",
+      "description": "sent = provider confirmed delivery, provider_unconfirmed = success but no messageId"
+    },
+    "attempts": {
+      "type": "number",
+      "default": 0
+    },
+    "last_attempt_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "provider_response": {
+      "type": "string",
+      "description": "JSON string with providerMessageId, confirmationReceived, etc."
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "scheduled_for": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Sales flow session ID \u2014 used for dedup scoping. Never overwritten after creation."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-generated key unique per recipient per bulk-send operation. Format: '<batch_id>:<phone_e164>'. Worker uses this to deduplicate across restarts when session_id is absent."
+    },
+    "batch_id": {
+      "type": "string",
+      "description": "UUID shared by all records in the same bulk-send operation. Allows tracing and cancelling an entire batch."
+    }
+  },
+  "required": [
+    "coach_email",
+    "to_phone_e164",
+    "rendered_text"
+  ]
+}

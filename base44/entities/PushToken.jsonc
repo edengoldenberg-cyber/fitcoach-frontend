@@ -1,0 +1,36 @@
+{
+  "name": "PushToken",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "token": {
+      "type": "string",
+      "description": "Firebase/VAPID push token"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "web",
+        "android",
+        "ios"
+      ],
+      "default": "web"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this token is still valid"
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "token"
+  ]
+}

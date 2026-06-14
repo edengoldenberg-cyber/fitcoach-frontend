@@ -1,0 +1,194 @@
+{
+  "name": "WhatsAppPerformance",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "onboarding_msg1",
+        "onboarding_msg2",
+        "onboarding_msg3",
+        "activation_no_login",
+        "activation_no_meals",
+        "activation_no_water",
+        "engagement_3day_streak",
+        "engagement_protein_goal",
+        "engagement_calorie_goal",
+        "recovery_3days",
+        "recovery_7days",
+        "ai_suggestion",
+        "meal_reminder",
+        "water_reminder",
+        "workout_motivation",
+        "breakfast_check",
+        "lunch_check",
+        "dinner_check",
+        "water_check",
+        "reinforcement_meal",
+        "reinforcement_water"
+      ],
+      "description": "Type of trigger that sent message"
+    },
+    "message_sent": {
+      "type": "string",
+      "description": "Full message text sent"
+    },
+    "message_sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When message was queued/sent"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "HIGH",
+        "MEDIUM",
+        "LOW"
+      ],
+      "description": "Priority level of message"
+    },
+    "window_sent": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "afternoon",
+        "evening"
+      ],
+      "description": "Which time window message was sent"
+    },
+    "user_state_snapshot": {
+      "type": "object",
+      "description": "Trainee state when decision made",
+      "properties": {
+        "last_login": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "meals_logged_today": {
+          "type": "number"
+        },
+        "water_logged_today": {
+          "type": "number"
+        },
+        "streak_days": {
+          "type": "number"
+        },
+        "last_message_sent_type": {
+          "type": "string"
+        },
+        "messages_sent_today": {
+          "type": "number"
+        },
+        "hours_since_last_message": {
+          "type": "number"
+        }
+      }
+    },
+    "decision_log": {
+      "type": "object",
+      "description": "Why message was selected",
+      "properties": {
+        "competing_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Other triggers that fired but were deprioritized"
+        },
+        "reason_selected": {
+          "type": "string",
+          "description": "Why this trigger won (e.g., 'highest_priority', 'best_time_window', 'strongest_context')"
+        },
+        "gate_passed": {
+          "type": "boolean"
+        },
+        "gate_fail_reason": {
+          "type": "string"
+        }
+      }
+    },
+    "action_taken": {
+      "type": "string",
+      "enum": [
+        "ignored",
+        "opened",
+        "clicked_link",
+        "logged_meal",
+        "logged_water",
+        "logged_workout",
+        "login"
+      ],
+      "description": "What user did after message"
+    },
+    "action_taken_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When user took action"
+    },
+    "conversion": {
+      "type": "boolean",
+      "description": "Did message drive desired behavior? (action_taken is not null/ignored)"
+    },
+    "silent_user_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of ignored messages in a row"
+    },
+    "silenced_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When to resume sending (after 3-day silence)"
+    },
+    "action_expected": {
+      "type": "string",
+      "description": "Expected action (meal_logged, water_logged, login, etc.)"
+    },
+    "action_completed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Did user take expected action?"
+    },
+    "action_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When user took expected action"
+    },
+    "time_to_action_minutes": {
+      "type": "number",
+      "description": "Minutes between message sent and action taken"
+    },
+    "is_converted": {
+      "type": "boolean",
+      "default": false,
+      "description": "Conversion metric (action within expected window)"
+    },
+    "message_variant": {
+      "type": "string",
+      "description": "A/B test variant (e.g., 'v1_short', 'v2_long')"
+    },
+    "effectiveness": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "description": "Calculated effectiveness based on conversion"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "trigger_type",
+    "message_sent",
+    "message_sent_at",
+    "priority"
+  ]
+}

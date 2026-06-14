@@ -1,0 +1,48 @@
+{
+  "name": "ConversationAnalysis",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "intent": {
+      "type": "string"
+    },
+    "objectionType": {
+      "type": "string"
+    },
+    "sentiment": {
+      "type": "string",
+      "enum": [
+        "POSITIVE",
+        "NEUTRAL",
+        "NEGATIVE",
+        "MIXED"
+      ]
+    },
+    "closingLikelihood": {
+      "type": "number",
+      "description": "1-100"
+    },
+    "nextBestAction": {
+      "type": "string"
+    },
+    "coachRecommendation": {
+      "type": "string"
+    },
+    "analyzedAt": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "leadId"
+  ]
+}

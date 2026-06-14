@@ -1,0 +1,130 @@
+{
+  "name": "LeadSnoozeConfig",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "snoozeActive": {
+      "type": "boolean",
+      "default": false
+    },
+    "manualSnoozeUntil": {
+      "type": "string",
+      "format": "date-time",
+      "description": "If set, no nudges until this time"
+    },
+    "manualSnoozeReason": {
+      "type": "string"
+    },
+    "manualSnoozedBy": {
+      "type": "string"
+    },
+    "manualSnoozedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "inactivityThresholdHours": {
+      "type": "number",
+      "default": 24,
+      "description": "Hours of no response before trigger fires"
+    },
+    "triggerBasis": {
+      "type": "string",
+      "enum": [
+        "no_inbound",
+        "no_inbound_after_outbound",
+        "no_inbound_after_trial_offer",
+        "no_inbound_after_price"
+      ],
+      "default": "no_inbound_after_outbound"
+    },
+    "actionType": {
+      "type": "string",
+      "enum": [
+        "send_message",
+        "ai_followup",
+        "script_followup",
+        "flow_followup",
+        "notify_coach",
+        "flag_only"
+      ],
+      "default": "send_message"
+    },
+    "followupMessageText": {
+      "type": "string",
+      "default": ""
+    },
+    "useAIPersonalization": {
+      "type": "boolean",
+      "default": false
+    },
+    "repeatAllowed": {
+      "type": "boolean",
+      "default": false
+    },
+    "maxFollowups": {
+      "type": "number",
+      "default": 3
+    },
+    "cooldownHours": {
+      "type": "number",
+      "default": 24
+    },
+    "stopOnReply": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnCallBooked": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnTrialBooked": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnClosed": {
+      "type": "boolean",
+      "default": true
+    },
+    "nudgesSentCount": {
+      "type": "number",
+      "default": 0
+    },
+    "lastNudgeSentAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nextNudgePlannedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "lastActionEngine": {
+      "type": "string",
+      "enum": [
+        "AI",
+        "Script",
+        "Flow",
+        "Manual",
+        "none"
+      ],
+      "default": "none"
+    },
+    "blockReason": {
+      "type": "string",
+      "description": "Why nudge is currently blocked"
+    },
+    "history": {
+      "type": "string",
+      "description": "JSON array of audit events stored as string"
+    }
+  },
+  "required": [
+    "leadId",
+    "coach_email"
+  ]
+}

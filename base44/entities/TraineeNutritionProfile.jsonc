@@ -1,0 +1,128 @@
+{
+  "name": "TraineeNutritionProfile",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "favorite_foods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "food_name": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "last_used_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "commonly_repeated_meals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "average_calories_per_meal": {
+      "type": "number"
+    },
+    "average_protein_per_day": {
+      "type": "number"
+    },
+    "meal_timing_habits": {
+      "type": "object"
+    },
+    "skipped_meals_frequency": {
+      "type": "object"
+    },
+    "water_consistency": {
+      "type": "object"
+    },
+    "preferred_food_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "foods_often_edited": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "foods_deleted_often": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ai_mistakes_corrected": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "original": {
+            "type": "string"
+          },
+          "corrected": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    },
+    "preferred_portion_sizes": {
+      "type": "object"
+    },
+    "breakfast_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lunch_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dinner_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "snack_patterns": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "total_meals_logged": {
+      "type": "number",
+      "default": 0
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_email"
+  ]
+}

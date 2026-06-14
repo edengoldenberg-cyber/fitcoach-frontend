@@ -1,0 +1,92 @@
+{
+  "name": "Exercise",
+  "type": "object",
+  "properties": {
+    "name_he": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea",
+      "unique": true
+    },
+    "normalized_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05de\u05e0\u05d5\u05e8\u05de\u05dc \u05dc\u05d6\u05d9\u05d4\u05d5\u05d9 \u05db\u05e4\u05d9\u05dc\u05d5\u05d9\u05d5\u05ea \u05d5\u05d7\u05d9\u05e4\u05d5\u05e9 \u05d7\u05db\u05dd"
+    },
+    "muscle_group_primary": {
+      "type": "string",
+      "enum": [
+        "\u05d7\u05d6\u05d4",
+        "\u05d2\u05d1",
+        "\u05db\u05ea\u05e4\u05d9\u05d9\u05dd",
+        "\u05d9\u05d3 \u05e7\u05d3\u05de\u05d9\u05ea",
+        "\u05d9\u05d3 \u05d0\u05d7\u05d5\u05e8\u05d9\u05ea",
+        "\u05e8\u05d2\u05dc\u05d9\u05d9\u05dd",
+        "\u05d9\u05e9\u05d1\u05df",
+        "\u05dc\u05d9\u05d1\u05d4",
+        "\u05d0\u05d9\u05e8\u05d5\u05d1\u05d9",
+        "\u05d0\u05d7\u05e8"
+      ],
+      "description": "\u05e7\u05d1\u05d5\u05e6\u05ea \u05e9\u05e8\u05d9\u05e8\u05d9\u05dd \u05e8\u05d0\u05e9\u05d9\u05ea"
+    },
+    "equipment": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "\u05db\u05d1\u05dc \u05e7\u05e8\u05d5\u05e1",
+          "\u05e4\u05d5\u05dc\u05d9 \u05e2\u05dc\u05d9\u05d5\u05df",
+          "\u05e4\u05d5\u05dc\u05d9 \u05ea\u05d7\u05ea\u05d5\u05df",
+          "\u05de\u05d5\u05d8 \u05d7\u05d5\u05e4\u05e9\u05d9",
+          "\u05de\u05e9\u05e7\u05d5\u05dc\u05d5\u05ea \u05d9\u05d3",
+          "\u05e1\u05de\u05d9\u05ea",
+          "\u05de\u05db\u05d5\u05e0\u05d4",
+          "\u05de\u05e9\u05e7\u05dc \u05d2\u05d5\u05e3",
+          "\u05d2\u05d5\u05de\u05d9\u05d4",
+          "\u05d0\u05d9\u05e8\u05d5\u05d1\u05d9",
+          "\u05d7\u05d1\u05dc",
+          "\u05d7\u05ea\u05d9\u05e8\u05d4"
+        ]
+      },
+      "description": "\u05e6\u05d9\u05d5\u05d3 \u05e0\u05d3\u05e8\u05e9 \u05dc\u05ea\u05e8\u05d2\u05d9\u05dc",
+      "default": []
+    },
+    "movement_pattern": {
+      "type": "string",
+      "enum": [
+        "\u05d3\u05d7\u05d9\u05e4\u05d4",
+        "\u05de\u05e9\u05d9\u05db\u05d4",
+        "\u05dc\u05d7\u05d9\u05e6\u05d4",
+        "\u05db\u05e4\u05d9\u05e4\u05d4",
+        "\u05e7\u05d5\u05de\u05e4\u05d0\u05d5\u05e0\u05d3",
+        "\u05d1\u05d9\u05d3\u05d5\u05d3",
+        "\u05d0\u05d7\u05e8"
+      ],
+      "description": "\u05d3\u05e4\u05d5\u05e1 \u05d4\u05ea\u05e0\u05d5\u05e2\u05d4"
+    },
+    "video_url": {
+      "type": "string",
+      "description": "\u05e7\u05d9\u05e9\u05d5\u05e8 \u05dc\u05e1\u05e8\u05d8\u05d5\u05df \u05d4\u05d3\u05e8\u05db\u05d4 (\u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9)"
+    },
+    "is_default": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05ea\u05e8\u05d2\u05d9\u05dc \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc \u05d1\u05de\u05e2\u05e8\u05db\u05ea"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc"
+    },
+    "created_by_coach": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05d9\u05e6\u05e8"
+    }
+  },
+  "required": [
+    "name_he",
+    "muscle_group_primary"
+  ]
+}

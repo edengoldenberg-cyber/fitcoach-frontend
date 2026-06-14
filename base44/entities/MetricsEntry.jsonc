@@ -1,0 +1,65 @@
+{
+  "name": "MetricsEntry",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Canonical Trainee ID for coach-trainee sync"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Linked auth user ID for reliable sync"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Email of the assigned coach"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of measurement (YYYY-MM-DD, Israel timezone)"
+    },
+    "weight_kg": {
+      "type": "number",
+      "description": "Weight in kilograms"
+    },
+    "body_fat_percent": {
+      "type": "number",
+      "description": "Body fat percentage"
+    },
+    "water_percent": {
+      "type": "number",
+      "description": "Water percentage"
+    },
+    "muscle_mass_kg": {
+      "type": "number",
+      "description": "Muscle mass in kilograms"
+    },
+    "body_age_years": {
+      "type": "number",
+      "description": "Body age in years"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional notes"
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "coach",
+        "device"
+      ],
+      "default": "manual",
+      "description": "Source of the measurement"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date"
+  ]
+}

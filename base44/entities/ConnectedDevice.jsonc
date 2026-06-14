@@ -1,0 +1,62 @@
+{
+  "name": "ConnectedDevice",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "google_fit",
+        "apple_health",
+        "fitbit",
+        "garmin",
+        "samsung_health",
+        "polar",
+        "whoop",
+        "other"
+      ],
+      "description": "Type of connected device"
+    },
+    "device_name": {
+      "type": "string",
+      "description": "Display name of the device"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether the device is currently connected"
+    },
+    "connected_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the device was connected"
+    },
+    "last_sync_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time data was synced"
+    },
+    "sync_frequency": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "hourly",
+        "daily"
+      ],
+      "default": "daily",
+      "description": "How often to sync data"
+    },
+    "permissions": {
+      "type": "object",
+      "description": "Permissions granted (steps, heart_rate, calories, etc.)"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "device_type",
+    "device_name"
+  ]
+}

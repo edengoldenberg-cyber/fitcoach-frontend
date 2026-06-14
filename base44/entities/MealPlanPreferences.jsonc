@@ -1,0 +1,145 @@
+{
+  "name": "MealPlanPreferences",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05d0\u05d9\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "meals_per_day": {
+      "type": "integer",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d0\u05e8\u05d5\u05d7\u05d5\u05ea \u05d1\u05d9\u05d5\u05dd",
+      "default": 4
+    },
+    "dietary_preference": {
+      "type": "string",
+      "enum": [
+        "protein_rich",
+        "low_carb",
+        "balanced",
+        "vegetarian",
+        "vegan"
+      ],
+      "default": "balanced",
+      "description": "\u05d4\u05e2\u05d3\u05e4\u05d4 \u05ea\u05d6\u05d5\u05e0\u05ea\u05d9\u05ea"
+    },
+    "preferred_foods": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d0\u05db\u05dc\u05d9\u05dd \u05de\u05d5\u05e2\u05d3\u05e4\u05d9\u05dd",
+      "default": []
+    },
+    "disliked_foods": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d0\u05db\u05dc\u05d9\u05dd \u05e9\u05dc\u05d0 \u05d0\u05d5\u05d4\u05d1",
+      "default": []
+    },
+    "mandatory_foods": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d0\u05db\u05dc\u05d9\u05dd \u05e9\u05d7\u05d5\u05d1\u05d4 \u05dc\u05e9\u05dc\u05d1 \u05d1\u05ea\u05e4\u05e8\u05d9\u05d8 \u05db\u05dc \u05d9\u05d5\u05dd",
+      "default": []
+    },
+    "cheat_meals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05e0\u05d5\u05ea \u05e6'\u05d9\u05d8 / \u05e4\u05d9\u05e0\u05d5\u05e7\u05d9\u05dd \u05de\u05d5\u05ea\u05e8\u05d9\u05dd \u05dc\u05d4\u05db\u05dc\u05d4 \u05d1\u05ea\u05e4\u05e8\u05d9\u05d8",
+      "default": []
+    },
+    "allergies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05d0\u05dc\u05e8\u05d2\u05d9\u05d5\u05ea",
+      "default": []
+    },
+    "cooking_time_preference": {
+      "type": "string",
+      "enum": [
+        "short",
+        "medium",
+        "long"
+      ],
+      "default": "medium",
+      "description": "\u05d6\u05de\u05df \u05d4\u05db\u05e0\u05ea \u05d0\u05e8\u05d5\u05d7\u05d4 \u05de\u05d5\u05e2\u05d3\u05e3"
+    },
+    "eating_out_times_per_week": {
+      "type": "integer",
+      "description": "\u05db\u05de\u05d4 \u05e4\u05e2\u05de\u05d9\u05dd \u05d1\u05e9\u05d1\u05d5\u05e2 \u05d0\u05d5\u05db\u05dc\u05d9\u05dd \u05de\u05d7\u05d5\u05e5 \u05dc\u05d1\u05d9\u05ea",
+      "default": 0
+    },
+    "eating_out_day_preference": {
+      "type": "string",
+      "enum": [
+        "any",
+        "post_workout"
+      ],
+      "default": "post_workout",
+      "description": "\u05de\u05ea\u05d9 \u05e2\u05d3\u05d9\u05e3 \u05dc\u05d0\u05db\u05d5\u05dc \u05d1\u05d7\u05d5\u05e5: \u05db\u05dc \u05d9\u05d5\u05dd / \u05d1\u05d9\u05d5\u05dd \u05e9\u05d0\u05d7\u05e8\u05d9 \u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "alcohol_frequency": {
+      "type": "string",
+      "enum": [
+        "never",
+        "rarely",
+        "1-2_week",
+        "3-4_week",
+        "daily"
+      ],
+      "default": "never",
+      "description": "\u05ea\u05d3\u05d9\u05e8\u05d5\u05ea \u05e6\u05e8\u05d9\u05db\u05ea \u05d0\u05dc\u05db\u05d5\u05d4\u05d5\u05dc"
+    },
+    "weight_goal_kg": {
+      "type": "number",
+      "description": "\u05db\u05de\u05d4 \u05e7\"\u05d2 \u05dc\u05e8\u05d3\u05ea/\u05dc\u05e2\u05dc\u05d5\u05ea (\u05d7\u05d9\u05d5\u05d1\u05d9 = \u05dc\u05e8\u05d3\u05ea, \u05e9\u05dc\u05d9\u05dc\u05d9 = \u05dc\u05e2\u05dc\u05d5\u05ea)"
+    },
+    "goal_timeline_weeks": {
+      "type": "integer",
+      "description": "\u05d6\u05de\u05df \u05dc\u05d4\u05e9\u05d2\u05ea \u05d4\u05d9\u05e2\u05d3 \u05d1\u05e9\u05d1\u05d5\u05e2\u05d5\u05ea"
+    },
+    "activity_details": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05e0\u05d5\u05e1\u05e3 \u05e2\u05dc \u05e2\u05d1\u05d5\u05d3\u05d4 \u05d5\u05d0\u05d5\u05e8\u05d7 \u05d7\u05d9\u05d9\u05dd"
+    },
+    "calculated_tdee": {
+      "type": "number",
+      "description": "TDEE \u05de\u05d7\u05d5\u05e9\u05d1 (\u05e7\u05dc\u05d5\u05e8\u05d9\u05d5\u05ea \u05dc\u05e9\u05de\u05d9\u05e8\u05d4)"
+    },
+    "target_daily_calories": {
+      "type": "number",
+      "description": "\u05d9\u05e2\u05d3 \u05e7\u05dc\u05d5\u05e8\u05d9 \u05d9\u05d5\u05de\u05d9 \u05de\u05d7\u05d5\u05e9\u05d1"
+    },
+    "target_protein_g": {
+      "type": "number",
+      "description": "\u05d9\u05e2\u05d3 \u05d7\u05dc\u05d1\u05d5\u05df \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    },
+    "target_carbs_g": {
+      "type": "number",
+      "description": "\u05d9\u05e2\u05d3 \u05e4\u05d7\u05de\u05d9\u05de\u05d5\u05ea \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    },
+    "target_fat_g": {
+      "type": "number",
+      "description": "\u05d9\u05e2\u05d3 \u05e9\u05d5\u05de\u05df \u05d9\u05d5\u05de\u05d9 (\u05d2\u05e8\u05dd)"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "meals_per_day",
+    "dietary_preference"
+  ]
+}

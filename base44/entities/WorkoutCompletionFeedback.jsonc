@@ -1,0 +1,86 @@
+{
+  "name": "WorkoutCompletionFeedback",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach email"
+    },
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of workout"
+    },
+    "daily_workout_group_id": {
+      "type": "string",
+      "description": "ID of DailyWorkoutGroup"
+    },
+    "selected_option_id": {
+      "type": "string",
+      "description": "Which option was selected (option id)"
+    },
+    "selected_option_title": {
+      "type": "string",
+      "description": "Title of selected option"
+    },
+    "planned_effort_score": {
+      "type": "number",
+      "description": "Planned effort score 1-10"
+    },
+    "actual_rpe": {
+      "type": "number",
+      "description": "Actual RPE reported by trainee 1-10"
+    },
+    "completed": {
+      "type": "boolean",
+      "description": "Did trainee complete the workout"
+    },
+    "completion_notes": {
+      "type": "string",
+      "description": "Trainee notes"
+    },
+    "pain_discomfort": {
+      "type": "boolean",
+      "description": "Trainee reported pain/discomfort"
+    },
+    "pain_notes": {
+      "type": "string",
+      "description": "Details if pain reported"
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When feedback was submitted"
+    },
+    "start_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When workout started"
+    },
+    "end_time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When workout ended"
+    },
+    "actual_duration_minutes": {
+      "type": "number",
+      "description": "Actual duration (calculated)"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "coach_email",
+    "date",
+    "daily_workout_group_id",
+    "selected_option_id",
+    "completed"
+  ]
+}

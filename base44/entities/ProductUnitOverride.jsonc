@@ -1,0 +1,36 @@
+{
+  "name": "ProductUnitOverride",
+  "type": "object",
+  "properties": {
+    "product_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05de\u05d5\u05e6\u05e8"
+    },
+    "unit_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4 (FK -> FoodUnit)"
+    },
+    "grams_override": {
+      "type": "number",
+      "description": "\u05d2\u05e8\u05de\u05d9\u05dd \u05dc\u05d9\u05d7\u05d9\u05d3\u05d4 \u05e2\u05d1\u05d5\u05e8 \u05de\u05d5\u05e6\u05e8 \u05d6\u05d4 (\u05e2\u05d5\u05e7\u05e3 default)"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "exact",
+        "approx"
+      ],
+      "default": "exact",
+      "description": "\u05e8\u05de\u05ea \u05d3\u05d9\u05d5\u05e7 - exact=\u05de\u05d3\u05d5\u05d9\u05e7, approx=\u05d4\u05e2\u05e8\u05db\u05d4"
+    },
+    "note": {
+      "type": "string",
+      "description": "\u05d4\u05e2\u05e8\u05d5\u05ea"
+    }
+  },
+  "required": [
+    "product_id",
+    "unit_id",
+    "grams_override"
+  ]
+}

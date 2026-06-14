@@ -1,0 +1,53 @@
+{
+  "name": "TraineeSchedule",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email (unique per trainee)"
+    },
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "wake_time": {
+      "type": "string",
+      "description": "Daily wake time (HH:MM, e.g., 07:00)",
+      "default": "07:00"
+    },
+    "sleep_time": {
+      "type": "string",
+      "description": "Daily sleep time (HH:MM, e.g., 23:00)",
+      "default": "23:00"
+    },
+    "breakfast_time": {
+      "type": "string",
+      "description": "Preferred breakfast time (HH:MM, e.g., 10:00)",
+      "default": "10:00"
+    },
+    "lunch_time": {
+      "type": "string",
+      "description": "Preferred lunch time (HH:MM, e.g., 14:00)",
+      "default": "14:00"
+    },
+    "dinner_time": {
+      "type": "string",
+      "description": "Preferred dinner time (HH:MM, e.g., 19:00)",
+      "default": "19:00"
+    },
+    "timezone": {
+      "type": "string",
+      "default": "Asia/Jerusalem",
+      "description": "User timezone for time calculations"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "trainee_id"
+  ]
+}

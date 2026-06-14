@@ -1,0 +1,44 @@
+{
+  "name": "PersonalAccessLink",
+  "type": "object",
+  "properties": {
+    "trainee_user_id": {
+      "type": "string",
+      "description": "ID of the trainee user"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee (for quick reference)"
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "Hashed token for security"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the link expires (default 7 days)"
+    },
+    "used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the link was used (one-time use)"
+    },
+    "created_by_coach_email": {
+      "type": "string",
+      "description": "Coach who created this link"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the link was revoked by coach"
+    }
+  },
+  "required": [
+    "trainee_user_id",
+    "trainee_email",
+    "token_hash",
+    "expires_at",
+    "created_by_coach_email"
+  ]
+}

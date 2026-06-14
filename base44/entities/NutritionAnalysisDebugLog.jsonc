@@ -1,0 +1,150 @@
+{
+  "name": "NutritionAnalysisDebugLog",
+  "type": "object",
+  "properties": {
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "traineeId": {
+      "type": "string"
+    },
+    "coachId": {
+      "type": "string"
+    },
+    "sourceType": {
+      "type": "string",
+      "enum": [
+        "TEXT",
+        "IMAGE",
+        "VOICE",
+        "MANUAL"
+      ],
+      "default": "TEXT"
+    },
+    "mealType": {
+      "type": "string",
+      "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack",
+        "other"
+      ],
+      "default": "other"
+    },
+    "originalInputText": {
+      "type": "string"
+    },
+    "imageUrl": {
+      "type": "string"
+    },
+    "currentStep": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "STARTED",
+        "AI_REQUEST_SENT",
+        "AI_RESPONSE_RECEIVED",
+        "PARSE_SUCCESS",
+        "PARSE_FAILED",
+        "CLARIFICATION_REQUIRED",
+        "CLARIFICATION_ANSWERED",
+        "RECALC_SUCCESS",
+        "RECALC_FAILED",
+        "SAVED_TO_DIARY",
+        "SAVE_FAILED",
+        "LEARNING_SAVED",
+        "LEARNING_FAILED",
+        "ERROR"
+      ],
+      "default": "STARTED"
+    },
+    "errorMessage": {
+      "type": "string"
+    },
+    "errorStack": {
+      "type": "string"
+    },
+    "aiPromptSent": {
+      "type": "string"
+    },
+    "aiRawResponse": {
+      "type": "string"
+    },
+    "aiParsedJson": {
+      "type": "object"
+    },
+    "parsedIngredients": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "clarificationQuestions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "clarificationAnswers": {
+      "type": "object"
+    },
+    "finalIngredients": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "finalCalories": {
+      "type": "number"
+    },
+    "finalProtein": {
+      "type": "number"
+    },
+    "finalCarbs": {
+      "type": "number"
+    },
+    "finalFat": {
+      "type": "number"
+    },
+    "confidenceScore": {
+      "type": "string"
+    },
+    "usedMemoryMatches": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "learningUpdates": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "userAgent": {
+      "type": "string"
+    },
+    "deviceInfo": {
+      "type": "object"
+    },
+    "appRoute": {
+      "type": "string"
+    },
+    "debugNotes": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "sourceType",
+    "status",
+    "currentStep"
+  ]
+}

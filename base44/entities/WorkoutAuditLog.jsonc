@@ -1,0 +1,39 @@
+{
+  "name": "WorkoutAuditLog",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "workout_session_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc WorkoutSession"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "created",
+        "updated",
+        "deleted"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4"
+    },
+    "num_exercises_saved": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05ea\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd \u05e9\u05e0\u05e9\u05de\u05e8\u05d5"
+    },
+    "num_sets_saved": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e1\u05d8\u05d9\u05dd \u05e9\u05e0\u05e9\u05de\u05e8\u05d5"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05e9\u05d2\u05d9\u05d0\u05d4 \u05d0\u05dd \u05d4\u05d9\u05ea\u05d4"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "action"
+  ]
+}

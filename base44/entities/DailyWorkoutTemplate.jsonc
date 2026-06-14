@@ -1,0 +1,116 @@
+{
+  "name": "DailyWorkoutTemplate",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Workout date (YYYY-MM-DD). Multiple records allowed per date."
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach who created this workout"
+    },
+    "title": {
+      "type": "string",
+      "description": "Workout title (e.g. '\u05d0\u05d9\u05de\u05d5\u05df \u05db\u05d5\u05d7 \u05e7\u05d1\u05d5\u05e6\u05ea\u05d9')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description or notes"
+    },
+    "workout_type": {
+      "type": "string",
+      "enum": [
+        "strength",
+        "pilates",
+        "functional",
+        "cardio",
+        "mobility",
+        "home",
+        "mixed"
+      ],
+      "default": "strength",
+      "description": "Type of workout"
+    },
+    "exercises": {
+      "type": "array",
+      "description": "List of exercises in this workout",
+      "items": {
+        "type": "object",
+        "properties": {
+          "exercise_name": {
+            "type": "string"
+          },
+          "sets": {
+            "type": "number"
+          },
+          "set_type": {
+            "type": "string"
+          },
+          "reps_min": {
+            "type": "number"
+          },
+          "reps_max": {
+            "type": "number"
+          },
+          "time_seconds": {
+            "type": "number"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "group_id": {
+            "type": "string"
+          },
+          "group_type": {
+            "type": "string"
+          },
+          "group_label": {
+            "type": "string"
+          },
+          "group_order": {
+            "type": "number"
+          },
+          "round_count": {
+            "type": "number"
+          },
+          "rest_after_round_seconds": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "is_published": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this workout is visible to trainees"
+    },
+    "estimated_duration_minutes": {
+      "type": "number",
+      "description": "Estimated duration in minutes"
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": [
+        "easy",
+        "medium",
+        "hard"
+      ],
+      "default": "medium"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "string",
+      "description": "Origin of this template: 'main_builder' = created via coach main workout builder, 'manual' = created via template editor"
+    }
+  },
+  "required": [
+    "date",
+    "coach_email",
+    "title"
+  ]
+}

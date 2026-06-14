@@ -1,0 +1,271 @@
+{
+  "name": "Trainee",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "ID of the Base44 user account (linked via Google OAuth)"
+    },
+    "user_email": {
+      "type": "string",
+      "description": "Email of the user account"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Email of the assigned coach"
+    },
+    "full_name": {
+      "type": "string",
+      "description": "Full name of the trainee"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "birth_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "gender": {
+      "type": "string",
+      "enum": [
+        "male",
+        "female"
+      ]
+    },
+    "height_cm": {
+      "type": "number"
+    },
+    "weight_kg": {
+      "type": "number",
+      "description": "Current weight in kilograms"
+    },
+    "activity_level": {
+      "type": "string",
+      "enum": [
+        "sedentary",
+        "light",
+        "moderate",
+        "active",
+        "very_active"
+      ],
+      "default": "moderate",
+      "description": "Physical activity level"
+    },
+    "goal": {
+      "type": "string",
+      "enum": [
+        "lose",
+        "maintain",
+        "gain"
+      ],
+      "default": "maintain",
+      "description": "Weight goal"
+    },
+    "diet_type": {
+      "type": "string",
+      "enum": [
+        "balanced",
+        "low_carb",
+        "high_protein",
+        "keto",
+        "mediterranean",
+        "vegetarian",
+        "vegan"
+      ],
+      "default": "balanced",
+      "description": "Preferred diet type"
+    },
+    "goal_weight_change_kg": {
+      "type": "number",
+      "description": "How many kg to lose (positive) or gain (positive) as target"
+    },
+    "goal_timeline_weeks": {
+      "type": "integer",
+      "description": "Number of weeks to achieve the goal"
+    },
+    "target_calories": {
+      "type": "number",
+      "default": 2000
+    },
+    "target_protein": {
+      "type": "number",
+      "default": 150
+    },
+    "target_carbs": {
+      "type": "number",
+      "default": 200
+    },
+    "target_fat": {
+      "type": "number",
+      "default": 70
+    },
+    "target_water_ml": {
+      "type": "number",
+      "default": 3000
+    },
+    "include_burned_calories_in_balance": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether burned calories reduce net calorie target"
+    },
+    "whatsapp_notifications_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this trainee receives WhatsApp automation messages. Set to false to opt-out from all WhatsApp reminders."
+    },
+    "notifications_prompt_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether to show the push notifications prompt to this trainee"
+    },
+    "reminder_intensity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "normal",
+        "high"
+      ],
+      "default": "normal",
+      "description": "Reminder frequency (low=max 1/day, normal=max 2/day, high=max 2/day with variation)"
+    },
+    "debug_reminder_mode": {
+      "type": "boolean",
+      "default": false,
+      "description": "Enable detailed logging of reminder decision logic for debugging"
+    },
+    "visible_modules": {
+      "type": "object",
+      "description": "Which modules the trainee can see in their dashboard",
+      "properties": {
+        "nutrition": {
+          "type": "boolean",
+          "default": true
+        },
+        "water": {
+          "type": "boolean",
+          "default": true
+        },
+        "workouts": {
+          "type": "boolean",
+          "default": true
+        },
+        "metrics": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "home_layout_version": {
+      "type": "string",
+      "description": "Home page layout version (default_v2, custom, etc.)"
+    },
+    "home_layout_config": {
+      "type": "object",
+      "description": "Home page widget configuration",
+      "properties": {
+        "daily_macros_circles": {
+          "type": "boolean",
+          "default": true
+        },
+        "today_workout_panel": {
+          "type": "boolean",
+          "default": true
+        },
+        "water_tracker": {
+          "type": "boolean",
+          "default": true
+        },
+        "daily_activity_panel": {
+          "type": "boolean",
+          "default": true
+        },
+        "ai_coach_cta": {
+          "type": "boolean",
+          "default": true
+        },
+        "smartwatch_connection_panel": {
+          "type": "boolean",
+          "default": true
+        },
+        "goals_panel": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "paused",
+        "deleted",
+        "pending_coach_approval"
+      ],
+      "default": "active"
+    },
+    "onboarding_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed"
+      ],
+      "default": "pending",
+      "description": "Onboarding status - whether trainee has completed the initial app tour with Elior"
+    },
+    "profile_image": {
+      "type": "string"
+    },
+    "invited_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "invite_token": {
+      "type": "string"
+    },
+    "invite_opened_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "first_login_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "invite_last_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_login_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "coach_notes": {
+      "type": "string"
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "invite_status": {
+      "type": "string",
+      "enum": [
+        "invited",
+        "joined",
+        "no_auth"
+      ]
+    },
+    "invite_sent_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "invite_last_error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "user_email",
+    "coach_email",
+    "full_name"
+  ]
+}

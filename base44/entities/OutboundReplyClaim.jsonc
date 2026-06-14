@@ -1,0 +1,37 @@
+{
+  "name": "OutboundReplyClaim",
+  "type": "object",
+  "description": "Hard single-outbound ownership table. One record per inbound message. The unique constraint on inboundMessageId means only ONE insert can ever succeed for a given inbound \u2014 all parallel races lose at the DB layer.",
+  "properties": {
+    "inboundMessageId": {
+      "type": "string",
+      "description": "FK to LeadMessageThread INBOUND record. UNIQUE \u2014 enforces one-claim-per-inbound at the DB layer.",
+      "unique": true
+    },
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "queueId": {
+      "type": "string",
+      "description": "FK to WhatsAppMessageQueue \u2014 set after queue record is created"
+    },
+    "claimedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this claim was created (= when the race was won)"
+    },
+    "claimedBy": {
+      "type": "string",
+      "description": "Which execution path won: aiConversationAgent, salesFlowRunner, manual"
+    }
+  },
+  "required": [
+    "inboundMessageId",
+    "leadId",
+    "coach_email"
+  ]
+}

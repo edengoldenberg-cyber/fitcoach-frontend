@@ -1,0 +1,55 @@
+{
+  "name": "DailyWorkoutLine",
+  "type": "object",
+  "properties": {
+    "daily_workout_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc DailyWorkout"
+    },
+    "exercise_id": {
+      "type": "string",
+      "description": "ID \u05de\u05d1\u05e0\u05e7 \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc\u05d9\u05dd (nullable)"
+    },
+    "custom_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05ea\u05e8\u05d2\u05d9\u05dc \u05de\u05d5\u05ea\u05d0\u05dd \u05d0\u05d9\u05e9\u05d9\u05ea"
+    },
+    "order_index": {
+      "type": "number",
+      "description": "\u05e1\u05d3\u05e8 \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc"
+    },
+    "equipment_type": {
+      "type": "string",
+      "description": "\u05e6\u05d9\u05d5\u05d3 \u05e0\u05d3\u05e8\u05e9"
+    },
+    "angle_type": {
+      "type": "string",
+      "description": "\u05e9\u05d9\u05e4\u05d5\u05e2 \u05d4\u05ea\u05e8\u05d2\u05d9\u05dc"
+    },
+    "grip_type": {
+      "type": "string",
+      "description": "\u05e1\u05d5\u05d2 \u05d0\u05d7\u05d9\u05d6\u05d4"
+    },
+    "default_sets_count": {
+      "type": "number",
+      "default": 4,
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05e1\u05d8\u05d9\u05dd \u05d1\u05e8\u05d9\u05e8\u05ea \u05de\u05d7\u05d3\u05dc"
+    },
+    "target_reps_min": {
+      "type": "number",
+      "description": "\u05d7\u05d6\u05e8\u05d5\u05ea \u05de\u05d9\u05e0\u05d9\u05de\u05d5\u05dd"
+    },
+    "target_reps_max": {
+      "type": "number",
+      "description": "\u05d7\u05d6\u05e8\u05d5\u05ea \u05de\u05e7\u05e1\u05d9\u05de\u05d5\u05dd"
+    },
+    "notes_he": {
+      "type": "string",
+      "description": "\u05d4\u05e0\u05d7\u05d9\u05d5\u05ea \u05d5\u05d8\u05db\u05e0\u05d9\u05e7\u05d4"
+    }
+  },
+  "required": [
+    "daily_workout_id",
+    "order_index"
+  ]
+}

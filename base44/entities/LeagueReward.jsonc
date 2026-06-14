@@ -1,0 +1,79 @@
+{
+  "name": "LeagueReward",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Reward title"
+    },
+    "description": {
+      "type": "string",
+      "description": "Reward description"
+    },
+    "reward_type": {
+      "type": "string",
+      "enum": [
+        "individual",
+        "group",
+        "streak",
+        "mission",
+        "participation"
+      ],
+      "default": "individual"
+    },
+    "assigned_placement": {
+      "type": "string",
+      "enum": [
+        "1st",
+        "2nd",
+        "3rd",
+        "winning_group",
+        "custom"
+      ],
+      "default": "custom"
+    },
+    "sponsor": {
+      "type": "string"
+    },
+    "reward_value": {
+      "type": "string"
+    },
+    "quantity_limit": {
+      "type": "number"
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date"
+    },
+    "coupon_code": {
+      "type": "string"
+    },
+    "redemption_instructions": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "expired"
+      ],
+      "default": "draft"
+    },
+    "created_by_coach_email": {
+      "type": "string"
+    },
+    "updated_by_coach_email": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "title",
+    "reward_type",
+    "assigned_placement",
+    "status"
+  ]
+}

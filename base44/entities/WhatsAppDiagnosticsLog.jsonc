@@ -1,0 +1,29 @@
+{
+  "name": "WhatsAppDiagnosticsLog",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "event": {
+      "type": "string",
+      "enum": [
+        "UI_ACTION",
+        "QUEUE_ADD",
+        "WORKER_START",
+        "SEND_ATTEMPT",
+        "SEND_SUCCESS",
+        "SEND_FAIL",
+        "RULE_TRIGGERED"
+      ],
+      "description": "Event type"
+    },
+    "payload": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "coach_email",
+    "event"
+  ]
+}

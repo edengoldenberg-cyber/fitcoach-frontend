@@ -1,0 +1,80 @@
+{
+  "name": "MealTemplate",
+  "type": "object",
+  "properties": {
+    "meal_type": {
+      "type": "string",
+      "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05d0\u05e8\u05d5\u05d7\u05d4"
+    },
+    "name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea"
+    },
+    "description": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05e7\u05e6\u05e8"
+    },
+    "items": {
+      "type": "array",
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05e4\u05e8\u05d9\u05d8\u05d9\u05dd \u05e2\u05dd \u05d9\u05d7\u05d9\u05d3\u05d5\u05ea",
+      "items": {
+        "type": "object",
+        "properties": {
+          "food_item_id": {
+            "type": "string",
+            "description": "ID \u05e9\u05dc \u05d4\u05de\u05d5\u05e6\u05e8"
+          },
+          "unit_id": {
+            "type": "string",
+            "description": "ID \u05e9\u05dc \u05d9\u05d7\u05d9\u05d3\u05ea \u05d4\u05de\u05d9\u05d3\u05d4 (FoodUnit \u05d0\u05d5 PortionReference)"
+          },
+          "quantity": {
+            "type": "number",
+            "description": "\u05db\u05de\u05d5\u05ea \u05d1\u05d9\u05d7\u05d9\u05d3\u05d5\u05ea"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "protein",
+              "carbs",
+              "vegetables",
+              "fat",
+              "fruit",
+              "dairy"
+            ],
+            "description": "\u05ea\u05e4\u05e7\u05d9\u05d3 \u05d1\u05de\u05e0\u05d4"
+          }
+        },
+        "required": [
+          "food_item_id",
+          "unit_id",
+          "quantity"
+        ]
+      }
+    },
+    "base_calories": {
+      "type": "number",
+      "description": "\u05e7\u05dc\u05d5\u05e8\u05d9\u05d5\u05ea \u05d1\u05e1\u05d9\u05e1 \u05e9\u05dc \u05d4\u05d8\u05de\u05e4\u05dc\u05d8 (\u05dc\u05e6\u05d5\u05e8\u05da scaling)"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05ea\u05d1\u05e0\u05d9\u05ea \u05e4\u05e2\u05d9\u05dc\u05d4"
+    },
+    "sort_order": {
+      "type": "number",
+      "description": "\u05e1\u05d3\u05e8 \u05d4\u05e6\u05d2\u05d4"
+    }
+  },
+  "required": [
+    "meal_type",
+    "name",
+    "items"
+  ]
+}

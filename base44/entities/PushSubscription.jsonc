@@ -1,0 +1,49 @@
+{
+  "name": "PushSubscription",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "endpoint": {
+      "type": "string",
+      "description": "Push endpoint URL"
+    },
+    "p256dh": {
+      "type": "string",
+      "description": "Public key for encryption"
+    },
+    "auth": {
+      "type": "string",
+      "description": "Auth secret for encryption"
+    },
+    "device_type": {
+      "type": "string",
+      "enum": [
+        "android",
+        "ios",
+        "desktop",
+        "unknown"
+      ],
+      "default": "unknown",
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05de\u05db\u05e9\u05d9\u05e8"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "\u05d4\u05d0\u05dd \u05d4-Subscription \u05e4\u05e2\u05d9\u05dc"
+    },
+    "last_used": {
+      "type": "string",
+      "format": "date-time",
+      "description": "\u05de\u05ea\u05d9 \u05e0\u05e2\u05e9\u05d4 \u05e9\u05d9\u05de\u05d5\u05e9 \u05d0\u05d7\u05e8\u05d5\u05df"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "endpoint",
+    "p256dh",
+    "auth"
+  ]
+}

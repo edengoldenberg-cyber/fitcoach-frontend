@@ -1,0 +1,44 @@
+{
+  "name": "LoginLink",
+  "type": "object",
+  "properties": {
+    "trainee_user_id": {
+      "type": "string",
+      "description": "ID of the trainee user"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "token_hash": {
+      "type": "string",
+      "description": "Hashed token for security"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the link expires (default 60 minutes for pilot)"
+    },
+    "used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the link was used (one-time use)"
+    },
+    "created_by_coach_email": {
+      "type": "string",
+      "description": "Coach who created this link"
+    },
+    "sent_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the email was sent"
+    }
+  },
+  "required": [
+    "trainee_user_id",
+    "trainee_email",
+    "token_hash",
+    "expires_at",
+    "created_by_coach_email"
+  ]
+}

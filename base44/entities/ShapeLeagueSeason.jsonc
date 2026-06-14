@@ -1,0 +1,58 @@
+{
+  "name": "ShapeLeagueSeason",
+  "type": "object",
+  "properties": {
+    "season_name": {
+      "type": "string",
+      "description": "League season name"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "prize_description": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "active",
+        "paused",
+        "ended",
+        "archived"
+      ],
+      "default": "draft"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "paused_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "archived_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "created_by_coach_id": {
+      "type": "string"
+    },
+    "created_by_coach_email": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "season_name",
+    "status"
+  ]
+}

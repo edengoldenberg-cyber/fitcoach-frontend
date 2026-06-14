@@ -1,0 +1,43 @@
+{
+  "name": "SalesScript",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string",
+      "description": "Script name"
+    },
+    "script_type": {
+      "type": "string",
+      "enum": [
+        "main",
+        "skeptical"
+      ],
+      "default": "main",
+      "description": "PART 2-3: Type of script - main or skeptical lead flow"
+    },
+    "description": {
+      "type": "string"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": false,
+      "description": "Only one script can be active per coach per type"
+    },
+    "script_enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "PART 1-2: ON/OFF toggle for this script"
+    },
+    "hot_lead_triggers": {
+      "type": "string",
+      "description": "Comma-separated phrases that mark lead as HOT (e.g. \u05db\u05de\u05d4 \u05e2\u05d5\u05dc\u05d4, \u05e8\u05d5\u05e6\u05d4 \u05dc\u05d4\u05e6\u05d8\u05e8\u05e3)"
+    }
+  },
+  "required": [
+    "coach_email",
+    "name"
+  ]
+}

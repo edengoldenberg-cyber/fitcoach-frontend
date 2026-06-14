@@ -1,0 +1,44 @@
+{
+  "name": "AIConsultation",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "topic": {
+      "type": "string",
+      "enum": [
+        "nutrition",
+        "training",
+        "general"
+      ]
+    },
+    "user_question": {
+      "type": "string"
+    },
+    "options_provided": {
+      "type": "string",
+      "description": "\u05d0\u05d5\u05e4\u05e6\u05d9\u05d5\u05ea \u05e9\u05d4\u05de\u05ea\u05d0\u05de\u05df \u05e0\u05ea\u05df"
+    },
+    "ai_recommendation": {
+      "type": "string"
+    },
+    "data_used": {
+      "type": "string",
+      "description": "\u05ea\u05d9\u05d0\u05d5\u05e8 \u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05e9\u05e9\u05d9\u05de\u05e9\u05d5 \u05dc\u05d4\u05de\u05dc\u05e6\u05d4"
+    },
+    "full_response": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "user_question",
+    "topic",
+    "full_response"
+  ]
+}

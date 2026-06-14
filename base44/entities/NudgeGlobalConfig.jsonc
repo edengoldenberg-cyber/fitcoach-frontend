@@ -1,0 +1,88 @@
+{
+  "name": "NudgeGlobalConfig",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "globalEnabled": {
+      "type": "boolean",
+      "default": true
+    },
+    "repeatAllowed": {
+      "type": "boolean",
+      "default": true
+    },
+    "maxFollowups": {
+      "type": "number",
+      "default": 4
+    },
+    "baselineField": {
+      "type": "string",
+      "default": "nudgeBaseline"
+    },
+    "quietHoursEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "quietHoursStart": {
+      "type": "string",
+      "default": "21:00"
+    },
+    "quietHoursEnd": {
+      "type": "string",
+      "default": "08:00"
+    },
+    "stopOnReply": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnFlow": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnScript": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnManual": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnOptOut": {
+      "type": "boolean",
+      "default": true
+    },
+    "stopOnPendingQueue": {
+      "type": "boolean",
+      "default": true
+    },
+    "steps": {
+      "type": "array",
+      "description": "JSON array of step configs",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step": {
+            "type": "number"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "delayHours": {
+            "type": "number"
+          },
+          "messageText": {
+            "type": "string"
+          },
+          "useAI": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "coach_email"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "name": "UserSavedMeals",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "meal_name": {
+      "type": "string"
+    },
+    "meal_type": {
+      "type": "string",
+      "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+      ]
+    },
+    "foods": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "food_name": {
+            "type": "string"
+          },
+          "food_id": {
+            "type": "string"
+          },
+          "user_food_item_id": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "grams_equivalent": {
+            "type": "number"
+          },
+          "calories": {
+            "type": "number"
+          },
+          "protein": {
+            "type": "number"
+          },
+          "carbs": {
+            "type": "number"
+          },
+          "fat": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "macros_snapshot": {
+      "type": "object"
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "usage_count": {
+      "type": "number",
+      "default": 0
+    },
+    "favorite": {
+      "type": "boolean",
+      "default": false
+    },
+    "time_of_day_bucket": {
+      "type": "string",
+      "enum": [
+        "morning",
+        "noon",
+        "afternoon",
+        "evening",
+        "night"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "meal_name",
+    "foods"
+  ]
+}

@@ -1,0 +1,171 @@
+{
+  "name": "CoachSettings",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "whatsapp_number": {
+      "type": "string",
+      "description": "Coach WhatsApp number with country code (+972...)"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Coach display name for WhatsApp messages"
+    },
+    "message_templates": {
+      "type": "object",
+      "properties": {
+        "invite_followup": {
+          "type": "string",
+          "default": "\u05d4\u05d9\u05d9 {name} \ud83d\udc4b \u05e9\u05dc\u05d7\u05ea\u05d9 \u05dc\u05da \u05de\u05d9\u05d9\u05dc \u05d4\u05d6\u05de\u05e0\u05d4 \u05dc\u05beFIT COACH PRO.\n\u05db\u05e0\u05e1/\u05d9 \u05dc\u05de\u05d9\u05d9\u05dc \u05d5\u05dc\u05d7\u05e5/\u05d9 \u05e2\u05dc '\u05d4\u05d2\u05d3\u05e8\u05ea \u05e1\u05d9\u05e1\u05de\u05d4 \u05d5\u05d4\u05ea\u05d7\u05d1\u05e8\u05d5\u05ea'.\n\u05d0\u05dd \u05dc\u05d0 \u05de\u05e6\u05d0\u05ea\u2014\u05d1\u05d3\u05d5\u05e7/\u05d9 \u05e1\u05e4\u05d0\u05dd \u05d5\u05ea\u05d2\u05d9\u05d3/\u05d9 \u05dc\u05d9."
+        },
+        "invite_reminder_24h": {
+          "type": "string",
+          "default": "\u05d4\u05d9\u05d9 {name} \ud83d\udc4b \u05e8\u05e7 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05e7\u05d8\u05e0\u05d4 \u05dc\u05d4\u05ea\u05d7\u05d1\u05e8\u05d5\u05ea \u05dc\u05beFIT COACH PRO.\n\u05d6\u05d4 \u05dc\u05d5\u05e7\u05d7 \u05d3\u05e7\u05d4. \u05d0\u05dd \u05de\u05e9\u05d4\u05d5 \u05dc\u05d0 \u05e2\u05d5\u05d1\u05d3 \u2013 \u05d0\u05e0\u05d9 \u05db\u05d0\u05df."
+        }
+      }
+    },
+    "menu_visibility": {
+      "type": "object",
+      "description": "Which menu items are visible in the coach menu",
+      "properties": {
+        "CoachDashboard": {
+          "type": "boolean",
+          "default": true
+        },
+        "CoachDailyWorkout": {
+          "type": "boolean",
+          "default": true
+        },
+        "CoachGroupWorkouts": {
+          "type": "boolean",
+          "default": true
+        },
+        "CoachWorkouts": {
+          "type": "boolean",
+          "default": true
+        },
+        "OnlineTrainingCoach": {
+          "type": "boolean",
+          "default": true
+        },
+        "CoachNutrition": {
+          "type": "boolean",
+          "default": true
+        },
+        "FoodDatabase": {
+          "type": "boolean",
+          "default": true
+        },
+        "SuggestFavoritesManager": {
+          "type": "boolean",
+          "default": false
+        },
+        "CoachRecommendedFoods": {
+          "type": "boolean",
+          "default": false
+        },
+        "TemplateManager": {
+          "type": "boolean",
+          "default": false
+        },
+        "PendingFoods": {
+          "type": "boolean",
+          "default": false
+        },
+        "UnitsDebug": {
+          "type": "boolean",
+          "default": false
+        },
+        "MessagingCenter": {
+          "type": "boolean",
+          "default": true
+        },
+        "NotificationCenter": {
+          "type": "boolean",
+          "default": true
+        },
+        "TraineeQA": {
+          "type": "boolean",
+          "default": false
+        },
+        "CoachReports": {
+          "type": "boolean",
+          "default": true
+        },
+        "WhatsAppManager": {
+          "type": "boolean",
+          "default": true
+        },
+        "CRM": {
+          "type": "boolean",
+          "default": true
+        },
+        "CallQueue": {
+          "type": "boolean",
+          "default": false
+        },
+        "CallTasks": {
+          "type": "boolean",
+          "default": false
+        },
+        "TrialBooking": {
+          "type": "boolean",
+          "default": false
+        },
+        "AIBrainAdmin": {
+          "type": "boolean",
+          "default": true
+        },
+        "SalesConversationBuilder": {
+          "type": "boolean",
+          "default": false
+        },
+        "SalesScriptManager": {
+          "type": "boolean",
+          "default": false
+        },
+        "NudgeEngineManager": {
+          "type": "boolean",
+          "default": false
+        },
+        "SystemControlCenter": {
+          "type": "boolean",
+          "default": false
+        },
+        "SystemSummaryReport": {
+          "type": "boolean",
+          "default": false
+        },
+        "SystemHealthMonitor": {
+          "type": "boolean",
+          "default": false
+        },
+        "SalesDashboard": {
+          "type": "boolean",
+          "default": false
+        },
+        "CoachSettings": {
+          "type": "boolean",
+          "default": true
+        },
+        "CoachExternalMembers": {
+          "type": "boolean",
+          "default": false
+        },
+        "CoachAutomations": {
+          "type": "boolean",
+          "default": false
+        },
+        "ReminderAutomations": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  },
+  "required": [
+    "coach_email"
+  ]
+}

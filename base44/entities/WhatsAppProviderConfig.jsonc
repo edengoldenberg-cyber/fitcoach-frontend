@@ -1,0 +1,63 @@
+{
+  "name": "WhatsAppProviderConfig",
+  "type": "object",
+  "properties": {
+    "coach_id": {
+      "type": "string",
+      "description": "Coach user ID"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach email"
+    },
+    "provider_type": {
+      "type": "string",
+      "enum": [
+        "mock",
+        "greenapi",
+        "meta_cloud",
+        "twilio"
+      ],
+      "default": "mock"
+    },
+    "phone_number_e164": {
+      "type": "string",
+      "description": "Coach WhatsApp phone e.g. +9725XXXXXXXX"
+    },
+    "api_url": {
+      "type": "string",
+      "description": "Green API base URL e.g. https://api.green-api.com"
+    },
+    "instance_id": {
+      "type": "string",
+      "description": "Green API idInstance"
+    },
+    "api_token": {
+      "type": "string",
+      "description": "Green API apiTokenInstance"
+    },
+    "is_enabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "disconnected",
+        "connected",
+        "error"
+      ],
+      "default": "disconnected"
+    },
+    "last_test_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "coach_email"
+  ]
+}

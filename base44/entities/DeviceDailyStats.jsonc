@@ -1,0 +1,40 @@
+{
+  "name": "DeviceDailyStats",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "steps": {
+      "type": "number"
+    },
+    "distance_km": {
+      "type": "number"
+    },
+    "active_minutes": {
+      "type": "number"
+    },
+    "device_calories_burned": {
+      "type": "number"
+    },
+    "device_source": {
+      "type": "string",
+      "enum": [
+        "apple_health",
+        "google_fit",
+        "garmin",
+        "fitbit",
+        "other"
+      ]
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date",
+    "steps"
+  ]
+}

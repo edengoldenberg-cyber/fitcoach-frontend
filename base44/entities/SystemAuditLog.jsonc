@@ -1,0 +1,83 @@
+{
+  "name": "SystemAuditLog",
+  "type": "object",
+  "properties": {
+    "debug_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9 \u05dc\u05d3\u05d9\u05d1\u05d0\u05d2 (DW-20260216-9F3K2)"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "PUBLISH_DAILY_WORKOUT",
+        "COPY_DAILY_TO_TRAINEE",
+        "SAVE_WORKOUT",
+        "DELETE_WORKOUT"
+      ],
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4"
+    },
+    "actor_role": {
+      "type": "string",
+      "enum": [
+        "coach",
+        "trainee",
+        "system"
+      ],
+      "description": "\u05ea\u05e4\u05e7\u05d9\u05d3 \u05d4\u05de\u05d1\u05e6\u05e2"
+    },
+    "actor_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d1\u05e6\u05e2"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df \u05d4\u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9"
+    },
+    "source_workout_id": {
+      "type": "string",
+      "description": "ID \u05d0\u05d9\u05de\u05d5\u05df \u05de\u05e7\u05d5\u05e8"
+    },
+    "target_workout_id": {
+      "type": "string",
+      "description": "ID \u05d0\u05d9\u05de\u05d5\u05df \u05d9\u05e2\u05d3"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "fail",
+        "warning"
+      ],
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4"
+    },
+    "error_code": {
+      "type": "string",
+      "description": "\u05e7\u05d5\u05d3 \u05e9\u05d2\u05d9\u05d0\u05d4 (EXERCISES_EMPTY, RATE_LIMIT \u05d5\u05db\u05d5')"
+    },
+    "error_message_he": {
+      "type": "string",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05e9\u05d2\u05d9\u05d0\u05d4 \u05d1\u05e2\u05d1\u05e8\u05d9\u05ea"
+    },
+    "payload_summary": {
+      "type": "object",
+      "description": "\u05e1\u05d9\u05db\u05d5\u05dd \u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd",
+      "properties": {
+        "exercises_count": {
+          "type": "number"
+        },
+        "sets_count": {
+          "type": "number"
+        }
+      }
+    },
+    "details": {
+      "type": "object",
+      "description": "\u05e4\u05e8\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd \u05dc\u05d3\u05d9\u05d1\u05d0\u05d2"
+    }
+  },
+  "required": [
+    "action_type",
+    "actor_role",
+    "status"
+  ]
+}

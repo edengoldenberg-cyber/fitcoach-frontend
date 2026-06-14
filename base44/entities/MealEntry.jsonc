@@ -1,0 +1,121 @@
+{
+  "name": "MealEntry",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Linked Trainee ID for reliable coach/trainee sync"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Linked auth user ID for reliable sync"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "date": {
+      "type": "string",
+      "format": "date"
+    },
+    "meal_type": {
+      "type": "string",
+      "enum": [
+        "breakfast",
+        "lunch",
+        "dinner",
+        "snack"
+      ]
+    },
+    "food_item_id": {
+      "type": "string"
+    },
+    "user_food_item_id": {
+      "type": "string",
+      "description": "Linked reusable personal/coach/global user food item"
+    },
+    "food_database_scope": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "coach",
+        "global",
+        "legacy",
+        "ai"
+      ],
+      "description": "Source priority scope used for this meal"
+    },
+    "food_name": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d4\u05d9\u05d7\u05d9\u05d3\u05d5\u05ea"
+    },
+    "unit": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4 (\u05d2\u05e8\u05dd, \u05db\u05e4\u05d9\u05ea, \u05db\u05e3 \u05d5\u05db\u05d5')"
+    },
+    "unit_name": {
+      "type": "string",
+      "description": "\u05e9\u05dd \u05d4\u05d9\u05d7\u05d9\u05d3\u05d4 (\u05d2\u05e8\u05dd, \u05db\u05e4\u05d9\u05ea, \u05db\u05e3 \u05d5\u05db\u05d5')"
+    },
+    "amount": {
+      "type": "number",
+      "description": "\u05db\u05de\u05d5\u05ea \u05d1\u05d9\u05d7\u05d9\u05d3\u05d4 \u05e9\u05e0\u05d1\u05d7\u05e8\u05d4"
+    },
+    "grams_final": {
+      "type": "number",
+      "description": "\u05d2\u05e8\u05de\u05d9\u05dd \u05e1\u05d5\u05e4\u05d9\u05d9\u05dd \u05d0\u05d7\u05e8\u05d9 \u05d4\u05de\u05e8\u05d4"
+    },
+    "grams_equivalent": {
+      "type": "number",
+      "description": "Equivalent in grams for calculation"
+    },
+    "calories": {
+      "type": "number"
+    },
+    "protein": {
+      "type": "number"
+    },
+    "carbs": {
+      "type": "number"
+    },
+    "fat": {
+      "type": "number"
+    },
+    "per100_kcal": {
+      "type": "number",
+      "description": "Calories per 100g — stable anchor for gram-edit recalculation"
+    },
+    "per100_protein": {
+      "type": "number"
+    },
+    "per100_carbs": {
+      "type": "number"
+    },
+    "per100_fat": {
+      "type": "number"
+    },
+    "ai_original_food_name": {
+      "type": "string",
+      "description": "Original AI interpreted food before user correction"
+    },
+    "learning_event_type": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "search",
+        "ai",
+        "photo",
+        "correction"
+      ]
+    }
+  },
+  "required": [
+    "trainee_email",
+    "date",
+    "meal_type",
+    "food_name",
+    "calories"
+  ]
+}

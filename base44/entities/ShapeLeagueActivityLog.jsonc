@@ -1,0 +1,58 @@
+{
+  "name": "ShapeLeagueActivityLog",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "activity_type": {
+      "type": "string",
+      "description": "Activity name (e.g., '\u05db\u05d5\u05d7', '\u05e8\u05d9\u05e6\u05d4')"
+    },
+    "duration_minutes": {
+      "type": "number"
+    },
+    "distance_km": {
+      "type": "number"
+    },
+    "intensity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "description": "Optional intensity level"
+    },
+    "points_awarded": {
+      "type": "number",
+      "description": "Points calculated and awarded"
+    },
+    "logged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "activity_date": {
+      "type": "string",
+      "format": "date",
+      "description": "When activity occurred"
+    },
+    "mission_id": {
+      "type": "string",
+      "description": "If logged as part of mission"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email",
+    "activity_type",
+    "points_awarded",
+    "activity_date"
+  ]
+}

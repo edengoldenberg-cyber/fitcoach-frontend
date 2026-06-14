@@ -1,0 +1,77 @@
+{
+  "name": "ImportStaging",
+  "type": "object",
+  "properties": {
+    "batch_id": {
+      "type": "string",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4-batch"
+    },
+    "row_index": {
+      "type": "number",
+      "description": "\u05d0\u05d9\u05e0\u05d3\u05e7\u05e1 \u05d4\u05e9\u05d5\u05e8\u05d4 \u05d1\u05e7\u05d5\u05d1\u05e5 \u05d4\u05de\u05e7\u05d5\u05e8\u05d9"
+    },
+    "row_number": {
+      "type": "number",
+      "description": "\u05de\u05e1\u05e4\u05e8 \u05d4\u05e9\u05d5\u05e8\u05d4 \u05d1\u05e7\u05d5\u05d1\u05e5 (row_index + 2)"
+    },
+    "unique_key": {
+      "type": "string",
+      "description": "normalized_name|category"
+    },
+    "data": {
+      "type": "object",
+      "description": "\u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05d4\u05de\u05dc\u05d0\u05d9\u05dd \u05e9\u05dc \u05d4\u05de\u05d5\u05e6\u05e8"
+    },
+    "validation_status": {
+      "type": "string",
+      "enum": [
+        "valid",
+        "invalid",
+        "duplicate_in_file",
+        "duplicate_in_db"
+      ],
+      "default": "valid"
+    },
+    "validation_errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05e8\u05e9\u05d9\u05de\u05ea \u05e9\u05d2\u05d9\u05d0\u05d5\u05ea validation"
+    },
+    "existing_item_id": {
+      "type": "string",
+      "description": "ID \u05e9\u05dc \u05de\u05d5\u05e6\u05e8 \u05e7\u05d9\u05d9\u05dd \u05d1\u05de\u05d0\u05d2\u05e8 (\u05d0\u05dd duplicate_in_db)"
+    },
+    "processed": {
+      "type": "boolean",
+      "default": false,
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05e9\u05d5\u05e8\u05d4 \u05e2\u05d5\u05d1\u05d3\u05d4 \u05d1\u05e9\u05dc\u05d1 \u05d4-Commit"
+    },
+    "processed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "process_result": {
+      "type": "string",
+      "enum": [
+        "added",
+        "updated",
+        "failed",
+        "skipped"
+      ],
+      "description": "\u05ea\u05d5\u05e6\u05d0\u05ea \u05d4\u05e2\u05d9\u05d1\u05d5\u05d3"
+    },
+    "process_error": {
+      "type": "string",
+      "description": "\u05e9\u05d2\u05d9\u05d0\u05d4 \u05d1\u05e2\u05ea \u05d4\u05e2\u05d9\u05d1\u05d5\u05d3"
+    }
+  },
+  "required": [
+    "batch_id",
+    "row_index",
+    "unique_key",
+    "data",
+    "validation_status"
+  ]
+}

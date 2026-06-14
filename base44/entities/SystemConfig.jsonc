@@ -1,0 +1,39 @@
+{
+  "name": "SystemConfig",
+  "type": "object",
+  "properties": {
+    "key": {
+      "type": "string",
+      "description": "Unique config key (e.g., WHATSAPP_REMINDERS_ENABLED, MAX_MESSAGES_PER_DAY)"
+    },
+    "value": {
+      "type": "string",
+      "description": "Config value stored as string (cast using value_type field)"
+    },
+    "value_type": {
+      "type": "string",
+      "enum": [
+        "boolean",
+        "number",
+        "string"
+      ],
+      "description": "Type of value stored"
+    },
+    "updated_by": {
+      "type": "string",
+      "description": "Email of user who last updated this config"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional notes about this config"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last update timestamp"
+    }
+  },
+  "required": [
+    "key"
+  ]
+}

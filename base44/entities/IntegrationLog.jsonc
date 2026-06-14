@@ -1,0 +1,94 @@
+{
+  "name": "IntegrationLog",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df \u05e9\u05d1\u05d9\u05e6\u05e2"
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "arbox"
+      ],
+      "description": "\u05e1\u05e4\u05e7 \u05d4\u05d0\u05d9\u05e0\u05d8\u05d2\u05e8\u05e6\u05d9\u05d4"
+    },
+    "action": {
+      "type": "string",
+      "description": "\u05e1\u05d5\u05d2 \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4 (test_connection / import_members)"
+    },
+    "status": {
+      "type": "number",
+      "default": 0,
+      "description": "HTTP Status Code"
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "\u05d4\u05d0\u05dd \u05d4\u05e4\u05e2\u05d5\u05dc\u05d4 \u05d4\u05e6\u05dc\u05d9\u05d7\u05d4"
+    },
+    "error": {
+      "type": "string",
+      "default": "",
+      "description": "\u05d4\u05d5\u05d3\u05e2\u05ea \u05e9\u05d2\u05d9\u05d0\u05d4"
+    },
+    "errorCode": {
+      "type": "number",
+      "description": "\u05e7\u05d5\u05d3 \u05e9\u05d2\u05d9\u05d0\u05d4 \u05de\u05d4\u05e1\u05e4\u05e7"
+    },
+    "uniqueIdentifier": {
+      "type": "string",
+      "default": "",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d9\u05d9\u05d7\u05d5\u05d3\u05d9 \u05de\u05d4\u05e1\u05e4\u05e7"
+    },
+    "requestId": {
+      "type": "string",
+      "default": "",
+      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d1\u05e7\u05e9\u05d4"
+    },
+    "endpoint": {
+      "type": "string",
+      "default": "",
+      "description": "\u05d4-URL \u05e9\u05e0\u05e7\u05e8\u05d0 (\u05dc\u05dc\u05d0 API KEY)"
+    },
+    "method": {
+      "type": "string",
+      "default": "GET",
+      "description": "\u05e9\u05d9\u05d8\u05ea \u05d4-HTTP"
+    },
+    "durationMs": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05de\u05e9\u05da \u05d4\u05e7\u05e8\u05d9\u05d0\u05d4 \u05d1\u05de\u05d9\u05dc\u05d9\u05e9\u05e0\u05d9\u05d5\u05ea"
+    },
+    "debugPayload": {
+      "type": "object",
+      "description": "\u05de\u05d9\u05d3\u05e2 \u05d3\u05d9\u05d1\u05d0\u05d2 \u05e0\u05d5\u05e1\u05e3 (\u05e2\u05d3 2KB)"
+    },
+    "hint": {
+      "type": "string",
+      "default": "",
+      "description": "\u05d4\u05e6\u05e2\u05d4 \u05dc\u05e4\u05ea\u05e8\u05d5\u05df \u05d4\u05d1\u05e2\u05d9\u05d4"
+    },
+    "fetched": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05db\u05de\u05d4 \u05e8\u05e9\u05d5\u05de\u05d5\u05ea \u05e0\u05de\u05e9\u05db\u05d5"
+    },
+    "imported": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05db\u05de\u05d4 \u05e8\u05e9\u05d5\u05de\u05d5\u05ea \u05d9\u05d5\u05d1\u05d0\u05d5"
+    },
+    "updated": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05db\u05de\u05d4 \u05e8\u05e9\u05d5\u05de\u05d5\u05ea \u05e2\u05d5\u05d3\u05db\u05e0\u05d5"
+    }
+  },
+  "required": [
+    "coach_email",
+    "provider",
+    "action",
+    "ok"
+  ]
+}

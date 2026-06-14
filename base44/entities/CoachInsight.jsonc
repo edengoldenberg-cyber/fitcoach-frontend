@@ -1,0 +1,40 @@
+{
+  "name": "CoachInsight",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string"
+    },
+    "insight_type": {
+      "type": "string",
+      "enum": [
+        "plateau",
+        "low_compliance",
+        "rapid_weight_loss",
+        "no_reporting",
+        "low_protein",
+        "workout_stagnation"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ]
+    },
+    "message": {
+      "type": "string"
+    },
+    "resolved": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "trainee_email",
+    "insight_type",
+    "message"
+  ]
+}

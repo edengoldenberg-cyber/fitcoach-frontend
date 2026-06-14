@@ -1,0 +1,85 @@
+{
+  "name": "WhatsAppAutomationRule",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": false
+    },
+    "trigger_type": {
+      "type": "string",
+      "enum": [
+        "lead_created",
+        "trainee_created",
+        "trainee_missing_meal",
+        "trainee_missing_workout",
+        "trainee_missing_water",
+        "birthday",
+        "trial_day1",
+        "trial_day3",
+        "custom_schedule",
+        "broadcast_manual"
+      ]
+    },
+    "schedule_timezone": {
+      "type": "string",
+      "default": "Asia/Jerusalem"
+    },
+    "schedule_send_at": {
+      "type": "string",
+      "description": "HH:MM time to send"
+    },
+    "schedule_allowed_days": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "0=Sun ... 6=Sat. Empty = all days"
+    },
+    "audience_target_type": {
+      "type": "string",
+      "enum": [
+        "leads",
+        "trainees",
+        "external_trainees",
+        "all"
+      ],
+      "default": "trainees"
+    },
+    "audience_filters": {
+      "type": "object",
+      "description": "Optional JSON filters"
+    },
+    "template_key": {
+      "type": "string"
+    },
+    "throttle_max_per_day": {
+      "type": "number",
+      "default": 3
+    },
+    "throttle_min_minutes": {
+      "type": "number",
+      "default": 60
+    },
+    "last_triggered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "trigger_count": {
+      "type": "number",
+      "default": 0
+    }
+  },
+  "required": [
+    "coach_email",
+    "name",
+    "trigger_type",
+    "template_key"
+  ]
+}

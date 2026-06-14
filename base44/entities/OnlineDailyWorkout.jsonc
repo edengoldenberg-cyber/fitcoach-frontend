@@ -1,0 +1,40 @@
+{
+  "name": "OnlineDailyWorkout",
+  "type": "object",
+  "properties": {
+    "assignment_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05e9\u05d9\u05d5\u05da"
+    },
+    "trainee_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05ea\u05d0\u05de\u05df"
+    },
+    "coach_id": {
+      "type": "string",
+      "description": "FK \u05dc\u05de\u05d0\u05de\u05df"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "\u05de\u05d9\u05d9\u05dc \u05d4\u05de\u05d0\u05de\u05df"
+    },
+    "workout_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    },
+    "title": {
+      "type": "string",
+      "description": "\u05db\u05d5\u05ea\u05e8\u05ea \u05d4\u05d0\u05d9\u05de\u05d5\u05df"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "coach_email",
+    "workout_date"
+  ]
+}

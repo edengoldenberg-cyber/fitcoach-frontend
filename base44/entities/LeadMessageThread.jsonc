@@ -1,0 +1,109 @@
+{
+  "name": "LeadMessageThread",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "channel": {
+      "type": "string",
+      "enum": [
+        "WHATSAPP"
+      ],
+      "default": "WHATSAPP"
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "INBOUND",
+        "OUTBOUND"
+      ]
+    },
+    "senderType": {
+      "type": "string",
+      "enum": [
+        "SYSTEM",
+        "LEAD",
+        "STAFF"
+      ]
+    },
+    "messageText": {
+      "type": "string"
+    },
+    "messageTimestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "providerMessageId": {
+      "type": "string"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "Active Flow sessionId at the time this inbound was received \u2014 set on save for FLOW-owned leads"
+    },
+    "aiProcessed": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this inbound message was already processed by AI agent \u2014 prevents duplicate AI replies"
+    },
+    "replyGenerationStartedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reply generation started (idempotency lock)"
+    },
+    "replyGeneratedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reply was successfully generated"
+    },
+    "replySentAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When reply was confirmed sent by provider"
+    },
+    "replyProducer": {
+      "type": "string",
+      "enum": [
+        "aiConversationAgent",
+        "salesFlowRunner",
+        "manual"
+      ],
+      "description": "Which system generated the reply"
+    },
+    "replyMessageId": {
+      "type": "string",
+      "description": "ID of the outbound reply message"
+    },
+    "replyQueueId": {
+      "type": "string",
+      "description": "ID of the WhatsAppMessageQueue record"
+    },
+    "replyStatus": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "generated",
+        "queued",
+        "sending",
+        "sent",
+        "failed",
+        "skipped"
+      ],
+      "default": "pending",
+      "description": "Current reply lifecycle status"
+    },
+    "skipReason": {
+      "type": "string",
+      "description": "Why this inbound was explicitly skipped (FLOW_OWNER_BUT_NO_ACTIVE_SESSION, FLOW_NO_ENGINE_CLAIMED, NO_ENGINE_CLAIMED, OPT_OUT, etc.)"
+    }
+  },
+  "required": [
+    "leadId",
+    "direction",
+    "messageText"
+  ]
+}

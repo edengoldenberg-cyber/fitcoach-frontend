@@ -1,0 +1,35 @@
+{
+  "name": "ShapeLeagueMissionCompletion",
+  "type": "object",
+  "properties": {
+    "mission_id": {
+      "type": "string"
+    },
+    "trainee_id": {
+      "type": "string"
+    },
+    "trainee_email": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completion_value": {
+      "type": "number",
+      "description": "Actual value achieved"
+    },
+    "bonus_points_awarded": {
+      "type": "number"
+    },
+    "verified": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "required": [
+    "mission_id",
+    "trainee_id",
+    "trainee_email"
+  ]
+}

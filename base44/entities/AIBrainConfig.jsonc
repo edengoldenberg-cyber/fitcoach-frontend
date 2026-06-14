@@ -1,0 +1,317 @@
+{
+  "name": "AIBrainConfig",
+  "type": "object",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "Coach email owner"
+    },
+    "businessName": {
+      "type": "string",
+      "description": "Business name"
+    },
+    "businessType": {
+      "type": "string",
+      "description": "Type of business"
+    },
+    "businessDescription": {
+      "type": "string",
+      "description": "Full business description"
+    },
+    "businessLocation": {
+      "type": "string",
+      "description": "Location and address"
+    },
+    "openingHours": {
+      "type": "string",
+      "description": "Opening hours"
+    },
+    "parkingInfo": {
+      "type": "string",
+      "description": "Parking information"
+    },
+    "howToReach": {
+      "type": "string",
+      "description": "How to reach / directions"
+    },
+    "servicesOffered": {
+      "type": "string",
+      "description": "All services offered"
+    },
+    "pricingInfo": {
+      "type": "string",
+      "description": "Pricing and packages"
+    },
+    "offersAndPromotions": {
+      "type": "string",
+      "description": "Current offers and promotions"
+    },
+    "conversationGoal": {
+      "type": "string",
+      "description": "What the AI should achieve in each conversation"
+    },
+    "faq": {
+      "type": "string",
+      "description": "Frequently asked questions and answers"
+    },
+    "salesRules": {
+      "type": "string",
+      "description": "Sales rules and guidelines"
+    },
+    "objectionHandling": {
+      "type": "string",
+      "description": "How to handle common objections"
+    },
+    "escalationRules": {
+      "type": "string",
+      "description": "When and how to escalate to a human"
+    },
+    "toneOfVoice": {
+      "type": "string",
+      "description": "Communication tone and style"
+    },
+    "importantLinks": {
+      "type": "string",
+      "description": "Important URLs and links"
+    },
+    "extraBusinessKnowledge": {
+      "type": "string",
+      "description": "Any additional business knowledge"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": false,
+      "description": "Is this brain config active"
+    },
+    "personalityTone": {
+      "type": "string",
+      "enum": [
+        "friendly_casual",
+        "professional",
+        "warm_coaching",
+        "enthusiastic",
+        "direct"
+      ],
+      "default": "warm_coaching"
+    },
+    "warmthLevel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 4
+    },
+    "pushinessLevel": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 5,
+      "default": 2
+    },
+    "responseLengthTarget": {
+      "type": "string",
+      "enum": [
+        "very_short_1_2_lines",
+        "short_2_4_lines",
+        "medium_4_6_lines"
+      ],
+      "default": "short_2_4_lines"
+    },
+    "conversationRules": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "agentName": {
+      "type": "string",
+      "default": ""
+    },
+    "trialOffer": {
+      "type": "string",
+      "default": ""
+    },
+    "membershipPlans": {
+      "type": "string",
+      "default": ""
+    },
+    "mode1Goal": {
+      "type": "string",
+      "default": ""
+    },
+    "mode2CTAMessage": {
+      "type": "string",
+      "default": ""
+    },
+    "whatsappSaleTriggers": {
+      "type": "string",
+      "default": ""
+    },
+    "agentGender": {
+      "type": "string",
+      "enum": [
+        "female",
+        "male"
+      ],
+      "default": "female"
+    },
+    "agentIntroEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "agentIntroTemplate": {
+      "type": "string",
+      "default": ""
+    },
+    "waTriggerList": {
+      "type": "string",
+      "default": ""
+    },
+    "defaultConvMode": {
+      "type": "string",
+      "enum": [
+        "call_lead",
+        "whatsapp_sell"
+      ],
+      "default": "call_lead"
+    },
+    "waSalesModeEnabled": {
+      "type": "boolean",
+      "default": false
+    },
+    "autoSwitchOnTrigger": {
+      "type": "boolean",
+      "default": false
+    },
+    "returnToCallMode": {
+      "type": "boolean",
+      "default": false
+    },
+    "maxLinesPerMsg": {
+      "type": "string",
+      "default": "2"
+    },
+    "oneIdeaPerMsg": {
+      "type": "boolean",
+      "default": false
+    },
+    "alwaysEndWithQuestion": {
+      "type": "boolean",
+      "default": false
+    },
+    "preferShortStyle": {
+      "type": "boolean",
+      "default": false
+    },
+    "avoidLongParagraphs": {
+      "type": "boolean",
+      "default": false
+    },
+    "avoidRepeatAnswers": {
+      "type": "boolean",
+      "default": false
+    },
+    "mainObjective": {
+      "type": "string",
+      "enum": [
+        "call",
+        "trial",
+        "link"
+      ],
+      "default": "call"
+    },
+    "defaultModePush": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium"
+      ],
+      "default": "medium"
+    },
+    "waModepush": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high"
+      ],
+      "default": "medium"
+    },
+    "showPricesWhen": {
+      "type": "string",
+      "enum": [
+        "on_ask",
+        "after_interest",
+        "always"
+      ],
+      "default": "on_ask"
+    },
+    "mentionTrialAuto": {
+      "type": "boolean",
+      "default": false
+    },
+    "ctaAfterPrice": {
+      "type": "string",
+      "default": ""
+    },
+    "objectionExpensive": {
+      "type": "string",
+      "default": ""
+    },
+    "objectionNoTime": {
+      "type": "string",
+      "default": ""
+    },
+    "objectionNoCall": {
+      "type": "string",
+      "default": ""
+    },
+    "objectionSendDetails": {
+      "type": "string",
+      "default": ""
+    },
+    "behaviorRules_hardRules": {
+      "type": "string",
+      "default": "",
+      "description": "Non-negotiable AI behavior rules"
+    },
+    "behaviorRules_responseStructure": {
+      "type": "string",
+      "default": "",
+      "description": "How each reply should be structured"
+    },
+    "behaviorRules_salesStrategy": {
+      "type": "string",
+      "default": "",
+      "description": "How AI should move the conversation toward conversion"
+    },
+    "behaviorRules_phoneStrategy": {
+      "type": "string",
+      "default": "",
+      "description": "When to lead to a phone call vs WhatsApp"
+    },
+    "behaviorRules_pricingRules": {
+      "type": "string",
+      "default": "",
+      "description": "When and how pricing is allowed to be revealed"
+    },
+    "behaviorRules_toneGuardrails": {
+      "type": "string",
+      "default": "",
+      "description": "How AI should sound and behave tonally"
+    },
+    "behaviorRules_contextRules": {
+      "type": "string",
+      "default": "",
+      "description": "How AI uses chat history and Flow context"
+    },
+    "behaviorRules_channelRules": {
+      "type": "string",
+      "default": "",
+      "description": "When to stay in WhatsApp vs push for a call"
+    }
+  },
+  "required": [
+    "coach_email",
+    "businessName"
+  ]
+}

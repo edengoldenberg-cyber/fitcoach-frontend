@@ -1,0 +1,177 @@
+{
+  "name": "GlobalRoutingPolicy",
+  "type": "object",
+  "description": "Global routing policy configuration for conversation engine control. Used ONLY for scenarios with no existing config home (WA-only, fallback, timeout ownership). Does NOT duplicate AIBrainConfig, SalesConversationFlow, or Nudge config.",
+  "properties": {
+    "coach_email": {
+      "type": "string",
+      "description": "Coach email owner"
+    },
+    "scenarioOverrides": {
+      "type": "array",
+      "description": "Per-scenario routing overrides. Each item configures one routing scenario.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "Unique scenario ID e.g. new_lead_inbound, flow_freetext, etc."
+          },
+          "primaryEngine": {
+            "type": "string",
+            "enum": [
+              "AI",
+              "FLOW",
+              "SCRIPT",
+              "NUDGE",
+              "MANUAL"
+            ],
+            "description": "Engine that should respond first"
+          },
+          "fallbackEngine": {
+            "type": "string",
+            "enum": [
+              "AI",
+              "FLOW",
+              "SCRIPT",
+              "NUDGE",
+              "MANUAL",
+              "NONE"
+            ],
+            "description": "Engine to use if primary fails or is unavailable"
+          },
+          "enabled": {
+            "type": "boolean",
+            "default": true
+          },
+          "notes": {
+            "type": "string",
+            "description": "Human-readable explanation of this scenario config"
+          }
+        }
+      }
+    },
+    "waOnlyPolicy": {
+      "type": "object",
+      "description": "Policy for leads who prefer WhatsApp (no phone calls)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "aiContinues": {
+          "type": "boolean",
+          "default": true,
+          "description": "AI continues conversation instead of pushing a call CTA"
+        },
+        "flowAdaptation": {
+          "type": "string",
+          "enum": [
+            "pause",
+            "continue",
+            "adapt"
+          ],
+          "default": "continue",
+          "description": "How Flow behaves for WA-only leads"
+        },
+        "scriptAdaptation": {
+          "type": "string",
+          "enum": [
+            "suppress_call_cta",
+            "full_adapt",
+            "unchanged"
+          ],
+          "default": "suppress_call_cta"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "fallbackPolicy": {
+      "type": "object",
+      "description": "What happens when an engine fails or has no content to serve",
+      "properties": {
+        "ifAIFails": {
+          "type": "string",
+          "enum": [
+            "FLOW",
+            "SCRIPT",
+            "MANUAL",
+            "SKIP"
+          ],
+          "default": "SKIP"
+        },
+        "ifFlowNoNextStep": {
+          "type": "string",
+          "enum": [
+            "AI",
+            "MANUAL",
+            "STOP"
+          ],
+          "default": "STOP"
+        },
+        "ifScriptNoStage": {
+          "type": "string",
+          "enum": [
+            "AI",
+            "MANUAL",
+            "STOP"
+          ],
+          "default": "AI"
+        },
+        "ifNoEngineClaims": {
+          "type": "string",
+          "enum": [
+            "AI",
+            "MANUAL",
+            "SKIP"
+          ],
+          "default": "SKIP"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "timeoutOwnership": {
+      "type": "object",
+      "description": "Who owns follow-up when lead does not respond",
+      "properties": {
+        "primaryOwner": {
+          "type": "string",
+          "enum": [
+            "FLOW",
+            "NUDGE",
+            "AI",
+            "MANUAL"
+          ],
+          "default": "NUDGE"
+        },
+        "flowTimeoutMaxRetries": {
+          "type": "number",
+          "default": 1
+        },
+        "nudgeMaxRetries": {
+          "type": "number",
+          "default": 4
+        },
+        "afterMaxRetriesAction": {
+          "type": "string",
+          "enum": [
+            "STOP",
+            "MANUAL",
+            "AI"
+          ],
+          "default": "STOP"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "required": [
+    "coach_email"
+  ]
+}

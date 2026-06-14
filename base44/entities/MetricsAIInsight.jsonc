@@ -1,0 +1,64 @@
+{
+  "name": "MetricsAIInsight",
+  "type": "object",
+  "properties": {
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "date_generated": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this insight was generated"
+    },
+    "summary_text": {
+      "type": "string",
+      "description": "2-4 sentence summary of recent trends"
+    },
+    "key_changes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Bullet points of key changes"
+    },
+    "metric_explanations": {
+      "type": "object",
+      "description": "Explanations for each available metric"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "General recommendations"
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "stable",
+          "improving",
+          "outlier",
+          "rapid_change",
+          "low_data"
+        ]
+      },
+      "description": "Status flags"
+    },
+    "disclaimer_included": {
+      "type": "boolean",
+      "default": true
+    },
+    "data_snapshot": {
+      "type": "object",
+      "description": "Snapshot of metrics data used for analysis"
+    }
+  },
+  "required": [
+    "trainee_email",
+    "summary_text",
+    "disclaimer_included"
+  ]
+}

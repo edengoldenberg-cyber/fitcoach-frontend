@@ -1,0 +1,49 @@
+{
+  "name": "ShapeLeagueWeeklyEvent",
+  "type": "object",
+  "properties": {
+    "week_start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "running_week",
+        "hydration_week",
+        "streak_week",
+        "group_week",
+        "combo_week"
+      ],
+      "description": "Type of weekly event"
+    },
+    "title_he": {
+      "type": "string"
+    },
+    "emoji": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "point_multiplier": {
+      "type": "number",
+      "default": 1.5,
+      "description": "Points multiplier for qualifying activities"
+    },
+    "target_activity": {
+      "type": "string",
+      "description": "Activity that gets multiplied"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    }
+  },
+  "required": [
+    "week_start_date",
+    "event_type",
+    "title_he",
+    "emoji"
+  ]
+}

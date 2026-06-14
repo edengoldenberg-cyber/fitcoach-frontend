@@ -1,0 +1,44 @@
+{
+  "name": "AccessCode",
+  "type": "object",
+  "properties": {
+    "trainee_user_id": {
+      "type": "string",
+      "description": "ID of the trainee user"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee for quick lookup"
+    },
+    "code_hash": {
+      "type": "string",
+      "description": "Hashed access code (6 digits)"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Expiration time (default 24 hours)"
+    },
+    "used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the code was used (one-time use)"
+    },
+    "created_by_coach_email": {
+      "type": "string",
+      "description": "Coach who created this code"
+    },
+    "attempts_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Number of failed attempts"
+    }
+  },
+  "required": [
+    "trainee_user_id",
+    "trainee_email",
+    "code_hash",
+    "expires_at",
+    "created_by_coach_email"
+  ]
+}

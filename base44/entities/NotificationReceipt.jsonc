@@ -1,0 +1,32 @@
+{
+  "name": "NotificationReceipt",
+  "type": "object",
+  "properties": {
+    "notification_id": {
+      "type": "string",
+      "description": "ID of the notification"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Email of the trainee"
+    },
+    "delivered_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "read_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the trainee read the notification"
+    },
+    "action_taken_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the trainee clicked the CTA"
+    }
+  },
+  "required": [
+    "notification_id",
+    "trainee_email"
+  ]
+}

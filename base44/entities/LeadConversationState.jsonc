@@ -1,0 +1,87 @@
+{
+  "name": "LeadConversationState",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "flowId": {
+      "type": "string",
+      "description": "FK to SalesConversationFlow"
+    },
+    "flowName": {
+      "type": "string",
+      "description": "Name of the flow (denormalized for display)"
+    },
+    "sessionId": {
+      "type": "string",
+      "description": "Unique ID for this conversation session (new on each restart)"
+    },
+    "currentStepId": {
+      "type": "string",
+      "description": "ID of the current step waiting for reply"
+    },
+    "currentStepOrder": {
+      "type": "number",
+      "description": "Order number of current step"
+    },
+    "currentStepMessage": {
+      "type": "string",
+      "description": "Text of the current step message (denormalized)"
+    },
+    "totalSteps": {
+      "type": "number",
+      "description": "Total steps in the flow"
+    },
+    "isActive": {
+      "type": "boolean",
+      "default": true,
+      "description": "Is this conversation flow still active"
+    },
+    "flowStatus": {
+      "type": "string",
+      "enum": [
+        "ACTIVE",
+        "PAUSED",
+        "COMPLETED",
+        "STOPPED"
+      ],
+      "default": "ACTIVE",
+      "description": "Current status of the flow"
+    },
+    "lastFlowActionAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Last time a flow action occurred"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "waitingForReply": {
+      "type": "boolean",
+      "default": false,
+      "description": "TIMEOUT: True when flow is waiting for lead reply at current step"
+    },
+    "lastStepSentAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "TIMEOUT: When the current step was first sent"
+    },
+    "nextTimeoutAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "TIMEOUT: When the next timeout check should fire (calculated from lastStepSentAt + replyTimeoutMinutes)"
+    },
+    "followupsSentInStep": {
+      "type": "number",
+      "default": 0,
+      "description": "TIMEOUT: How many follow-up messages have been sent for the current step"
+    }
+  },
+  "required": [
+    "leadId",
+    "flowId",
+    "currentStepId"
+  ]
+}

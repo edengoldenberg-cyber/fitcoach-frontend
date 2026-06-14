@@ -1,0 +1,144 @@
+{
+  "name": "DailyWorkoutGroup",
+  "type": "object",
+  "properties": {
+    "date": {
+      "type": "string",
+      "format": "date",
+      "description": "Date of the workout (YYYY-MM-DD)"
+    },
+    "coach_email": {
+      "type": "string",
+      "description": "Coach who created this group"
+    },
+    "title": {
+      "type": "string",
+      "description": "Group title (e.g., 'Daily Strength Challenge')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of today's workout theme"
+    },
+    "workouts": {
+      "type": "array",
+      "description": "2-3 workout options",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique ID for this option (uuid or index)"
+          },
+          "title": {
+            "type": "string",
+            "description": "Workout option title (e.g., 'Beginner', 'Intermediate', 'Advanced')"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "strength",
+              "functional",
+              "pilates",
+              "cardio",
+              "mobility",
+              "mixed"
+            ],
+            "description": "Workout type"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "beginner",
+              "intermediate",
+              "advanced"
+            ],
+            "description": "Difficulty level"
+          },
+          "duration_minutes": {
+            "type": "number",
+            "description": "Estimated duration in minutes"
+          },
+          "equipment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Equipment needed (e.g., ['dumbbells', 'mat', 'jump rope'])"
+          },
+          "exercises": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "sets": {
+                  "type": "number"
+                },
+                "reps": {
+                  "type": "string"
+                },
+                "rest_seconds": {
+                  "type": "number"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "List of exercises"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Additional notes for trainee"
+          },
+          "effort_score": {
+            "type": "number",
+            "description": "Calculated effort score 1-10"
+          },
+          "effort_label": {
+            "type": "string",
+            "enum": [
+              "\u05e7\u05dc",
+              "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9",
+              "\u05e7\u05e9\u05d4",
+              "\u05e2\u05e6\u05d9\u05dd \u05de\u05d0\u05d5\u05d3"
+            ],
+            "description": "Hebrew effort label"
+          },
+          "effort_calculated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When effort was last calculated"
+          },
+          "effort_override": {
+            "type": "boolean",
+            "description": "Coach manually overrode effort score"
+          }
+        }
+      }
+    },
+    "published": {
+      "type": "boolean",
+      "default": false,
+      "description": "Published to trainees"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When published"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When created"
+    }
+  },
+  "required": [
+    "date",
+    "coach_email",
+    "title",
+    "workouts"
+  ]
+}

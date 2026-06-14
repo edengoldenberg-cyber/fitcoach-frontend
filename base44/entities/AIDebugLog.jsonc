@@ -1,0 +1,33 @@
+{
+  "name": "AIDebugLog",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "inboundMessageId": {
+      "type": "string",
+      "description": "FK to LeadMessageThread inbound record"
+    },
+    "debugData": {
+      "type": "object",
+      "description": "Full debug snapshot of AI execution"
+    },
+    "messageText": {
+      "type": "string",
+      "description": "Inbound message text (denormalized for quick lookup)"
+    },
+    "replyText": {
+      "type": "string",
+      "description": "AI reply text (denormalized)"
+    }
+  },
+  "required": [
+    "leadId",
+    "coach_email"
+  ]
+}

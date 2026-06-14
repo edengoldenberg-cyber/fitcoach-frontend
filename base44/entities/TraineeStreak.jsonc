@@ -1,0 +1,37 @@
+{
+  "name": "TraineeStreak",
+  "type": "object",
+  "properties": {
+    "trainee_id": {
+      "type": "string",
+      "description": "Trainee ID"
+    },
+    "trainee_email": {
+      "type": "string",
+      "description": "Trainee email"
+    },
+    "current_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "Current consecutive active days"
+    },
+    "best_streak": {
+      "type": "number",
+      "default": 0,
+      "description": "All-time best streak"
+    },
+    "last_active_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Last date with any activity (YYYY-MM-DD)"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "trainee_id",
+    "trainee_email"
+  ]
+}

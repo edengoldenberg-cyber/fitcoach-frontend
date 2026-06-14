@@ -1,0 +1,41 @@
+{
+  "name": "LeadNudgeState",
+  "type": "object",
+  "properties": {
+    "leadId": {
+      "type": "string",
+      "description": "FK to Lead"
+    },
+    "coach_email": {
+      "type": "string"
+    },
+    "lastNudgeStep": {
+      "type": "number",
+      "default": 0,
+      "description": "Last nudge step sent (0=none, 1-4=step number)"
+    },
+    "lastNudgeAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When last nudge was sent"
+    },
+    "nudgeBaseline": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The outbound timestamp from which nudge delay is calculated"
+    },
+    "stopped": {
+      "type": "boolean",
+      "default": false,
+      "description": "Nudge sequence permanently stopped for this lead (reply received, flow active, etc.)"
+    },
+    "stopReason": {
+      "type": "string",
+      "description": "Why nudge was stopped"
+    }
+  },
+  "required": [
+    "leadId",
+    "coach_email"
+  ]
+}

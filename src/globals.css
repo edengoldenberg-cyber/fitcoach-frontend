@@ -1,0 +1,207 @@
+css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  
+  /* FitCoach Pro Design System */
+  --primary-brand: #79DBD6;
+  --primary-dark: #5BC5C0;
+  --success-green: #10b981;
+  --danger-red: #ef4444;
+  --warning-amber: #f59e0b;
+  
+  /* Spacing System */
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  
+  /* Border Radius */
+  --radius-input: 10px;
+  --radius-card: 16px;
+  --radius-modal: 18px;
+  
+  /* Shadows */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 4px 16px rgba(0, 0, 0, 0.1);
+  --shadow-button: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Mobile-first responsive improvements */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  
+  /* Ensure safe area for iOS notch */
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  /* Prevent horizontal scroll on mobile */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Better touch targets (min 44px) */
+  button, a {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@layer components {
+  /* Premium Typography */
+  .title-large {
+    @apply text-2xl sm:text-3xl font-bold text-slate-900 leading-tight;
+  }
+  
+  .title-medium {
+    @apply text-xl sm:text-2xl font-bold text-slate-800 leading-snug;
+  }
+  
+  .body-text {
+    @apply text-base text-slate-700 leading-relaxed;
+  }
+  
+  .small-text {
+    @apply text-sm text-slate-600;
+  }
+  
+  .number-display {
+    @apply text-2xl font-bold text-slate-900 tabular-nums;
+  }
+  
+  /* Premium Cards */
+  .card-premium {
+    @apply bg-white rounded-2xl p-6 shadow-sm border-2 border-slate-100;
+    box-shadow: var(--shadow-card);
+  }
+  
+  .card-premium:hover {
+    box-shadow: var(--shadow-card-hover);
+    @apply border-slate-200;
+  }
+  
+  /* Premium Inputs */
+  .input-premium {
+    @apply h-12 px-4 text-base border-2 border-slate-200 rounded-xl focus:border-teal-400 focus:ring-2 focus:ring-teal-100 transition-all;
+  }
+  
+  /* Premium Buttons */
+  .btn-primary {
+    @apply h-12 px-6 text-base font-semibold text-white rounded-xl transition-all shadow-sm;
+    background-color: var(--primary-brand);
+    box-shadow: var(--shadow-button);
+  }
+  
+  .btn-primary:hover:not(:disabled) {
+    background-color: var(--primary-dark);
+    @apply shadow-md;
+  }
+  
+  .btn-primary:disabled {
+    @apply opacity-50 cursor-not-allowed;
+  }
+  
+  .btn-success {
+    @apply h-12 px-6 text-base font-semibold text-white rounded-xl transition-all shadow-sm;
+    background-color: var(--success-green);
+    box-shadow: var(--shadow-button);
+  }
+  
+  .btn-success:hover:not(:disabled) {
+    @apply bg-green-600 shadow-md;
+  }
+  
+  .btn-secondary {
+    @apply h-12 px-6 text-base font-semibold border-2 border-slate-300 text-slate-700 rounded-xl bg-white hover:bg-slate-50 transition-all;
+  }
+  
+  .btn-danger {
+    @apply h-12 px-6 text-base font-semibold text-white rounded-xl transition-all shadow-sm;
+    background-color: var(--danger-red);
+  }
+  
+  .btn-danger:hover:not(:disabled) {
+    @apply bg-red-600 shadow-md;
+  }
+  
+  /* Spacing Utilities */
+  .spacing-section {
+    margin-bottom: var(--space-lg);
+  }
+  
+  .spacing-card-gap {
+    gap: var(--space-md);
+  }
+  
+  /* Premium Empty State */
+  .empty-state {
+    @apply flex flex-col items-center justify-center py-16 px-6 text-center;
+  }
+  
+  .empty-state-icon {
+    @apply w-20 h-20 text-slate-300 mb-4;
+  }
+  
+  .empty-state-title {
+    @apply text-xl font-bold text-slate-700 mb-2;
+  }
+  
+  .empty-state-description {
+    @apply text-slate-500 max-w-sm;
+  }
+}
+
+/* 
+PWA Manifest - Copy to public/manifest.json:
+{
+  "name": "FIT COACH PRO",
+  "short_name": "FIT COACH",
+  "description": "מערכת ניהול אימונים ותזונה מקצועית",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#79DBD6",
+  "orientation": "portrait",
+  "lang": "he",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
+
+PWA Icons Instructions:
+1. Create 192x192 icon at public/icon-192.png
+2. Create 512x512 icon at public/icon-512.png
+Design: Black background (#000000), Teal text/icon (#79DBD6), "FCP" letters or minimalist fitness icon
+*/
