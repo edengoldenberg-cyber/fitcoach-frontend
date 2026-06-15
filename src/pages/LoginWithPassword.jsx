@@ -1,19 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
-import { Loader2, AlertCircle, Lock, Mail, Key } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Lock, Mail, Key } from 'lucide-react';
 
 export default function LoginWithPassword() {
   const navigate = useNavigate();
+  const emailRef = useRef(null);
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Forgot-password sub-flow
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -45,7 +53,8 @@ export default function LoginWithPassword() {
         return;
       }
 
-      toast.success(`ברוך הבא${user.full_name ? ' ' + user.full_name.split(' ')[0] : ''}!`);
+      // Welcome toast — requires <Toaster /> in app root; silently skipped if not mounted
+      try { (await import('sonner')).toast.success(`ברוך הבא${user.full_name ? ' ' + user.full_name.split(' ')[0] : ''}!`); } catch { /* */ }
 
       // Role-based redirect
       if (user.role === 'admin') {
@@ -81,17 +90,31 @@ export default function LoginWithPassword() {
     }
   };
 
-  const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      toast.error('הזן אימייל תחילה');
+  const enterForgotMode = () => {
+    // Read the real DOM value to handle browser autofill (React state may be stale)
+    const domEmail = emailRef.current?.value || email;
+    setForgotEmail(domEmail);
+    setForgotSuccess(false);
+    setForgotError('');
+    setForgotMode(true);
+  };
+
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    const target = forgotEmail.toLowerCase().trim();
+    if (!target) {
+      setForgotError('הזן כתובת אימייל');
       return;
     }
+    setForgotLoading(true);
+    setForgotError('');
     try {
-      await base44.auth.resetPasswordRequest(email.toLowerCase().trim());
-      toast.success('אם האימייל קיים במערכת, נשלח אליו קישור לאיפוס סיסמה.');
+      await base44.auth.resetPasswordRequest(target);
     } catch (_) {
-      // Generic message to avoid email enumeration
-      toast.success('אם האימייל קיים במערכת, נשלח אליו קישור לאיפוס סיסמה.');
+      // Always show success to avoid email enumeration
+    } finally {
+      setForgotLoading(false);
+      setForgotSuccess(true);
     }
   };
 
@@ -124,6 +147,7 @@ export default function LoginWithPassword() {
                 <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
                   id="email"
+                  ref={emailRef}
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -173,12 +197,72 @@ export default function LoginWithPassword() {
 
             <button
               type="button"
-              onClick={handleForgotPassword}
+              onClick={enterForgotMode}
               className="w-full text-sm text-slate-500 hover:text-slate-700 text-center"
             >
               שכחתי סיסמה
             </button>
           </form>
+
+          {/* ── Forgot-password panel ── */}
+          {forgotMode && (
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              {forgotSuccess ? (
+                <div className="flex flex-col items-center gap-3 py-2">
+                  <CheckCircle2 className="w-8 h-8 text-teal-500" />
+                  <p className="text-sm text-slate-700 text-center">
+                    אם האימייל קיים במערכת, נשלח אליו קישור לאיפוס סיסמה.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setForgotMode(false); setForgotSuccess(false); }}
+                    className="text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    חזור לכניסה
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotSubmit} className="space-y-3">
+                  <p className="text-sm font-medium text-slate-700">שלח קישור לאיפוס סיסמה</p>
+                  <div className="relative">
+                    <Mail className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="email@example.com"
+                      required
+                      className="pr-9"
+                      dir="ltr"
+                    />
+                  </div>
+                  {forgotError && (
+                    <p className="text-xs text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-3 h-3" />{forgotError}
+                    </p>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="flex-1 h-9 text-sm text-white font-semibold"
+                      style={{ backgroundColor: '#79DBD6' }}
+                    >
+                      {forgotLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'שלח קישור'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 text-sm"
+                      onClick={() => setForgotMode(false)}
+                    >
+                      ביטול
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
