@@ -39,7 +39,7 @@ export default function CopyWorkoutDialog({ open, onClose, workout }) {
           throw new Error('יש לבחור מתאמן ותאריך');
         }
 
-        addLog('info', 'workout', 'COPY_WORKOUT_START', { trainee: selectedTrainee, date: targetDate });
+        addLog('COPY_WORKOUT_START', { trainee: selectedTrainee, date: targetDate }, 'info');
 
         const response = await base44.functions.invoke('copyWorkoutToTrainee', {
           trainee_email: selectedTrainee,
@@ -51,7 +51,7 @@ export default function CopyWorkoutDialog({ open, onClose, workout }) {
           throw new Error(response.data?.message || 'Copy failed');
         }
 
-        addLog('success', 'workout', 'COPY_WORKOUT_SUCCESS', { workout_id: response.data.data?.workout_id });
+        addLog('COPY_WORKOUT_SUCCESS', { workout_id: response.data.data?.workout_id }, 'info');
         return response.data;
       } else {
         // Copy to another date (existing behavior)
@@ -59,7 +59,7 @@ export default function CopyWorkoutDialog({ open, onClose, workout }) {
           throw new Error('יש לבחור תאריך יעד');
         }
 
-        addLog('info', 'workout', 'COPY_WORKOUT_START', { target_date: targetDate });
+        addLog('COPY_WORKOUT_START', { target_date: targetDate }, 'info');
 
         const existing = await base44.entities.DailyWorkout.filter({
           coach_email: workout.coach_email,
@@ -100,7 +100,7 @@ export default function CopyWorkoutDialog({ open, onClose, workout }) {
         }
 
         const created = await base44.entities.DailyWorkout.create(newWorkout);
-        addLog('success', 'workout', 'COPY_WORKOUT_SUCCESS', { workout_id: created.id });
+        addLog('COPY_WORKOUT_SUCCESS', { workout_id: created.id }, 'info');
         return created;
       }
     },
@@ -122,7 +122,7 @@ export default function CopyWorkoutDialog({ open, onClose, workout }) {
       setCopyPerformance(false);
     },
     onError: (error) => {
-      addLog('error', 'workout', 'COPY_WORKOUT_ERROR', { error: error.message });
+      addLog('COPY_WORKOUT_ERROR', { error: error.message }, 'error');
       toast.error(`שגיאה: ${error.message}`);
     }
   });

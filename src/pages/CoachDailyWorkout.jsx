@@ -17,7 +17,7 @@ import CopyWorkoutDialog from '../components/coach/CopyWorkoutDialog';
 import DailyWorkoutTemplateEditor from '../components/coach/DailyWorkoutTemplateEditor';
 import { ExerciseSupersetBadge, getGroups, GROUP_COLORS, GROUP_LABELS, nextGroupLetter } from '../components/coach/SupersetManager';
 import { format } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { toast } from 'sonner';
 
 export default function CoachDailyWorkout() {
@@ -44,13 +44,13 @@ export default function CoachDailyWorkout() {
     queryKey: ['allExercises'],
     queryFn: async () => {
       try {
-        addLog('info', 'workout', 'LOAD_EXERCISE_BANK_START', {});
+        addLog('LOAD_EXERCISE_BANK_START', {}, 'info');
         const exercises = await base44.entities.Exercise.filter({ status: 'active' }, '-created_date', 500);
-        addLog('success', 'workout', 'LOAD_EXERCISE_BANK_COUNT', { count: exercises.length });
+        addLog('LOAD_EXERCISE_BANK_COUNT', { count: exercises.length }, 'info');
         console.log('[CoachDailyWorkout] Loaded exercises:', exercises.length);
         return exercises;
       } catch (err) {
-        addLog('error', 'workout', 'EXERCISE_BANK_LOAD_ERROR', { error: err.message });
+        addLog('EXERCISE_BANK_LOAD_ERROR', { error: err.message }, 'error');
         console.error('Failed to load exercise library:', err);
         return [];
       }
