@@ -58,7 +58,7 @@ export default function LoginWithPassword() {
 
       // Role-based redirect
       if (user.role === 'admin') {
-        navigate('/SystemControlCenter');
+        navigate('/ExecutiveDashboard');
         return;
       }
 
