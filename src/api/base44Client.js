@@ -159,6 +159,13 @@ const auth = {
 
   changePassword: (args) =>
     apiFetch('POST', '/api/auth/change-password', args),
+
+  setTraineePassword: (traineeId, password, sendInviteEmail = false) =>
+    apiFetch('POST', '/api/auth/set-trainee-password', {
+      trainee_id:        traineeId,
+      password,
+      send_invite_email: sendInviteEmail,
+    }),
 };
 
 // ─── entities ────────────────────────────────────────────────────────────────

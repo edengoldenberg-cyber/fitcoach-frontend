@@ -9,8 +9,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { 
-  ArrowRight, Utensils, Droplets, Dumbbell, Scale, Settings,
+import {
+  ArrowRight, Utensils, Droplets, Dumbbell, Scale, Settings, Lock,
   MessageSquare, Target, TrendingUp, Calendar, Plus, Send, Sparkles, User, Mail
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +25,7 @@ import CoachAIAssistant from '../components/coach/CoachAIAssistant';
 import WorkoutPerformanceAnalyzer from '../components/coach/WorkoutPerformanceAnalyzer';
 import CoachMetricsView from '../components/coach/CoachMetricsView';
 import ChangePasswordDialog from '../components/coach/ChangePasswordDialog';
+import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
 import ChangeEmailDialog from '../components/coach/ChangeEmailDialog';
 import ResendInviteDialog from '../components/coach/ResendInviteDialog';
 import PersonalAccessLinkManager from '../components/coach/PersonalAccessLinkManager';
@@ -40,6 +41,7 @@ export default function TraineeProfile() {
   const [selectedWorkout, setSelectedWorkout] = useState(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [showChangePasswordDialog, setShowChangePasswordDialog] = useState(false);
+  const [showSetPasswordDialog, setShowSetPasswordDialog] = useState(false);
   const [showChangeEmailDialog, setShowChangeEmailDialog] = useState(false);
   const [showResendInviteDialog, setShowResendInviteDialog] = useState(false);
   const [showModulesDialog, setShowModulesDialog] = useState(false);
@@ -292,13 +294,13 @@ export default function TraineeProfile() {
               <Settings className="w-4 h-4 ml-1" />
               הגדרות גישה
             </Button>
-            <Button 
-              variant="outline" 
-              onClick={() => setShowChangePasswordDialog(true)}
-              className="text-amber-600 hover:text-amber-700"
+            <Button
+              variant="outline"
+              onClick={() => setShowSetPasswordDialog(true)}
+              className="text-teal-600 hover:text-teal-700 border-teal-200"
             >
-              <Settings className="w-4 h-4 ml-1" />
-              שינוי סיסמה
+              <Lock className="w-4 h-4 ml-1" />
+              הזמן / הגדר סיסמה
             </Button>
             <Button 
               variant="outline" 
@@ -789,7 +791,16 @@ export default function TraineeProfile() {
         trainee={trainee}
       />
 
-      {/* Change Password Dialog */}
+      {/* Set Trainee Password / Invite Dialog (server-side bcrypt) */}
+      {trainee && (
+        <SetTraineePasswordDialog
+          open={showSetPasswordDialog}
+          onClose={() => setShowSetPasswordDialog(false)}
+          trainee={trainee}
+        />
+      )}
+
+      {/* Change Password Dialog (legacy — kept for backwards compat) */}
       {trainee && (
         <ChangePasswordDialog
           open={showChangePasswordDialog}
