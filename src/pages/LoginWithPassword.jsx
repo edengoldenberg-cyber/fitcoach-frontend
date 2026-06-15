@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { Loader2, AlertCircle, CheckCircle2, Lock, Mail, Key } from 'lucide-reac
 
 export default function LoginWithPassword() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const emailRef = useRef(null);
 
   const [email, setEmail] = useState('');
@@ -52,6 +54,10 @@ export default function LoginWithPassword() {
         setError('שגיאה בטעינת פרטי המשתמש');
         return;
       }
+      // Populate the ReactQuery cache immediately so AuthenticatedApp's !user
+      // guard is false before navigate fires — prevents LoginDiagnosticScreen
+      // from showing due to stale pre-login null in the ['currentUser'] cache.
+      queryClient.setQueryData(['currentUser'], user);
 
       // Welcome toast — requires <Toaster /> in app root; silently skipped if not mounted
       try { (await import('sonner')).toast.success(`ברוך הבא${user.full_name ? ' ' + user.full_name.split(' ')[0] : ''}!`); } catch { /* */ }
