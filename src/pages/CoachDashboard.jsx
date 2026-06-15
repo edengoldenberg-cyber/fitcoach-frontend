@@ -14,13 +14,13 @@ import {
   Search, Users, UserPlus, Trash2, CheckSquare, Square, X,
   ArrowRight, Utensils, Droplets, Dumbbell, Scale, MessageSquare,
   Target, TrendingUp, Sparkles, Send, Plus, Settings, ChevronLeft,
-  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX
+  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock
 } from "lucide-react";
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { getIsraelDateString, nutritionRecordMatchesTrainee, metricRecordMatchesTrainee, invalidateCoachTraineeSyncQueries, localDateInRange } from '@/utils/nutritionSync';
 import { BarChart, Bar, Cell, XAxis, YAxis, ResponsiveContainer, LineChart, Line } from 'recharts';
 import SendLoginLinkButton from '../components/coach/SendLoginLinkButton';
@@ -33,6 +33,7 @@ import TraineeNotificationsTab from '../components/coach/TraineeNotificationsTab
 import TraineeLearningInsights from '../components/coach/TraineeLearningInsights';
 import TraineePersonalDetailsDialog from '../components/coach/TraineePersonalDetailsDialog';
 import TraineePanelVisibilityDialog from '../components/coach/TraineePanelVisibilityDialog';
+import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 function getStatusBadge(pct) {
@@ -197,6 +198,7 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
   const [showResend, setShowResend] = useState(false);
   const [showPersonalDetails, setShowPersonalDetails] = useState(false);
   const [showPanelVisibility, setShowPanelVisibility] = useState(false);
+  const [showSetPassword, setShowSetPassword] = useState(false);
   const [targets, setTargets] = useState({});
   const [newNote, setNewNote] = useState('');
 
@@ -372,6 +374,11 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
               <Send className="w-3.5 h-3.5" />שלח הזמנה
             </Button>
           )}
+          <Button size="sm" variant="outline"
+            className="text-xs h-8 gap-1 text-teal-600 border-teal-200 hover:bg-teal-50"
+            onClick={() => setShowSetPassword(true)}>
+            <Lock className="w-3.5 h-3.5" />הגדר סיסמה / הזמן
+          </Button>
           <div className="flex-shrink-0">
             <SendLoginLinkButton trainee={trainee} variant="outline" size="sm" />
           </div>
@@ -686,6 +693,12 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
         onClose={() => setShowPanelVisibility(false)}
         trainee={trainee}
         onSaved={() => queryClient.invalidateQueries({ queryKey: ['trainees'] })}
+      />
+
+      <SetTraineePasswordDialog
+        open={showSetPassword}
+        onClose={() => setShowSetPassword(false)}
+        trainee={trainee}
       />
     </div>
   );
