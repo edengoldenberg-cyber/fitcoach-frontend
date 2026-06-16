@@ -210,19 +210,13 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
 
   const { data: meals = [] } = useQuery({
     queryKey: ['tm-meals', trainee.id],
-    queryFn: async () => {
-      const records = await base44.entities.MealEntry.list('-created_date', 1000);
-      return records.filter(record => nutritionRecordMatchesTrainee(record, trainee));
-    },
-    enabled: !!trainee?.id,
+    queryFn: () => base44.entities.MealEntry.filter({ trainee_email: email }, '-created_date', 500),
+    enabled: !!email,
   });
   const { data: water = [] } = useQuery({
     queryKey: ['tm-water', trainee.id],
-    queryFn: async () => {
-      const records = await base44.entities.WaterEntry.list('-created_date', 1000);
-      return records.filter(record => nutritionRecordMatchesTrainee(record, trainee));
-    },
-    enabled: !!trainee?.id,
+    queryFn: () => base44.entities.WaterEntry.filter({ trainee_email: email }, '-created_date', 500),
+    enabled: !!email,
   });
   const { data: workouts = [] } = useQuery({
     queryKey: ['tm-workouts', email],
@@ -231,11 +225,8 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
   });
   const { data: measurements = [] } = useQuery({
     queryKey: ['tm-measurements', trainee.id],
-    queryFn: async () => {
-      const records = await base44.entities.MetricsEntry.list('-date', 1000);
-      return records.filter(record => metricRecordMatchesTrainee(record, trainee));
-    },
-    enabled: !!trainee?.id,
+    queryFn: () => base44.entities.MetricsEntry.filter({ trainee_email: email }, '-date', 100),
+    enabled: !!email,
   });
   const { data: notes = [] } = useQuery({
     queryKey: ['tm-notes', email],

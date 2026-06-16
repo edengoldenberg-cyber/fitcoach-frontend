@@ -54,15 +54,18 @@ export default function WaterLog() {
 
   const addWaterMutation = useMutation({
     mutationFn: async ({ data, id }) => {
-      if (id) {
-        return base44.entities.WaterEntry.update(id, data);
-      }
-      const entryData = {
-        ...data,
+      // Only send fields that exist in the WaterEntry schema.
+      // AddWaterDialog also provides container_type and time — both invalid.
+      const payload = {
         trainee_id: trainee?.id,
+        trainee_email: user?.email,
         date: data.date || dateStr,
+        amount_ml: data.amount_ml,
       };
-      return base44.entities.WaterEntry.create(entryData);
+      if (id) {
+        return base44.entities.WaterEntry.update(id, payload);
+      }
+      return base44.entities.WaterEntry.create(payload);
     },
     onSuccess: () => {
       console.log('[WaterLog] Water entry saved successfully');
