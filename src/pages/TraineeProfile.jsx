@@ -33,6 +33,8 @@ import SimpleLoginLinkButton from '../components/coach/SimpleLoginLinkButton';
 import TraineePersonalDetailsDialog from '../components/coach/TraineePersonalDetailsDialog';
 import TraineeNotificationTimeline from '../components/coach/TraineeNotificationTimeline';
 
+import { parseCoachRating, encodeCoachRating } from '@/utils/workoutUtils';
+
 export default function TraineeProfile() {
   const [showTargetsDialog, setShowTargetsDialog] = useState(false);
   const [showNoteDialog, setShowNoteDialog] = useState(false);
@@ -128,7 +130,7 @@ export default function TraineeProfile() {
   const rateWorkoutMutation = useMutation({
     mutationFn: ({ workoutId, rating, feedback }) =>
       base44.entities.WorkoutSession.update(workoutId, {
-        notes: feedback ? `[${rating}/5] ${feedback}` : `[${rating}/5]`,
+        notes: encodeCoachRating(rating, feedback),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['traineeWorkouts'] });
@@ -553,10 +555,10 @@ export default function TraineeProfile() {
                             RPE: {workout.rpe}
                           </Badge>
                         )}
-                        {workout.coach_rating && (
+                        {parseCoachRating(workout.notes).rating > 0 && (
                           <div className="flex gap-0.5">
                             {Array.from({length: 5}).map((_, i) => (
-                              <span key={i} className={i < workout.coach_rating ? 'text-amber-500' : 'text-slate-300'}>
+                              <span key={i} className={i < parseCoachRating(workout.notes).rating ? 'text-amber-500' : 'text-slate-300'}>
                                 ★
                               </span>
                             ))}
@@ -567,10 +569,7 @@ export default function TraineeProfile() {
                           variant="outline"
                           onClick={() => {
                             setSelectedWorkout(workout);
-                            setWorkoutRating({
-                              rating: workout.coach_rating || 0,
-                              feedback: workout.coach_feedback || ''
-                            });
+                            setWorkoutRating(parseCoachRating(workout.notes));
                             setShowRatingDialog(true);
                           }}
                         >
@@ -601,10 +600,10 @@ export default function TraineeProfile() {
                       </div>
                     )}
                     
-                    {workout.coach_feedback && (
+                    {parseCoachRating(workout.notes).feedback && (
                       <div className="mt-2 pt-2 border-t text-xs bg-blue-50 p-2 rounded">
                         <p className="font-medium text-blue-900">משוב מאמן:</p>
-                        <p className="text-blue-700">{workout.coach_feedback}</p>
+                        <p className="text-blue-700">{parseCoachRating(workout.notes).feedback}</p>
                       </div>
                     )}
                   </Card>

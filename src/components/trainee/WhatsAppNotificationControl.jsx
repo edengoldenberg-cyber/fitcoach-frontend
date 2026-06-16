@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,12 +9,10 @@ import { MessageCircle, AlertCircle } from 'lucide-react';
 export default function WhatsAppNotificationControl({ traineeId }) {
   const queryClient = useQueryClient();
 
-  const { data: trainee, isLoading } = useQuery({
-    queryKey: ['trainee', traineeId],
-    queryFn: async () => {
-      const trainees = await base44.entities.Trainee.filter({ id: traineeId });
-      return trainees[0] || null;
-    }
+  const { data: notifPrefRows = [], isLoading } = useQuery({
+    queryKey: ['notif-prefs-wa', traineeId],
+    queryFn: () => base44.entities.NotificationPreferences.filter({ trainee_id: traineeId }),
+    enabled: !!traineeId,
   });
 
   const updateNotificationMutation = useMutation({
@@ -28,7 +26,7 @@ export default function WhatsAppNotificationControl({ traineeId }) {
       return enabled;
     },
     onSuccess: (enabled) => {
-      queryClient.invalidateQueries({ queryKey: ['trainee', traineeId] });
+      queryClient.invalidateQueries({ queryKey: ['notif-prefs-wa', traineeId] });
       toast.success(
         enabled
           ? 'התראות WhatsApp הופעלו ✅'
@@ -43,7 +41,7 @@ export default function WhatsAppNotificationControl({ traineeId }) {
 
   if (isLoading) return <div className="animate-pulse h-40 bg-slate-100 rounded-lg" />;
 
-  const isEnabled = trainee?.whatsapp_reminders_enabled ?? true;
+  const isEnabled = notifPrefRows[0] ? notifPrefRows[0].whatsapp_reminders_enabled !== false : true;
 
   return (
     <Card className="card-premium" dir="rtl">

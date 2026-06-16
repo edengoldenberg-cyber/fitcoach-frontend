@@ -1,4 +1,5 @@
 ﻿import React, { useState, useMemo } from 'react';
+import { parseCoachRating, isCoachRatingNote } from '@/utils/workoutUtils';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
@@ -601,10 +602,10 @@ export default function CoachReports() {
                               {workout.rpe && ` | RPE: ${workout.rpe}`}
                             </p>
                           </div>
-                          {workout.coach_rating && (
+                          {parseCoachRating(workout.notes).rating > 0 && (
                             <div className="flex gap-0.5">
                               {Array.from({length: 5}).map((_, i) => (
-                                <span key={i} className={i < workout.coach_rating ? 'text-amber-500 text-lg' : 'text-slate-300'}>
+                                <span key={i} className={i < parseCoachRating(workout.notes).rating ? 'text-amber-500 text-lg' : 'text-slate-300'}>
                                   ★
                                 </span>
                               ))}
@@ -636,16 +637,16 @@ export default function CoachReports() {
                           </div>
                         )}
 
-                        {workout.notes && (
+                        {workout.notes && !isCoachRatingNote(workout.notes) && (
                           <div className="mt-3 text-sm text-slate-600 bg-blue-50 p-2 rounded">
                             <strong>הערות המתאמן:</strong> {workout.notes}
                           </div>
                         )}
 
-                        {workout.coach_feedback && (
+                        {parseCoachRating(workout.notes).feedback && (
                           <div className="mt-2 text-sm bg-emerald-50 p-2 rounded border border-emerald-200">
-                            <strong className="text-emerald-800">משוב מאמן:</strong> 
-                            <span className="text-emerald-700"> {workout.coach_feedback}</span>
+                            <strong className="text-emerald-800">משוב מאמן:</strong>
+                            <span className="text-emerald-700"> {parseCoachRating(workout.notes).feedback}</span>
                           </div>
                         )}
                       </div>

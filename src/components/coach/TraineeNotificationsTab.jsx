@@ -75,8 +75,13 @@ export default function TraineeNotificationsTab({ trainee }) {
   const remindersEnabled = pref ? pref.whatsapp_reminders_enabled !== false : true;
   const disabledDays = pref?.disabled_days || [];
 
-  // Per-trainee WhatsApp opt-in — read from NotificationPreferences; Trainee has no such field
-  const waEnabled = trainee.whatsapp_reminders_enabled !== false;
+  // Per-trainee WhatsApp opt-in — read from NotificationPreferences (correct entity, by trainee_id)
+  const { data: waPrefRows = [] } = useQuery({
+    queryKey: ['notif-prefs-wa', trainee.id],
+    queryFn: () => base44.entities.NotificationPreferences.filter({ trainee_id: trainee.id }),
+    enabled: !!trainee.id,
+  });
+  const waEnabled = waPrefRows[0] ? waPrefRows[0].whatsapp_reminders_enabled !== false : true;
 
   const toggleWaMutation = useMutation({
     mutationFn: async (newVal) => {
@@ -90,7 +95,7 @@ export default function TraineeNotificationsTab({ trainee }) {
     },
     onSuccess: (newVal) => {
       toast.success(newVal ? '✅ התראות WhatsApp הופעלו' : '🔕 התראות WhatsApp כובו');
-      queryClient.invalidateQueries({ queryKey: ['trainee'] });
+      queryClient.invalidateQueries({ queryKey: ['notif-prefs-wa', trainee.id] });
       queryClient.invalidateQueries({ queryKey: ['allTraineesForAutomations'] });
     },
     onError: (e) => toast.error('שגיאה: ' + e.message),

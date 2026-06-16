@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { parseCoachRating } from '@/utils/workoutUtils';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -113,9 +114,9 @@ export default function CoachWorkouts() {
                             </div>
                           )}
 
-                          {workout.coach_feedback && (
+                          {parseCoachRating(workout.notes).feedback && (
                             <div className="mt-2 p-2 bg-amber-50 rounded text-sm text-amber-800">
-                              💬 {workout.coach_feedback}
+                              💬 {parseCoachRating(workout.notes).feedback}
                             </div>
                           )}
                         </CardContent>

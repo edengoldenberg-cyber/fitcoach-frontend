@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { ChevronLeft, Star, MessageSquare, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { parseCoachRating, encodeCoachRating } from '@/utils/workoutUtils';
 
 export default function WorkoutDetails() {
   const navigate = useNavigate();
@@ -23,8 +24,9 @@ export default function WorkoutDetails() {
     queryFn: async () => {
       const workouts = await base44.entities.WorkoutSession.filter({ id: workoutId });
       const w = workouts[0];
-      setCoachFeedback(w?.coach_feedback || '');
-      setCoachRating(w?.coach_rating || 0);
+      const { rating, feedback } = parseCoachRating(w?.notes);
+      setCoachFeedback(feedback);
+      setCoachRating(rating);
       return w;
     },
     enabled: !!workoutId,
@@ -65,8 +67,7 @@ export default function WorkoutDetails() {
 
   const handleSaveFeedback = () => {
     updateWorkout.mutate({
-      coach_feedback: coachFeedback,
-      coach_rating: coachRating,
+      notes: encodeCoachRating(coachRating, coachFeedback),
     });
   };
 

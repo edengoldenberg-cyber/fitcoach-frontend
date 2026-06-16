@@ -1,4 +1,5 @@
 ﻿import React, { useState, useMemo } from 'react';
+import { parseCoachRating } from '@/utils/workoutUtils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
@@ -695,22 +696,22 @@ export default function WorkoutLog() {
                         ))}
                       </div>
                       
-                      {workout.coach_rating && (
+                      {parseCoachRating(workout.notes).rating > 0 && (
                         <div className="mt-3 pt-3 border-t">
                           <div className="flex items-center justify-between">
                             <span className="text-xs text-slate-500">דירוג מאמן:</span>
                             <div className="flex gap-0.5">
                               {Array.from({length: 5}).map((_, i) => (
-                                <span key={i} className={i < workout.coach_rating ? 'text-amber-500' : 'text-slate-300'}>
+                                <span key={i} className={i < parseCoachRating(workout.notes).rating ? 'text-amber-500' : 'text-slate-300'}>
                                   ★
                                 </span>
                               ))}
                             </div>
                           </div>
-                          {workout.coach_feedback && (
+                          {parseCoachRating(workout.notes).feedback && (
                             <div className="mt-2 p-2 bg-blue-50 rounded text-xs">
                               <p className="font-medium text-blue-900">משוב מאמן:</p>
-                              <p className="text-blue-700">{workout.coach_feedback}</p>
+                              <p className="text-blue-700">{parseCoachRating(workout.notes).feedback}</p>
                             </div>
                           )}
                         </div>
