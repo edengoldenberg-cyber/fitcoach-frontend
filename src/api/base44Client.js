@@ -219,7 +219,7 @@ function makeEntity(entityName, extraHeaders = {}) {
           }
         } catch { /* ignore polling errors */ }
       }, 5000);
-      return { unsubscribe: () => clearInterval(intervalId) };
+      return () => clearInterval(intervalId);
     },
   };
 }
