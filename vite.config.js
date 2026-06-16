@@ -10,7 +10,6 @@ export default defineConfig({
 
   resolve: {
     alias: {
-      // Replaces the @/ alias previously handled by @base44/vite-plugin
       '@': path.resolve(__dirname, './src'),
     },
   },
@@ -18,11 +17,15 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Route all /api/* calls to the fitcoach-server
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,
       },
     },
+  },
+
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.js'],
   },
 });
