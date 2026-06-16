@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+﻿import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
@@ -32,7 +32,7 @@ import AIAnalyzeMealDialog from '../components/trainee/AIAnalyzeMealDialog';
 import AddMealFromPhoto from '../components/trainee/AddMealFromPhoto';
 import RouteGuard from '../components/shared/RouteGuard';
 import { format, addDays, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';

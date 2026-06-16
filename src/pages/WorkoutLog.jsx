@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
@@ -16,7 +16,7 @@ import WorkoutSessionBar from '../components/trainee/WorkoutSessionBar';
 import DailyWorkoutSelector from '../components/trainee/DailyWorkoutSelector';
 import RouteGuard from '../components/shared/RouteGuard';
 import { format, subDays, addDays, startOfMonth, endOfMonth, eachDayOfInterval } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { addLog } from '@/components/shared/diagnostics/logger';
 

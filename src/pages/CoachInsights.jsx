@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+﻿import React, { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
@@ -8,7 +8,7 @@ import { AlertTriangle, TrendingDown, Activity, MessageSquare, CheckCircle } fro
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 
 const INSIGHT_CONFIG = {
   plateau: { icon: TrendingDown, label: 'תקיעות במשקל', color: 'amber' },

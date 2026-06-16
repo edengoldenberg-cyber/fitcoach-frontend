@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
@@ -7,7 +7,7 @@ import { Droplets, Plus, ChevronRight, ChevronLeft, Trash2, Pencil } from "lucid
 import AddWaterDialog from '../components/trainee/AddWaterDialog';
 import ProgressRing from '../components/shared/ProgressRing';
 import { format, subDays, addDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, ReferenceLine } from 'recharts';
 
 const CONTAINER_LABELS = {

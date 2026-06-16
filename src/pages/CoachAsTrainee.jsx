@@ -248,7 +248,6 @@ export default function CoachAsTrainee() {
           full_name: 'תצוגה מקדימה',
           phone: '',
           status: 'active',
-          whatsapp_notifications_enabled: false,
           target_calories: 2000,
           target_protein: 150,
           target_carbs: 200,
@@ -257,14 +256,9 @@ export default function CoachAsTrainee() {
           activity_level: 'moderate',
           goal: 'maintain',
           visible_modules: { nutrition: true, water: true, workouts: true, metrics: true },
-          home_layout_version: 'default_v2',
         });
       } else {
         trainee = trainees[0];
-        // Always enforce safety: no whatsapp on preview accounts
-        if (trainee.whatsapp_notifications_enabled !== false) {
-          await base44.entities.Trainee.update(trainee.id, { whatsapp_notifications_enabled: false });
-        }
       }
       setTraineeId(trainee.id);
       setTraineeReady(true);

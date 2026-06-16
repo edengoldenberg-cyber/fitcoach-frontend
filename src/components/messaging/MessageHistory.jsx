@@ -1,10 +1,10 @@
-import React from 'react';
+﻿import React from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { format } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { Mail, Eye, MousePointerClick, Clock } from 'lucide-react';
 
 export default function MessageHistory({ notifications }) {

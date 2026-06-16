@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight, CheckCircle2, Copy, Users, Search } from "lucide-react";
 import { createPageUrl } from '@/utils';
 import { format } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { Link } from 'react-router-dom';
 import ExerciseCard from '../components/trainee/ExerciseCard';
 import CopyWorkoutDialogTrainee from '../components/trainee/CopyWorkoutDialogTrainee';

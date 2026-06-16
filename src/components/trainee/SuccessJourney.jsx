@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react';
+﻿import React, { useMemo } from 'react';
 import { Card } from '@/components/ui/card';
 import { format, subDays } from 'date-fns';
-import { he } from 'date-fns/locale';
+import { he } from 'date-fns/locale/he';
 import { CheckCircle2, Circle, Trophy, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 

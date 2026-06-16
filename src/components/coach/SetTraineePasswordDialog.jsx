@@ -41,10 +41,19 @@ export default function SetTraineePasswordDialog({ trainee, open, onClose }) {
       return;
     }
     setLoading(true);
+    // 15s safety net — if the backend hangs (e.g. SMTP timeout) we don't leave
+    // the dialog stuck forever. The backend now fires email asynchronously so
+    // this should rarely trigger, but it's here as a last resort.
+    const timer = setTimeout(() => {
+      setLoading(false);
+      setError('הפעולה לקחה יותר מדי זמן. הסיסמה ייתכן שהוגדרה — נסה שוב או רענן.');
+    }, 15000);
     try {
       await base44.auth.setTraineePassword(trainee.id, effectivePassword, sendEmail);
+      clearTimeout(timer);
       setSuccess({ email: trainee.user_email, password: effectivePassword });
     } catch (err) {
+      clearTimeout(timer);
       setError(err?.data?.error || err.message || 'שגיאה בהגדרת הסיסמה');
     } finally {
       setLoading(false);
