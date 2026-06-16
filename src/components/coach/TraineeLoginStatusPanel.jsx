@@ -53,8 +53,6 @@ export default function TraineeLoginStatusPanel({ trainee, authUser, onRefresh }
     try {
       await base44.asServiceRole.entities.Trainee.update(trainee.id, {
         status: 'active',
-        deleted_at: null,
-        whatsapp_notifications_enabled: false
       });
       alert('המתאמן שוחזר בהצלחה');
       onRefresh?.();

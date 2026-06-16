@@ -21,7 +21,7 @@ export function useNutritionTargets(traineeEmail) {
           daily_protein_g: trainee.target_protein,
           daily_carbs_g:   trainee.target_carbs,
           daily_fat_g:     trainee.target_fat,
-          daily_water_ml:  trainee.target_water_ml || trainee.water_target_ml || 2500,
+          daily_water_ml:  trainee.water_target_ml || trainee.water_target_ml || 2500,
           source: 'trainee_profile',
           missing_questionnaire: false,
         };
@@ -47,7 +47,7 @@ export function getNutritionTargetsWithFallback(targets, trainee) {
       daily_protein_g: trainee?.target_protein   || 150,
       daily_carbs_g:   trainee?.target_carbs     || 200,
       daily_fat_g:     trainee?.target_fat       || 70,
-      daily_water_ml:  trainee?.target_water_ml || trainee?.water_target_ml || waterDefault,
+      daily_water_ml:  trainee?.water_target_ml || trainee?.water_target_ml || waterDefault,
       source: 'default',
       missing_questionnaire: true,
     };

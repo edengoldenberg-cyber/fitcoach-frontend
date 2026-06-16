@@ -283,7 +283,7 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
     return {
       day: format(day, 'EEE', { locale: he }),
       water: water.filter(w => w.date === d).reduce((s, w) => s + (w.amount_ml || 0), 0),
-      target: trainee.target_water_ml || 3000,
+      target: trainee.water_target_ml || 3000,
     };
   });
   const weightData = [...measurements]
@@ -342,7 +342,7 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
           <Card className="p-3 bg-blue-50 border-blue-100 text-center">
             <Droplets className="w-4 h-4 text-blue-500 mx-auto mb-1" />
             <p className="text-base font-bold text-blue-700">{(todayWater / 1000).toFixed(1)}L</p>
-            <p className="text-[10px] text-blue-600">/{(trainee.target_water_ml || 3000) / 1000}L</p>
+            <p className="text-[10px] text-blue-600">/{(trainee.water_target_ml || 3000) / 1000}L</p>
           </Card>
           <Card className="p-3 bg-orange-50 border-orange-100 text-center">
             <Dumbbell className="w-4 h-4 text-orange-500 mx-auto mb-1" />
@@ -363,7 +363,7 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
             <Eye className="w-3.5 h-3.5" />פאנלים
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1"
-            onClick={() => { setTargets({ target_calories: trainee.target_calories || 2000, target_protein: trainee.target_protein || 150, target_carbs: trainee.target_carbs || 200, target_fat: trainee.target_fat || 70, target_water_ml: trainee.target_water_ml || 3000 }); setShowTargets(true); }}>
+            onClick={() => { setTargets({ target_calories: trainee.target_calories || 2000, target_protein: trainee.target_protein || 150, target_carbs: trainee.target_carbs || 200, target_fat: trainee.target_fat || 70, water_target_ml: trainee.water_target_ml || 3000 }); setShowTargets(true); }}>
             <Target className="w-3.5 h-3.5" />יעדים
           </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1" onClick={() => setShowNote(true)}>
@@ -646,7 +646,7 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
               { key: 'target_protein', label: 'חלבון (גרם)' },
               { key: 'target_carbs', label: 'פחמימות (גרם)' },
               { key: 'target_fat', label: 'שומן (גרם)' },
-              { key: 'target_water_ml', label: 'מים (מ״ל)' },
+              { key: 'water_target_ml', label: 'מים (מ״ל)' },
             ].map(({ key, label }) => (
               <div key={key}>
                 <Label className="text-sm">{label}</Label>
@@ -831,7 +831,7 @@ export default function CoachDashboard() {
       const waterMl = w.reduce((sum, x) => sum + (x.amount_ml || 0), 0);
       s[e] = {
         nutrition: Math.min(Math.round((cal / (t.target_calories || 2000)) * 100), 100),
-        water: Math.min(Math.round((waterMl / (t.target_water_ml || 3000)) * 100), 100),
+        water: Math.min(Math.round((waterMl / (t.water_target_ml || 3000)) * 100), 100),
         workout: wo.length > 0 ? 100 : 0,
         mealsCount: m.length,
         calories: cal,
@@ -871,7 +871,6 @@ export default function CoachDashboard() {
       for (const id of ids) {
         await base44.entities.Trainee.update(id, {
           status: 'deleted',
-          deleted_at: new Date().toISOString(),
         });
       }
     },
@@ -889,14 +888,11 @@ export default function CoachDashboard() {
       // Clear user binding so they must re-register fresh
       await base44.entities.Trainee.update(trainee.id, {
         status: 'active',
-        whatsapp_notifications_enabled: false,
-        deleted_at: null,
         user_id: null,
         user_email: null,
         invite_status: 'invited',
         first_login_at: null,
         last_login_at: null,
-        invite_opened_at: null,
         onboarding_status: 'pending',
       });
     },

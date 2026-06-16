@@ -25,7 +25,7 @@ export function calculateWeeklyCompliance(meals, water, workouts, measurements, 
 
   // Water compliance
   let waterDays = 0;
-  const waterTarget = trainee?.target_water_ml || 3000;
+  const waterTarget = trainee?.water_target_ml || 3000;
   daysInWeek.forEach(day => {
     const dayStr = getIsraelDateString(day);
     const dayWater = water.filter(w => w.date === dayStr);
@@ -100,7 +100,7 @@ export function getDailyStatus(meals, water, workouts, trainee, date = new Date(
   const totalWater = dayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
 
   const calorieTarget = trainee?.target_calories || 2000;
-  const waterTarget = trainee?.target_water_ml || 3000;
+  const waterTarget = trainee?.water_target_ml || 3000;
 
   let score = 0;
   const reasons = [];

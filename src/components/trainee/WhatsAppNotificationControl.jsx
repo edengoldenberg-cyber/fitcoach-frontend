@@ -19,9 +19,12 @@ export default function WhatsAppNotificationControl({ traineeId }) {
 
   const updateNotificationMutation = useMutation({
     mutationFn: async (enabled) => {
-      await base44.entities.Trainee.update(traineeId, {
-        whatsapp_notifications_enabled: enabled
-      });
+      const existing = await base44.entities.NotificationPreferences.filter({ trainee_id: traineeId });
+      if (existing.length > 0) {
+        await base44.entities.NotificationPreferences.update(existing[0].id, { whatsapp_reminders_enabled: enabled });
+      } else {
+        await base44.entities.NotificationPreferences.create({ trainee_id: traineeId, whatsapp_reminders_enabled: enabled });
+      }
       return enabled;
     },
     onSuccess: (enabled) => {
@@ -40,7 +43,7 @@ export default function WhatsAppNotificationControl({ traineeId }) {
 
   if (isLoading) return <div className="animate-pulse h-40 bg-slate-100 rounded-lg" />;
 
-  const isEnabled = trainee?.whatsapp_notifications_enabled ?? true;
+  const isEnabled = trainee?.whatsapp_reminders_enabled ?? true;
 
   return (
     <Card className="card-premium" dir="rtl">

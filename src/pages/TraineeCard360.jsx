@@ -281,7 +281,7 @@ export default function TraineeCard360() {
     protein: trainee.target_protein || 150,
     carbs: trainee.target_carbs || 200,
     fat: trainee.target_fat || 70,
-    water: trainee.target_water_ml || 3000,
+    water: trainee.water_target_ml || 3000,
   } : {};
 
   const totalWater = water.reduce((sum, w) => sum + (w.amount_ml || 0), 0);

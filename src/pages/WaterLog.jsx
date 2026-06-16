@@ -81,7 +81,7 @@ export default function WaterLog() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['water'] }),
   });
 
-  const target = trainee?.target_water_ml || 3000;
+  const target = trainee?.water_target_ml || 3000;
 
   const todayEntries = useMemo(() => {
     return waterEntries.filter(w => w.date === dateStr).sort((a, b) => (b.time || '').localeCompare(a.time || ''));

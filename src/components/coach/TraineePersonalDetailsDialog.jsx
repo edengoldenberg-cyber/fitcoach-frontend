@@ -39,12 +39,10 @@ export default function TraineePersonalDetailsDialog({ open, onClose, trainee, o
         full_name: trainee.full_name || '',
         user_email: trainee.user_email || '',
         phone: trainee.phone || '',
-        birth_date: trainee.birth_date || '',
+        birth_date: trainee.birth_year ? `${trainee.birth_year}-01-01` : '',
         gender: trainee.gender || '',
         status: trainee.status || 'active',
         coach_email: trainee.coach_email || '',
-        whatsapp_notifications_enabled: trainee.whatsapp_notifications_enabled !== false,
-        coach_notes: trainee.coach_notes || '',
       });
       setEmailWarning('');
       setPhoneError('');
@@ -137,12 +135,10 @@ export default function TraineePersonalDetailsDialog({ open, onClose, trainee, o
         full_name: form.full_name.trim(),
         user_email: (form.user_email || '').toLowerCase().trim(),
         phone: form.phone,
-        birth_date: form.birth_date || null,
+        birth_year: form.birth_date ? parseInt(form.birth_date.split('-')[0]) : null,
         gender: form.gender || null,
         status: form.status,
         coach_email: form.coach_email.trim(),
-        whatsapp_notifications_enabled: form.whatsapp_notifications_enabled,
-        coach_notes: form.coach_notes,
       };
 
       await base44.entities.Trainee.update(trainee.id, updates);
@@ -261,30 +257,6 @@ export default function TraineePersonalDetailsDialog({ open, onClose, trainee, o
           </div>
 
           {/* WhatsApp toggle */}
-          <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-            <div>
-              <p className="text-sm font-medium text-slate-700">WhatsApp תזכורות</p>
-              <p className="text-xs text-slate-500">הפעל/כבה הודעות אוטומטיות</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={form.whatsapp_notifications_enabled}
-              onChange={e => setForm(f => ({ ...f, whatsapp_notifications_enabled: e.target.checked }))}
-              className="w-5 h-5"
-            />
-          </div>
-
-          {/* Coach notes */}
-          <div>
-            <Label>הערות מאמן</Label>
-            <Textarea
-              value={form.coach_notes}
-              onChange={e => setForm(f => ({ ...f, coach_notes: e.target.value }))}
-              rows={3}
-              placeholder="הערות פנימיות על המתאמן..."
-            />
-          </div>
-
           {/* ─── Auth / Login Status Section ─── */}
           <div className="border-t pt-4">
             <div className="flex items-center gap-2 mb-3">

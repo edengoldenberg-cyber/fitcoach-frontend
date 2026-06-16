@@ -60,7 +60,7 @@ function TestToolsPanel({ traineeId, traineeEmail, onReset }) {
     const trainees = await base44.entities.Trainee.filter({ user_email: traineeEmail });
     const tid = trainees[0]?.id;
     return base44.entities.WaterEntry.create({
-      trainee_id: tid, trainee_email: traineeEmail, date: today, amount_ml: 500, container_type: 'large_bottle'
+      trainee_id: tid, trainee_email: traineeEmail, date: today, amount_ml: 500
     });
   });
 
@@ -68,14 +68,14 @@ function TestToolsPanel({ traineeId, traineeEmail, onReset }) {
     const trainees = await base44.entities.Trainee.filter({ user_email: traineeEmail });
     const tid = trainees[0]?.id;
     return base44.entities.WorkoutSession.create({
-      trainee_id: tid, trainee_email: traineeEmail, date: today, title: 'אימון כוח עליון', duration_minutes: 45,
+      trainee_id: tid, trainee_email: traineeEmail, date: today, title: 'אימון כוח עליון', duration_min: 45,
       notes: 'אימון בדיקה', status: 'completed'
     });
   });
 
   const addSampleMetrics = () => run('נוספו מדדים', () =>
     base44.entities.MetricsEntry.create({
-      trainee_email: traineeEmail, date: today, weight_kg: 75, body_fat_percent: 18, source: 'manual'
+      trainee_email: traineeEmail, date: today, weight_kg: 75, body_fat_percent: 18
     })
   );
 
@@ -252,7 +252,7 @@ export default function CoachAsTrainee() {
           target_protein: 150,
           target_carbs: 200,
           target_fat: 70,
-          target_water_ml: 3000,
+          water_target_ml: 3000,
           activity_level: 'moderate',
           goal: 'maintain',
           visible_modules: { nutrition: true, water: true, workouts: true, metrics: true },

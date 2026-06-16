@@ -185,7 +185,6 @@ export default function LoginDiagnosticScreen() {
     try {
       const t = report.traineeForFix;
       const updates = { user_id: report.auth.userId, status: 'active' };
-      if (t.deleted_at) updates.deleted_at = null;
       await base44.entities.Trainee.update(t.id, updates);
       setAutoFixResult('✅ תוקן! מפנה לדשבורד...');
       setTimeout(() => window.location.href = '/', 1500);

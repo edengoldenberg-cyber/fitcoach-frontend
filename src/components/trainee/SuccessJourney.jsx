@@ -19,7 +19,7 @@ export default function SuccessJourney({ meals, water, workouts, trainee }) {
       const totalWater = dayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
       
       const caloriesGoal = totalCalories >= (trainee?.target_calories || 2000) * 0.9;
-      const waterGoal = totalWater >= (trainee?.target_water_ml || 3000) * 0.9;
+      const waterGoal = totalWater >= (trainee?.water_target_ml || 3000) * 0.9;
       const workoutGoal = dayWorkouts.length > 0;
       
       const perfectDay = caloriesGoal && waterGoal && workoutGoal;

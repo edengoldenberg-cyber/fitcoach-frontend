@@ -132,13 +132,10 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
     updateMutation.mutate({
       weight_kg: parseFloat(formData.weight_kg),
       height_cm: parseFloat(formData.height_cm),
-      birth_date: formData.birth_date,
+      birth_year: formData.birth_date ? parseInt(formData.birth_date.split('-')[0]) : null,
       gender: formData.gender,
       activity_level: formData.activity_level,
       goal: formData.goal,
-      diet_type: formData.diet_type,
-      goal_weight_change_kg: formData.goal_weight_change_kg ? parseFloat(formData.goal_weight_change_kg) : null,
-      goal_timeline_weeks: formData.goal_timeline_weeks ? parseInt(formData.goal_timeline_weeks) : null,
       ...targets,
     });
   };

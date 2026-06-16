@@ -149,7 +149,6 @@ export default function AddTrainee() {
             height_cm: data.height_cm || null,
             coach_email: user?.email,
             status: 'active',
-            invited_at: new Date().toISOString(),
             invite_token: inviteToken,
           });
           

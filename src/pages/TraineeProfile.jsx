@@ -126,10 +126,9 @@ export default function TraineeProfile() {
   });
 
   const rateWorkoutMutation = useMutation({
-    mutationFn: ({ workoutId, rating, feedback }) => 
+    mutationFn: ({ workoutId, rating, feedback }) =>
       base44.entities.WorkoutSession.update(workoutId, {
-        coach_rating: rating,
-        coach_feedback: feedback
+        notes: feedback ? `[${rating}/5] ${feedback}` : `[${rating}/5]`,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['traineeWorkouts'] });
@@ -161,7 +160,7 @@ export default function TraineeProfile() {
       return {
         day: format(day, 'EEE', { locale: he }),
         water: dayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0),
-        target: trainee?.target_water_ml || 3000,
+        target: trainee?.water_target_ml || 3000,
       };
     });
   }, [waterEntries, weekDays, trainee]);
@@ -182,7 +181,7 @@ export default function TraineeProfile() {
   const todayWorkout = workouts.some(w => w.date === today);
 
   const targetCalories = trainee?.target_calories || 2000;
-  const targetWater = trainee?.target_water_ml || 3000;
+  const targetWater = trainee?.water_target_ml || 3000;
 
   const getOverallStatus = () => {
     const caloriesPct = (todayCalories / targetCalories) * 100;
@@ -271,7 +270,7 @@ export default function TraineeProfile() {
                 target_protein: trainee?.target_protein || 150,
                 target_carbs: trainee?.target_carbs || 200,
                 target_fat: trainee?.target_fat || 70,
-                target_water_ml: trainee?.target_water_ml || 3000,
+                water_target_ml: trainee?.water_target_ml || 3000,
               });
               setShowTargetsDialog(true); 
             }}>
@@ -686,8 +685,8 @@ export default function TraineeProfile() {
               <Label>יעד שתיית מים (מ״ל)</Label>
               <Input
                 type="number"
-                value={targets.target_water_ml || ''}
-                onChange={(e) => setTargets({...targets, target_water_ml: +e.target.value})}
+                value={targets.water_target_ml || ''}
+                onChange={(e) => setTargets({...targets, water_target_ml: +e.target.value})}
               />
             </div>
             <Button onClick={() => updateTraineeMutation.mutate(targets)} className="w-full">

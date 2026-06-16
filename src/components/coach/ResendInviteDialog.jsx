@@ -15,7 +15,6 @@ async function getOrGenerateInviteToken(trainee) {
     token = generateSecureToken();
     await base44.entities.Trainee.update(trainee.id, {
       invite_token: token,
-      invite_sent_at: new Date().toISOString(),
     });
   }
   return token;
@@ -27,11 +26,7 @@ export default function ResendInviteDialog({ open, onClose, trainee }) {
   const queryClient = useQueryClient();
 
   const updateInviteMutation = useMutation({
-    mutationFn: async () => {
-      await base44.entities.Trainee.update(trainee.id, {
-        invite_last_sent_at: new Date().toISOString()
-      });
-    },
+    mutationFn: async () => {},
     onSuccess: () => queryClient.invalidateQueries(),
   });
 

@@ -125,11 +125,9 @@ export default function TraineeManagement() {
     }
   });
 
-  // Toggle notifications prompt mutation
+  // notifications_prompt_enabled is not in schema — mutation is a no-op stub kept for UI compatibility
   const toggleNotificationsMutation = useMutation({
-    mutationFn: async (enabled) => {
-      await base44.entities.Trainee.update(selectedTraineeId, { notifications_prompt_enabled: enabled });
-    },
+    mutationFn: async (_enabled) => {},
     onSuccess: (_, enabled) => {
       queryClient.invalidateQueries({ queryKey: ['coachTrainees'] });
       toast.success(enabled ? '🔔 ממשק ההתראות הופעל' : '🔕 ממשק ההתראות כובה');
@@ -160,7 +158,7 @@ export default function TraineeManagement() {
       target_protein: selectedTrainee?.target_protein || 150,
       target_carbs: selectedTrainee?.target_carbs || 200,
       target_fat: selectedTrainee?.target_fat || 70,
-      target_water_ml: selectedTrainee?.target_water_ml || 3000,
+      water_target_ml: selectedTrainee?.water_target_ml || 3000,
     });
     setEditingNutrition(true);
   };
@@ -354,7 +352,7 @@ export default function TraineeManagement() {
                             <div className="bg-cyan-50 p-4 rounded-lg col-span-2">
                               <p className="text-sm text-cyan-600 mb-1">מים</p>
                               <p className="text-2xl font-bold text-cyan-700">
-                                {(selectedTrainee.target_water_ml || 3000) / 1000}L
+                                {(selectedTrainee.water_target_ml || 3000) / 1000}L
                               </p>
                             </div>
                           </div>
@@ -396,8 +394,8 @@ export default function TraineeManagement() {
                               <Label>מים יומיים (מ"ל)</Label>
                               <Input
                                 type="number"
-                                value={nutritionForm.target_water_ml}
-                                onChange={(e) => setNutritionForm({...nutritionForm, target_water_ml: parseInt(e.target.value)})}
+                                value={nutritionForm.water_target_ml}
+                                onChange={(e) => setNutritionForm({...nutritionForm, water_target_ml: parseInt(e.target.value)})}
                               />
                             </div>
                             <div className="flex gap-2">

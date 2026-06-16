@@ -39,7 +39,7 @@ export default function NotificationSettings({ userEmail }) {
 
   useEffect(() => {
     if (pref || trainee) {
-      setEnabled(trainee?.whatsapp_notifications_enabled ?? pref?.whatsapp_reminders_enabled ?? true);
+      setEnabled(pref?.whatsapp_reminders_enabled ?? true);
       setDisabledDays(pref?.disabled_days || []);
     }
   }, [pref, trainee]);
@@ -52,11 +52,6 @@ export default function NotificationSettings({ userEmail }) {
         await base44.entities.NotificationPreference.create({ trainee_email: userEmail, ...data });
       }
 
-      if (trainee?.id && Object.prototype.hasOwnProperty.call(data, 'whatsapp_reminders_enabled')) {
-        await base44.entities.Trainee.update(trainee.id, {
-          whatsapp_notifications_enabled: data.whatsapp_reminders_enabled
-        });
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notificationPreference', userEmail] });

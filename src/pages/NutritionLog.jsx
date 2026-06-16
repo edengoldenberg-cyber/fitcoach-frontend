@@ -478,10 +478,10 @@ export default function NutritionLog() {
 
   const addWaterMutation = useMutation({
     mutationFn: (amount) => base44.entities.WaterEntry.create({
-      ...buildCanonicalTraineeFields(trainee, user),
+      trainee_id: trainee?.id,
+      trainee_email: trainee?.user_email || user?.email,
       date: dateStr,
       amount_ml: amount,
-      time: format(new Date(), 'HH:mm')
     }),
     onSuccess: () => {
       invalidateCoachTraineeSyncQueries(queryClient);

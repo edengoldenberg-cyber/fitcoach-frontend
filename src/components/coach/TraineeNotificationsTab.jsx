@@ -59,7 +59,7 @@ export default function TraineeNotificationsTab({ trainee }) {
     const totalWater = dayWater.reduce((s, w) => s + (w.amount_ml || 0), 0);
     const totalCal = dayMeals.reduce((s, m) => s + (m.calories || 0), 0);
     const mealOk = dayMeals.length >= 2; // לפחות 2 ארוחות = פעיל
-    const waterOk = totalWater >= (trainee.target_water_ml || 2500) * 0.6;
+    const waterOk = totalWater >= (trainee.water_target_ml || 2500) * 0.6;
     return { date, dayMeals: dayMeals.length, totalCal, totalWater, mealOk, waterOk };
   });
 
@@ -75,12 +75,17 @@ export default function TraineeNotificationsTab({ trainee }) {
   const remindersEnabled = pref ? pref.whatsapp_reminders_enabled !== false : true;
   const disabledDays = pref?.disabled_days || [];
 
-  // Per-trainee WhatsApp opt-in/out — stored on Trainee entity
-  const waEnabled = trainee.whatsapp_notifications_enabled !== false;
+  // Per-trainee WhatsApp opt-in — read from NotificationPreferences; Trainee has no such field
+  const waEnabled = trainee.whatsapp_reminders_enabled !== false;
 
   const toggleWaMutation = useMutation({
     mutationFn: async (newVal) => {
-      await base44.entities.Trainee.update(trainee.id, { whatsapp_notifications_enabled: newVal });
+      const existing = await base44.entities.NotificationPreferences.filter({ trainee_id: trainee.id });
+      if (existing.length > 0) {
+        await base44.entities.NotificationPreferences.update(existing[0].id, { whatsapp_reminders_enabled: newVal });
+      } else {
+        await base44.entities.NotificationPreferences.create({ trainee_id: trainee.id, trainee_email: trainee.user_email, whatsapp_reminders_enabled: newVal });
+      }
       return newVal;
     },
     onSuccess: (newVal) => {

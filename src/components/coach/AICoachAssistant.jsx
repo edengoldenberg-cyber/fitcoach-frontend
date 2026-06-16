@@ -59,7 +59,7 @@ export default function AICoachAssistant({ open, onClose, trainee, meals, water,
 
     return `
 מתאמן: ${trainee?.full_name}
-יעדים: ${trainee?.target_calories || 2000} קלוריות, ${trainee?.target_protein || 150}ג׳ חלבון, ${trainee?.target_water_ml || 3000} מ״ל מים
+יעדים: ${trainee?.target_calories || 2000} קלוריות, ${trainee?.target_protein || 150}ג׳ חלבון, ${trainee?.water_target_ml || 3000} מ״ל מים
 
 === ציון התמדה שבועי ===
 ציון כולל: ${weeklyCompliance?.totalScore || 0}%

@@ -176,10 +176,8 @@ function TraineeHomeContent() {
           console.log('[TraineeHome] AUTO-RESTORE: Restoring deleted/inactive trainee', traineeRecord.id);
           await base44.entities.Trainee.update(traineeRecord.id, {
             status: 'active',
-            whatsapp_notifications_enabled: false, // SAFE: no whatsapp on restore
-            deleted_at: null,
           });
-          traineeRecord = { ...traineeRecord, status: 'active', whatsapp_notifications_enabled: false };
+          traineeRecord = { ...traineeRecord, status: 'active' };
           lookupMethod = 'restored';
         }
         
@@ -418,10 +416,9 @@ function TraineeHomeContent() {
 
   const addWaterMutation = useMutation({
     mutationFn: (data) => base44.entities.WaterEntry.create({
-      ...data,
       trainee_id: trainee?.id || data.trainee_id,
-      user_id: user?.id || data.user_id,
       trainee_email: trainee?.user_email || user?.email,
+      amount_ml: data.amount_ml,
       date: data.date || today
     }),
     onSuccess: () => {
@@ -487,7 +484,7 @@ function TraineeHomeContent() {
     protein: mealPlanPrefs?.target_protein_g || trainee?.target_protein || 150,
     carbs: mealPlanPrefs?.target_carbs_g || trainee?.target_carbs || 200,
     fat: mealPlanPrefs?.target_fat_g || trainee?.target_fat || 70,
-    water: trainee?.target_water_ml ?? 3000,
+    water: trainee?.water_target_ml ?? 3000,
   };
 
   const visibleModules = {

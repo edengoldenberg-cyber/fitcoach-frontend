@@ -63,7 +63,7 @@ const AUTOMATIONS = [
     statusFn: async (trainee, todayStr) => {
       const entries = await base44.entities.WaterEntry.filter({ trainee_email: trainee.user_email, date: todayStr });
       const total = entries.reduce((s, e) => s + (e.amount_ml || 0), 0);
-      const target = trainee.target_water_ml || 2500;
+      const target = trainee.water_target_ml || 2500;
       const pct = Math.round((total / target) * 100);
       return { ok: pct >= 60, label: `${total} מ"ל (${pct}%)` };
     },

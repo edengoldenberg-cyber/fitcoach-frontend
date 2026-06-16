@@ -32,7 +32,6 @@ export default function SendLoginLinkButton({ trainee, variant = "default", size
         token = generateSecureToken();
         await base44.entities.Trainee.update(traineeRecord.id, {
           invite_token: token,
-          invite_sent_at: new Date().toISOString(),
         });
       }
 

@@ -35,7 +35,7 @@ export default function WeeklyTasksPanel({ meals = [], water = [], workouts = []
 
   const targets = {
     calories: trainee?.target_calories ?? 2000,
-    water: trainee?.target_water_ml ?? 3000,
+    water: trainee?.water_target_ml ?? 3000,
     protein: trainee?.target_protein ?? 150,
   };
 

@@ -139,9 +139,9 @@ export default function MagicLoginPage() {
         traineeUserId: trainee.user_id ?? 'NULL'
       });
 
-      if (trainee.status === 'deleted' || trainee.deleted_at) {
+      if (trainee.status === 'deleted') {
         console.log('[MAGIC_LOGIN] 🔄 Trainee marked deleted, auto-restoring...');
-        await base44.entities.Trainee.update(trainee.id, { status: 'active', deleted_at: null, whatsapp_notifications_enabled: false });
+        await base44.entities.Trainee.update(trainee.id, { status: 'active' });
         addDbg({ traineeStatus: 'active (restored)' });
       }
 

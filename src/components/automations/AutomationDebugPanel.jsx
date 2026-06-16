@@ -146,7 +146,7 @@ function TraineeEligibilityTrace({ trainees, waProviders }) {
       } else if (selectedRule === 'reminderWaterLog') {
         const entries = await base44.entities.WaterEntry.filter({ trainee_email: trainee.user_email, date: todayStr });
         const total = entries.reduce((s, e) => s + (e.amount_ml || 0), 0);
-        const target = trainee.target_water_ml || 2500;
+        const target = trainee.water_target_ml || 2500;
         const pct = Math.round((total / target) * 100);
         const wouldSend = pct < 60;
         trace.steps.push({ step: 'data_check', pass: true, detail: `מים היום: ${total} מ"ל מתוך ${target} (${pct}%). ${wouldSend ? 'פחות מ-60% ➜ יישלח תזכורת ✅' : 'עמד ביעד ➜ לא יישלח'}` });
