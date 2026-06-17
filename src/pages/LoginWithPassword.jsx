@@ -69,7 +69,7 @@ export default function LoginWithPassword() {
       }
 
       if (user.role === 'coach') {
-        navigate('/ManageTrainees');
+        navigate('/CoachDashboard');
         return;
       }
 

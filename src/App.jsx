@@ -590,6 +590,7 @@ const AuthenticatedApp = () => {
       <Route path="/OnboardingScreen" element={<OnboardingScreen />} />
       <Route path="/login" element={<LoginRedirect />} />
       <Route path="/Login" element={<LoginRedirect />} />
+      <Route path="/NutritionAI" element={<Navigate to="/NutritionLog" replace />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
     </>
