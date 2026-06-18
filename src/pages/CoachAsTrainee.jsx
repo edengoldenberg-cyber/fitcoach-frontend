@@ -238,7 +238,17 @@ export default function CoachAsTrainee() {
   const ensureTrainee = async () => {
     if (!previewEmail || !user) return;
     try {
+      // 1. Try by preview email (normal case — preview trainee already exists)
       let trainees = await base44.entities.Trainee.filter({ user_email: previewEmail });
+
+      // 2. Fallback: check by user_id. Handles two cases:
+      //    a) The coach/admin already has their own Trainee record (registered as a trainee).
+      //    b) A previous preview used a different email formula.
+      // In both cases we reuse the existing record rather than failing with a unique constraint.
+      if (trainees.length === 0) {
+        trainees = await base44.entities.Trainee.filter({ user_id: user.id });
+      }
+
       let trainee;
       if (trainees.length === 0) {
         trainee = await base44.entities.Trainee.create({
