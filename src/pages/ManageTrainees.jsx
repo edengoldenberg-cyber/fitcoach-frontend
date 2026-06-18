@@ -1,5 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Navigate } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import BackfillUserIds from '../components/coach/BackfillUserIds';
@@ -9,10 +10,27 @@ import ImportProductOverrides from '../components/coach/ImportProductOverrides';
 import TraineeInviteManager from '../components/coach/TraineeInviteManager';
 
 export default function ManageTrainees() {
-  const { data: user } = useQuery({
+  const { data: user, isLoading: userLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
+
+  // Detect if this user is a coach (even when they also have admin role).
+  // Coaches should use /TraineeManagement; this page is for system-only admins.
+  const { data: coachSettings, isLoading: coachLoading } = useQuery({
+    queryKey: ['coachSettingsForRedirect', user?.email],
+    queryFn: () => base44.entities.CoachSettings.filter({ coach_email: user?.email }),
+    enabled: !!user?.email,
+  });
+
+  // While loading, render nothing to avoid flash
+  if (userLoading || coachLoading) return null;
+
+  // Non-admins and coaches with a CoachSettings record → correct trainee management page
+  const isCoach = Array.isArray(coachSettings) && coachSettings.length > 0;
+  if (user?.role !== 'admin' || isCoach) {
+    return <Navigate to="/TraineeManagement" replace />;
+  }
 
   const { data: settings } = useQuery({
     queryKey: ['systemSettings'],

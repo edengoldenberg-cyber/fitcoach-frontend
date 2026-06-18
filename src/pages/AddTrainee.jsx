@@ -269,15 +269,13 @@ FIT COACH PRO`;
           }
 
           if (!emailSent || !isGmail) {
-            // Send the friendly email (if we haven't already sent through inviteUser)
-            await base44.integrations.Core.SendEmail({
-              to: normalizedEmail,
-              subject: '🎉 הוזמנת ל-FIT COACH PRO',
-              body: emailBody,
-              from_name: 'FIT COACH PRO'
+            // Send invitation via server-side SMTP (avoids missing integrations.Core stub)
+            const inviteRes = await base44.functions.invoke('sendInviteEmail', {
+              to_email: normalizedEmail,
+              full_name: data.full_name,
+              login_url: personalAccessLink || loginUrl,
             });
-            
-            if (!emailSent) emailSent = true;
+            if (inviteRes?.sent) emailSent = true;
           }
           
         } catch (emailErr) {

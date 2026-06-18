@@ -353,7 +353,7 @@ export default function ExecutiveDashboard() {
             sub={biz.leadToMembershipRate != null
               ? `${biz.membershipsThisMonth ?? 0} חדשים · ${biz.leadToMembershipRate}% ליד→חבר`
               : `${tr.newThisMonth ?? 0} חדשים החודש`}
-            linkTo="ManageTrainees"
+            linkTo="TraineeManagement"
           />
 
           <StatusTile
@@ -416,7 +416,7 @@ export default function ExecutiveDashboard() {
         <div className="flex flex-wrap gap-2 pt-2">
           {[
             { label: 'WhatsApp Health', page: 'WhatsAppHealthDashboard' },
-            { label: 'ניהול מתאמנים', page: 'ManageTrainees' },
+            { label: 'ניהול מתאמנים', page: 'TraineeManagement' },
             { label: 'WhatsApp Manager', page: 'WhatsAppManager' },
           ].map(({ label, page }) => (
             <Link
