@@ -2,6 +2,7 @@
  * pages.config.js - Page routing configuration
  */
 import AutomationSettings from './pages/AutomationSettings';
+import BetaMonitoring from './pages/BetaMonitoring';
 import AccessCodeLogin from './pages/AccessCodeLogin';
 import ExecutiveDashboard from './pages/ExecutiveDashboard';
 import WhatsAppHealthDashboard from './pages/WhatsAppHealthDashboard';
@@ -83,6 +84,7 @@ import __Layout from './Layout.jsx';
 
 export const PAGES = {
     "AutomationSettings": AutomationSettings,
+    "BetaMonitoring": BetaMonitoring,
     "AccessCodeLogin": AccessCodeLogin,
     "ExecutiveDashboard": ExecutiveDashboard,
     "WhatsAppHealthDashboard": WhatsAppHealthDashboard,
