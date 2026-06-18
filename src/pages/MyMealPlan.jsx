@@ -131,7 +131,14 @@ export default function MyMealPlan() {
     queryFn: async () => {
       if (!trainee?.id) return null;
       const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
-      return plans[0] || null;
+      const raw = plans[0];
+      if (!raw) return null;
+      // meals and weekly_days are stored as JSON strings in the DB — parse them here.
+      return {
+        ...raw,
+        meals:       typeof raw.meals       === 'string' ? JSON.parse(raw.meals)       : (raw.meals       || []),
+        weekly_days: typeof raw.weekly_days === 'string' ? JSON.parse(raw.weekly_days) : (raw.weekly_days || []),
+      };
     },
     enabled: !!trainee?.id,
   });

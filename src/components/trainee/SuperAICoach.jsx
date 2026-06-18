@@ -159,7 +159,7 @@ export default function SuperAICoach({ open, onClose, trainee, meals, water, wor
     const workouts7 = (workouts || []).filter(w => w?.date && last7Days.includes(w.date));
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const res = await base44.functions.invoke('askAICoach', {
         prompt: `אתה AI Coach מנתח נתוני מתאמן ונותן 3 תובנות יומיות קצרות.
 
 ${context}
@@ -173,14 +173,9 @@ ${context}
   ],
   "daily_summary": "סיכום יומי בשורה אחת חכמה ומותאמת אישית"
 }`,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            insights: { type: "array", items: { type: "object" } },
-            daily_summary: { type: "string" }
-          }
-        }
+        json_mode: true,
       });
+      const result = res?.data?.response;
       setDailyInsights(result);
     } catch (e) {
       // fallback insights
@@ -215,7 +210,7 @@ ${context}
     const history = newMessages.slice(-6).map(m => `${m.role === 'user' ? 'מתאמן' : 'AI Coach'}: ${m.content}`).join('\n');
 
     try {
-      const result = await base44.integrations.Core.InvokeLLM({
+      const res = await base44.functions.invoke('askAICoach', {
         prompt: `אתה אליאור - העוזר האישי לכושר ותזונה של המתאמן. אתה מדבר בגוף ראשון, ידידותי ואנושי כמו חבר שמכיר אותך טוב.
 
 נתוני המתאמן:
@@ -234,6 +229,9 @@ ${history}
 
 שאלה: ${userText}`,
       });
+      const result = typeof res?.data?.response === 'string'
+        ? res.data.response
+        : (res?.data?.response ? JSON.stringify(res.data.response) : '❌ שגיאה בקבלת תשובה. נסה שוב.');
 
       setMessages(prev => prev.filter(m => !m.loading).concat({ role: 'assistant', content: result }));
 

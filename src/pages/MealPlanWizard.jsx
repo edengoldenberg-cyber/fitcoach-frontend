@@ -171,7 +171,9 @@ export default function MealPlanWizard() {
         trainee_id: trainee.id,
       });
 
-      navigate(`/MyMealPlan?plan_id=${res.data.plan.id}`);
+      const planId = res?.data?.plan?.id;
+      if (!planId) throw new Error('Plan was not saved — missing id');
+      navigate(`/MyMealPlan?plan_id=${planId}`);
     } catch (err) {
       console.error(err);
       alert('שגיאה ביצירת התפריט, אנא נסה שוב');

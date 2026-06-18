@@ -108,8 +108,14 @@ function normalizeEnrichedMealResult(data) {
     total_fat: totals.fat,
     ingredients,
     foods: ingredients,
-    clarifying_questions: data.clarifying_questions || [],
-    questions: data.clarifying_questions || [],
+    // Only keep AI questions that have both a non-empty question text AND at least one option.
+    // The AI frequently returns questions with empty text or no options; those are unusable.
+    clarifying_questions: (data.clarifying_questions || []).filter(
+      q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
+    ),
+    questions: (data.clarifying_questions || []).filter(
+      q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
+    ),
     debugLogId: data.debugLogId,
     wrapper_used: !!data.wrapper_used || !!data.safe_wrapper,
     fallback_used: !!data.fallback_used,
@@ -123,7 +129,16 @@ function normalizeEnrichedMealResult(data) {
 
 function normalizeAnalysisResult(data, input) {
   const enrichedResult = normalizeEnrichedMealResult(data);
-  if (enrichedResult?.ingredients?.length) return enrichedResult;
+  if (enrichedResult?.ingredients?.length) {
+    // If AI returned ingredients but no valid questions and confidence is not high,
+    // generate client-side clarification questions so they render with proper options.
+    if (enrichedResult.clarifying_questions.length === 0 && enrichedResult.confidence !== 'high') {
+      const clientQuestions = getSmartQuestions(data, input, []);
+      enrichedResult.clarifying_questions = clientQuestions;
+      enrichedResult.questions = clientQuestions;
+    }
+    return enrichedResult;
+  }
   const fallback = buildClientFallbackMeal(input);
   const fallbackHasNutrition = Number(fallback?.total_calories || 0) > 0 && Array.isArray(fallback?.ingredients) && fallback.ingredients.length > 0;
   if (!data || typeof data !== 'object') return fallback;
@@ -193,8 +208,14 @@ function isGoodEnoughClientEstimate(input, data) {
 function buildClientHighImpactQuestions(input) {
   const text = String(input || '').toLowerCase();
   const questions = [];
-  if (/חביתה|אומלט|omelet/.test(text) && !/ביצה\s*קשה|קשה|מבושל|בלי שמן|ללא שמן|כפית|כף|חמאה/.test(text)) {
-    questions.push({ id: 'egg_oil_fat', question: 'החביתה הוכנה עם שמן או חמאה?', options: [{ label: 'בלי', value: 'none' }, { label: 'כפית', value: 'tsp_oil' }, { label: 'כף', value: 'tbsp_oil' }, { label: 'חמאה', value: 'butter' }] });
+
+  // Omelette/egg: ask oil amount when NOT explicitly "without oil".
+  // "עם שמן" (with oil) still needs quantity → do NOT suppress on its presence.
+  if (/חביתה|אומלט|omelet/.test(text) && !/ביצה\s*קשה|קשה|מבושל|בלי שמן|ללא שמן|ללא חמאה|בלי חמאה/.test(text)) {
+    const hasOilAmount = /כפית\s+שמן|כף\s+שמן|כפית\s+חמאה|כף\s+חמאה/.test(text);
+    if (!hasOilAmount) {
+      questions.push({ id: 'egg_oil_fat', question: 'כמה שמן/חמאה השתמשת בחביתה?', options: [{ label: 'בלי', value: 'none' }, { label: 'כפית', value: 'tsp_oil' }, { label: 'כף', value: 'tbsp_oil' }, { label: 'חמאה', value: 'butter' }] });
+    }
   }
   if (/טונה/.test(text) && /בשמן/.test(text) && !/סוננ|סיננ/.test(text)) {
     questions.push({ id: 'tuna_oil_drained', question: 'הטונה סוננה מהשמן?', options: [{ label: 'כן, סוננה', value: 'drained' }, { label: 'חלקית', value: 'partial' }, { label: 'לא', value: 'with_oil' }] });
@@ -205,8 +226,16 @@ function buildClientHighImpactQuestions(input) {
   if (/קפה|coffee/.test(text) && !/סוכר|ללא סוכר|בלי סוכר|חלב|דל|רגיל/.test(text)) {
     questions.push({ id: 'coffee_additions', question: 'הקפה היה עם סוכר או חלב?', options: [{ label: 'בלי תוספות', value: 'plain' }, { label: 'עם חלב', value: 'milk' }, { label: 'עם סוכר', value: 'sugar' }, { label: 'שניהם', value: 'both' }] });
   }
-  if (/לחם|חלה|לחמנ/.test(text) && !/פרוס|אישית|לחמנייה|לחמניה|גרם/.test(text)) {
-    questions.push({ id: 'bread_size', question: 'הלחם היה פרוסות או לחמנייה מלאה?', options: [{ label: '2 פרוסות', value: '2_slices' }, { label: 'לחמנייה', value: 'roll' }, { label: 'חלה אישית', value: 'personal_challah' }] });
+  if (/לחם|חלה|לחמנ/.test(text) && !/פרוס|אישית|לחמנייה|לחמניה|גרם|\d/.test(text)) {
+    questions.push({ id: 'bread_size', question: 'כמה לחם היה?', options: [{ label: 'פרוסה', value: '1_slice' }, { label: '2 פרוסות', value: '2_slices' }, { label: 'לחמנייה', value: 'roll' }] });
+  }
+  // Tahini: ask amount when not quantified
+  if (/טחינה/.test(text) && !/כפית|כף|גרם|\d/.test(text)) {
+    questions.push({ id: 'tahini_amount', question: 'כמה טחינה היה בערך?', options: [{ label: 'כפית', value: 'tsp' }, { label: 'כף', value: 'tbsp' }, { label: '2 כפות', value: '2_tbsp' }] });
+  }
+  // Pasta sauce: ask type when ambiguous
+  if (/פסטה|pasta/.test(text) && /רוטב/.test(text) && !/שמנת|עגבניות|פסטו|בולונז|קרמי/.test(text)) {
+    questions.push({ id: 'pasta_sauce', question: 'מה סוג הרוטב בפסטה?', options: [{ label: 'עגבניות', value: 'tomato' }, { label: 'שמנת', value: 'cream' }, { label: 'שמן זית', value: 'olive_oil' }, { label: 'פסטו', value: 'pesto' }] });
   }
   return questions;
 }
@@ -728,9 +757,8 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     if (isSaving) return;
     setIsSaving(true);
     try {
-      const dateStr = selectedDate
-        ? selectedDate.toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
+      const _d = selectedDate instanceof Date && !isNaN(selectedDate) ? selectedDate : new Date();
+      const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' }).format(_d);
       const baseFields = {
         meal_type: selectedMealType,
         date: dateStr,
@@ -770,8 +798,11 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         onSave(mealData);
       } else {
         // result or edit — save each ingredient as a separate MealEntry
+        // Learning is non-critical: wrap so a UserFoodItem failure never blocks the diary save.
         if ((step === 'edit' || step === 'result') && trainee) {
-          await saveEditedIngredientsToMemory();
+          await saveEditedIngredientsToMemory().catch(learningErr => {
+            console.warn('[AIAnalyzeMealDialog] learning save failed (non-fatal):', learningErr.message);
+          });
         }
         const ingredients = step === 'edit'
           ? editIngredients
@@ -911,7 +942,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   const allClarificationQuestions = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
   const shouldShowClarificationQuestions = allClarificationQuestions.length > 0 && result?.confidence !== 'high';
   const answeredClarificationCount = allClarificationQuestions.filter(q => String(clarificationAnswers[getQuestionKey(q)]?.answer || '').trim()).length;
-  const allClarificationsAnswered = shouldShowClarificationQuestions && answeredClarificationCount === allClarificationQuestions.length;
+  const allClarificationsAnswered = shouldShowClarificationQuestions && answeredClarificationCount >= Math.min(1, allClarificationQuestions.length);
   const showPipelineDebug = isNutritionAIDebugMode() && !photoUrl && result;
   const pipelineDebug = result?.debug_pipeline || result || {};
 
@@ -1103,7 +1134,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
                   className="w-full text-white"
                   style={{ backgroundColor: allClarificationsAnswered ? '#79DBD6' : '#cbd5e1' }}
                 >
-                  נתח מחדש לפי כל התשובות
+                  {allClarificationsAnswered ? 'נתח מחדש לפי התשובות' : 'ענה על לפחות שאלה אחת'}
                 </Button>
               </div>
             )}
