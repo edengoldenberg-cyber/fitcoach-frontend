@@ -17,7 +17,7 @@ const MEASUREMENT_TYPES = [
   { key: 'body_fat_percent', label: 'אחוז שומן', unit: '%', color: '#EF4444', icon: Activity },
   { key: 'muscle_mass_kg', label: 'מסת שריר', unit: 'ק״ג', color: '#10B981', icon: TrendingUp },
   { key: 'water_percent', label: 'אחוז מים', unit: '%', color: '#06B6D4', icon: Activity },
-  { key: 'body_age', label: 'גיל גוף', unit: 'שנים', color: '#8B5CF6', icon: Activity },
+  { key: 'body_age_years', label: 'גיל גוף', unit: 'שנים', color: '#8B5CF6', icon: Activity },
 ];
 
 export default function BodyMeasurements() {
@@ -28,7 +28,7 @@ export default function BodyMeasurements() {
     body_fat_percent: '',
     muscle_mass_kg: '',
     water_percent: '',
-    body_age: '',
+    body_age_years: '',
   });
   
   const queryClient = useQueryClient();
@@ -55,7 +55,7 @@ export default function BodyMeasurements() {
         body_fat_percent: '',
         muscle_mass_kg: '',
         water_percent: '',
-        body_age: '',
+        body_age_years: '',
       });
     },
   });

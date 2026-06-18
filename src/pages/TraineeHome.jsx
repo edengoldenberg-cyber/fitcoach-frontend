@@ -587,7 +587,7 @@ function TraineeHomeContent() {
     return <LoginDiagnosticScreen />;
   }
 
-  // No trainee record found for this user — show refresh prompt
+  // No trainee record found for this user — show contact-coach message
   if (!trainee) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4" dir="rtl">
@@ -595,18 +595,29 @@ function TraineeHomeContent() {
           <div className="w-20 h-20 mx-auto mb-6 rounded-full flex items-center justify-center" style={{ backgroundColor: '#79DBD6' }}>
             <User className="w-12 h-12 text-white" />
           </div>
-          <div className="w-16 h-16 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-4" style={{ borderColor: '#79DBD6', borderTopColor: 'transparent' }}></div>
-          <h2 className="text-2xl font-bold mb-3" style={{ color: '#79DBD6' }}>יוצר פרופיל...</h2>
-          <p className="text-slate-700 mb-6">
-            מכין את הכל בשבילך. רק שנייה...
+          <h2 className="text-2xl font-bold mb-3 text-slate-800">פרופיל לא נמצא</h2>
+          <p className="text-slate-600 mb-2">
+            החשבון שלך ({user?.email}) עדיין לא קושר למתאמן.
           </p>
-          <Button 
-            onClick={() => window.location.reload()} 
-            className="w-full text-white"
-            style={{ backgroundColor: '#79DBD6' }}
-          >
-            🔄 רענן
-          </Button>
+          <p className="text-slate-500 text-sm mb-6">
+            פנה למאמן שלך ובקש ממנו לשלוח לך קישור הזמנה מחדש.
+          </p>
+          <div className="flex flex-col gap-3">
+            <Button
+              onClick={() => window.location.reload()}
+              className="w-full text-white"
+              style={{ backgroundColor: '#79DBD6' }}
+            >
+              🔄 רענן
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => base44.auth.logout(window.location.origin)}
+              className="w-full"
+            >
+              התנתק
+            </Button>
+          </div>
         </Card>
       </div>
     );
