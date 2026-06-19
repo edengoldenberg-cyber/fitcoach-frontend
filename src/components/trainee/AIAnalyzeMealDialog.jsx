@@ -191,8 +191,8 @@ function getSmartQuestions(data, input, fallbackQuestions = []) {
     .sort((a, b) => questionPriority(a, hasExplicitQuantity) - questionPriority(b, hasExplicitQuantity));
 
   if (confidence === 'high') return [];
-  if (confidence === 'medium') return unique.slice(0, 1);
-  if (confidence === 'low') return unique.slice(0, 2);
+  if (confidence === 'medium') return unique.slice(0, 2);
+  if (confidence === 'low') return unique.slice(0, 3);
   return unique.slice(0, 3);
 }
 
@@ -201,8 +201,10 @@ function isGoodEnoughClientEstimate(input, data) {
   const hasExplicitQuantity = /\d+|חצי|כף|כפית|כוס|פרוס|משולש|גרם|מנה|אישית|קופסא|קופסה/.test(text);
   const simpleKnownMeal = /פיצה|pizza|קפה|coffee|חזה עוף|chicken breast|אורז|rice|לחם|bread|ביצה|egg|חביתה|טונה|חלה|לחמנ/.test(text);
   const hasHighImpactAmbiguity = (/בשמן|מטוגן|מיונז|חמאה|רוטב|מסעדה/.test(text) || /חביתה|אומלט|omelet/.test(text)) && !/ביצה\s*קשה|קשה|מבושל|סוננ|בלי שמן|ללא שמן|כפית|כף|לייט|דל/.test(text);
+  // High-impact unknowns: tahini/avocado/sauce quantity — always ask even with explicit quantity
+  const hasHighImpactUnknown = /טחינה|אבוקדו|מיונז|שמן|חמאה|רוטב/.test(text) && !/\d+\s*(גרם|מ"ל|כף|כפית)|כפית\s+\w+|כף\s+\w+/.test(text);
   const hasReasonableResult = Number(data?.total_calories || 0) > 0 && Array.isArray(data?.ingredients) && data.ingredients.length > 0;
-  return hasExplicitQuantity && simpleKnownMeal && hasReasonableResult && !hasHighImpactAmbiguity;
+  return hasExplicitQuantity && simpleKnownMeal && hasReasonableResult && !hasHighImpactAmbiguity && !hasHighImpactUnknown;
 }
 
 function buildClientHighImpactQuestions(input) {

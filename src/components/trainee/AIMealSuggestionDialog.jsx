@@ -74,7 +74,18 @@ export default function AIMealSuggestionDialog({ open, onClose, onSave, traineeE
     const prompt = promptParts.join(', ');
     try {
       const res = await base44.functions.invoke('suggestMealAI', { prompt });
-      setSuggestion(res.data);
+      // Normalize: server may return flat object or { suggestions: [...] }
+      const data = res.data?.meal_name
+        ? res.data
+        : (res.data?.suggestions?.[0]
+          ? { ...res.data.suggestions[0], meal_name: res.data.suggestions[0].meal_name || res.data.suggestions[0].name }
+          : res.data);
+      if (!data?.meal_name && !data?.name) {
+        toast.error('לא הצלחנו לקבל הצעה, נסה שוב');
+        setStep('questions');
+        return;
+      }
+      setSuggestion({ ...data, meal_name: data.meal_name || data.name });
       setStep('result');
     } catch (err) {
       toast.error('שגיאה בקבלת הצעה מה-AI');
@@ -206,30 +217,36 @@ export default function AIMealSuggestionDialog({ open, onClose, onSave, traineeE
               </div>
 
               {/* Ingredients */}
+              {(suggestion.ingredients || []).length > 0 && (
               <div className="mb-3">
                 <h4 className="text-sm font-semibold text-slate-700 mb-2">🛒 מצרכים:</h4>
                 <ul className="space-y-1">
-                  {suggestion.ingredients.map((ing, i) => (
+                  {(suggestion.ingredients || []).map((ing, i) => (
                     <li key={i} className="flex justify-between text-sm">
-                      <span className="text-slate-700">{ing.item}</span>
-                      <span className="text-slate-500 font-medium">{ing.quantity}</span>
+                      <span className="text-slate-700">{ing.item || ing.name}</span>
+                      <span className="text-slate-500 font-medium">{ing.quantity || ing.amount}</span>
                     </li>
                   ))}
                 </ul>
               </div>
+              )}
 
               {/* Preparation */}
-              {suggestion.preparation_instructions?.length > 0 && (
+              {(suggestion.preparation_instructions?.length > 0 || suggestion.preparation) && (
                 <div>
                   <h4 className="text-sm font-semibold text-slate-700 mb-2">👨‍🍳 הכנה:</h4>
-                  <ol className="space-y-1">
-                    {suggestion.preparation_instructions.map((step, i) => (
-                      <li key={i} className="text-sm text-slate-600 flex gap-2">
-                        <span className="font-bold text-amber-600 flex-shrink-0">{i + 1}.</span>
-                        <span>{step}</span>
-                      </li>
-                    ))}
-                  </ol>
+                  {Array.isArray(suggestion.preparation_instructions) ? (
+                    <ol className="space-y-1">
+                      {suggestion.preparation_instructions.map((step, i) => (
+                        <li key={i} className="text-sm text-slate-600 flex gap-2">
+                          <span className="font-bold text-amber-600 flex-shrink-0">{i + 1}.</span>
+                          <span>{step}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-sm text-slate-600">{suggestion.preparation}</p>
+                  )}
                 </div>
               )}
             </div>

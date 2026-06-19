@@ -227,11 +227,8 @@ ${personalAccessLink}
 ---
 FIT COACH PRO`;
           } else if (isGmail) {
-            // Gmail users - send direct invitation through Base44 system
-            await base44.users.inviteUser(normalizedEmail, 'user');
-            emailSent = true;
-            
-            // Also send a friendly email with instructions
+            // Gmail users — send via server-side SMTP with short timeout
+            // (base44.users.inviteUser is not available in standalone mode)
             emailBody = `היי ${data.full_name.split(' ')[0]},
 
 ברוך הבא ל-FIT COACH PRO! 🎉
@@ -268,13 +265,16 @@ ${user?.full_name || 'המאמן שלך'} הזמין אותך להצטרף למ�
 FIT COACH PRO`;
           }
 
-          if (!emailSent || !isGmail) {
-            // Send invitation via server-side SMTP (avoids missing integrations.Core stub)
-            const inviteRes = await base44.functions.invoke('sendInviteEmail', {
-              to_email: normalizedEmail,
-              full_name: data.full_name,
-              login_url: personalAccessLink || loginUrl,
-            });
+          if (!emailSent) {
+            // Send invitation via server-side SMTP (5s timeout)
+            const inviteRes = await Promise.race([
+              base44.functions.invoke('sendInviteEmail', {
+                to_email: normalizedEmail,
+                full_name: data.full_name,
+                login_url: personalAccessLink || loginUrl,
+              }),
+              new Promise((_, rej) => setTimeout(() => rej(new Error('sendInviteEmail timeout')), 5000))
+            ]);
             if (inviteRes?.sent) emailSent = true;
           }
           

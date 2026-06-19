@@ -62,13 +62,9 @@ export default function LoginWithPassword() {
       // Welcome toast — requires <Toaster /> in app root; silently skipped if not mounted
       try { (await import('sonner')).toast.success(`ברוך הבא${user.full_name ? ' ' + user.full_name.split(' ')[0] : ''}!`); } catch { /* */ }
 
-      // Role-based redirect
-      if (user.role === 'admin') {
-        navigate('/ExecutiveDashboard');
-        return;
-      }
-
-      if (user.role === 'coach') {
+      // Role-based redirect — coach and admin both land on CoachDashboard
+      // ExecutiveDashboard is accessible via the menu for admins, not the default home.
+      if (user.role === 'admin' || user.role === 'coach') {
         navigate('/CoachDashboard');
         return;
       }

@@ -38,7 +38,7 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
       setFormData({
         weight_kg: trainee.weight_kg || '',
         height_cm: trainee.height_cm || '',
-        birth_date: trainee.birth_date || '',
+        birth_date: trainee.birth_year ? `${trainee.birth_year}-01-01` : '',
         gender: trainee.gender || 'male',
         activity_level: trainee.activity_level || 'moderate',
         goal: trainee.goal || 'maintain',
@@ -325,7 +325,7 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
                 )}
                 {customTargets && (
                   <p className="text-xs text-slate-500">
-                    המאקרו יחושב לפי סוג תזונה: <strong>{DIET_TYPES.find(d => d.value === formData.diet_type)?.label}</strong>
+                    המאקרו יחושב לפי הקלוריות שהוגדרו
                   </p>
                 )}
                 {customCalories && (

@@ -12,9 +12,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Search, Users, UserPlus, Trash2, CheckSquare, Square, X,
-  ArrowRight, Utensils, Droplets, Dumbbell, Scale, MessageSquare,
+  Utensils, Droplets, Dumbbell, Scale, MessageSquare,
   Target, TrendingUp, Sparkles, Send, Plus, Settings, ChevronLeft,
-  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock
+  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock, ArrowRight
 } from "lucide-react";
 import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -854,6 +854,19 @@ export default function CoachDashboard() {
     return { good, partial, bad, total: trainees.length };
   }, [trainees, traineeStatuses]);
 
+  // Today-specific activity counts
+  const todayActivity = useMemo(() => {
+    let loggedToday = 0, workoutToday = 0, silentToday = 0;
+    trainees.forEach(t => {
+      const hasMeal = allMeals.some(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
+      const hasWorkout = allWorkouts.some(w => w.trainee_email === t.user_email && w.date === today);
+      if (hasMeal) loggedToday++;
+      if (hasWorkout) workoutToday++;
+      if (!hasMeal && !hasWorkout) silentToday++;
+    });
+    return { loggedToday, workoutToday, silentToday };
+  }, [trainees, allMeals, allWorkouts, today]);
+
   const deleteMutation = useMutation({
     // Soft delete: set status: 'deleted' so the Restore tab can recover them
     // and all related MealEntry/WorkoutSession/MetricsEntry records stay intact.
@@ -925,55 +938,94 @@ export default function CoachDashboard() {
       <div className="max-w-2xl mx-auto px-4 py-5">
 
         {/* Header */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <Link to="/">
-              <button className="p-2 rounded-full hover:bg-slate-100 min-h-0 min-w-0">
-                <ArrowRight className="w-5 h-5 text-slate-600" />
-              </button>
-            </Link>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">פאנל מאמן</h1>
-              <p className="text-sm text-slate-500">ניהול מתאמנים</p>
-            </div>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-800">שלום{user?.full_name ? ` ${user.full_name.split(' ')[0]}` : ''} 👋</h1>
+            <p className="text-sm text-slate-500">{stats.total} מתאמנים פעילים</p>
           </div>
-          <div className="flex gap-2 flex-wrap justify-end">
-            <Link to="/CoachTraineeSyncDebug">
-              <Button variant="outline" size="sm" className="text-purple-600 text-xs h-8">🔎 בדיקת סנכרון</Button>
-            </Link>
-            <Link to={createPageUrl('SyncUsers')}>
-              <Button variant="outline" size="sm" className="text-blue-600 text-xs h-8">🔗 סנכרון</Button>
-            </Link>
-            <Link to="/CoachAsTrainee">
-              <Button size="sm" variant="outline" className="h-8 gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50 text-xs">
-                <Eye className="w-4 h-4" />ממשק מתאמן
-              </Button>
-            </Link>
-            <Link to={createPageUrl('AddTrainee')}>
-              <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 h-8 gap-1.5">
-                <UserPlus className="w-4 h-4" />הוסף מתאמן
-              </Button>
-            </Link>
-          </div>
+          <Link to={createPageUrl('AddTrainee')}>
+            <Button size="sm" className="bg-emerald-500 hover:bg-emerald-600 h-9 gap-1.5">
+              <UserPlus className="w-4 h-4" />הוסף מתאמן
+            </Button>
+          </Link>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-4 gap-2 mb-5">
-          <Card className="p-3 text-center bg-white shadow-sm border-slate-100">
+        {/* Quick Actions */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          <Link to={createPageUrl('AddTrainee')} className="block">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-emerald-300 hover:bg-emerald-50 transition-colors cursor-pointer">
+              <UserPlus className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+              <p className="text-[10px] text-slate-600 font-medium">הוסף מתאמן</p>
+            </div>
+          </Link>
+          <Link to={createPageUrl('CoachDailyWorkout')} className="block">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer">
+              <Dumbbell className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+              <p className="text-[10px] text-slate-600 font-medium">אימון יומי</p>
+            </div>
+          </Link>
+          <Link to={createPageUrl('CoachReports')} className="block">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer">
+              <TrendingUp className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+              <p className="text-[10px] text-slate-600 font-medium">דוחות</p>
+            </div>
+          </Link>
+          <Link to="/CoachAsTrainee" className="block">
+            <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-amber-300 hover:bg-amber-50 transition-colors cursor-pointer">
+              <Eye className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+              <p className="text-[10px] text-slate-600 font-medium">ממשק מתאמן</p>
+            </div>
+          </Link>
+        </div>
+
+        {/* Today Summary */}
+        <Card className="p-4 mb-4 bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-200">
+          <h2 className="text-sm font-bold text-teal-800 mb-3 flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            פעילות היום
+          </h2>
+          <div className="grid grid-cols-3 gap-2">
+            <div
+              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-emerald-50 transition-colors border border-emerald-100"
+              onClick={() => setFilter('good')}
+            >
+              <p className="text-2xl font-bold text-emerald-600">{todayActivity.loggedToday}</p>
+              <p className="text-[10px] text-emerald-700 mt-0.5">דיווחו היום</p>
+            </div>
+            <div
+              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-orange-50 transition-colors border border-orange-100"
+              onClick={() => setFilter('all')}
+            >
+              <p className="text-2xl font-bold text-orange-500">{todayActivity.workoutToday}</p>
+              <p className="text-[10px] text-orange-700 mt-0.5">אימנו היום</p>
+            </div>
+            <div
+              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors border border-red-100"
+              onClick={() => setFilter('bad')}
+            >
+              <p className="text-2xl font-bold text-red-500">{todayActivity.silentToday}</p>
+              <p className="text-[10px] text-red-700 mt-0.5">לא פעילים</p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Weekly Adherence Stats */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          <Card className="p-3 text-center bg-white shadow-sm border-slate-100 cursor-pointer hover:border-slate-300" onClick={() => setFilter('all')}>
             <p className="text-xl font-bold text-slate-800">{stats.total}</p>
             <p className="text-[10px] text-slate-500 mt-0.5">סה״כ</p>
           </Card>
-          <Card className="p-3 text-center bg-emerald-50 border-emerald-100">
+          <Card className="p-3 text-center bg-emerald-50 border-emerald-100 cursor-pointer hover:border-emerald-300" onClick={() => setFilter('good')}>
             <p className="text-xl font-bold text-emerald-700">{stats.good}</p>
             <p className="text-[10px] text-emerald-600 mt-0.5">מצוין</p>
           </Card>
-          <Card className="p-3 text-center bg-amber-50 border-amber-100">
+          <Card className="p-3 text-center bg-amber-50 border-amber-100 cursor-pointer hover:border-amber-300" onClick={() => setFilter('partial')}>
             <p className="text-xl font-bold text-amber-700">{stats.partial}</p>
             <p className="text-[10px] text-amber-600 mt-0.5">חלקי</p>
           </Card>
-          <Card className="p-3 text-center bg-red-50 border-red-100">
+          <Card className="p-3 text-center bg-red-50 border-red-100 cursor-pointer hover:border-red-300" onClick={() => setFilter('bad')}>
             <p className="text-xl font-bold text-red-700">{stats.bad}</p>
-            <p className="text-[10px] text-red-600 mt-0.5">חסר</p>
+            <p className="text-[10px] text-red-600 mt-0.5">זקוקים לתשומת לב</p>
           </Card>
         </div>
 

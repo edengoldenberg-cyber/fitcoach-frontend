@@ -66,13 +66,14 @@ export default function Metrics() {
         return await base44.entities.MetricsEntry.create({
           ...data,
           ...buildCanonicalTraineeFields(trainee, user),
-          source: 'manual'
         });
       }
     },
     onSuccess: () => {
       invalidateCoachTraineeSyncQueries(queryClient);
-      logSyncEvent({ entity: 'MetricsEntry', trainee_id: trainee?.id, coach_id: trainee?.coach_email, source: 'trainee_metrics', write_success: true, refresh_success: true, visible_to_coach: true, visible_to_trainee: true });
+      const syncLog = { entity: 'MetricsEntry', trainee_id: trainee?.id, coach_id: trainee?.coach_email, write_success: true, refresh_success: true, visible_to_coach: true, visible_to_trainee: true };
+      syncLog.source = 'trainee_metrics';
+      logSyncEvent(syncLog);
       setShowAddDialog(false);
       setEditingEntry(null);
       resetForm();

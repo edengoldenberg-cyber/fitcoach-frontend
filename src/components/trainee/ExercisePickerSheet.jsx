@@ -21,7 +21,7 @@ export default function ExercisePickerSheet({ open, onClose, onAddExercise, rece
 
   const { data: exerciseDatabase = [] } = useQuery({
     queryKey: ['exerciseDatabasePicker'],
-    queryFn: () => base44.entities.Exercise.filter({ status: 'active' }, 'name_he', 500),
+    queryFn: () => base44.entities.Exercise.list('name_he', 500),
     enabled: open,
   });
 
@@ -41,13 +41,16 @@ export default function ExercisePickerSheet({ open, onClose, onAddExercise, rece
 
   const filteredDatabase = useMemo(() => {
     const term = search.trim().toLowerCase();
-    const source = exerciseDatabase.map(ex => ({
-      id: ex.id,
-      exercise_id: ex.id,
-      name: ex.name_he,
-      exercise_name: ex.name_he,
-      subtitle: [ex.muscle_group_primary, Array.isArray(ex.equipment) ? ex.equipment.join(', ') : ''].filter(Boolean).join(' · ')
-    })).filter(ex => ex.name);
+    const source = exerciseDatabase.map(ex => {
+      const displayName = ex.name_he || ex.name || '';
+      return {
+        id: ex.id,
+        exercise_id: ex.id,
+        name: displayName,
+        exercise_name: displayName,
+        subtitle: [ex.muscle_group_primary, Array.isArray(ex.equipment) ? ex.equipment.join(', ') : ex.equipment || ''].filter(Boolean).join(' · '),
+      };
+    }).filter(ex => ex.name);
 
     if (!term) return source.slice(0, 30);
     return source.filter(ex => ex.name.toLowerCase().includes(term)).slice(0, 30);

@@ -12,15 +12,21 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
     if (!text.trim() || loading) return;
     setLoading(true);
     setLastResponse(null);
-    const res = await base44.functions.invoke('mealPlanFeedback', {
-      plan_id: planId,
-      feedback: text,
-      day_index: dayIndex || 0
-    });
-    setLastResponse(res.data?.ai_response || 'התפריט עודכן בהצלחה!');
-    setText('');
-    setLoading(false);
-    if (onPlanUpdated) onPlanUpdated();
+    try {
+      const res = await base44.functions.invoke('mealPlanFeedback', {
+        plan_id: planId,
+        feedback: text,
+        day_index: dayIndex || 0
+      });
+      setLastResponse(res.data?.ai_response || 'התפריט עודכן בהצלחה!');
+      setText('');
+      if (onPlanUpdated) onPlanUpdated();
+    } catch (err) {
+      console.error('mealPlanFeedback failed:', err.message);
+      setLastResponse('שגיאה זמנית — נסה שוב.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

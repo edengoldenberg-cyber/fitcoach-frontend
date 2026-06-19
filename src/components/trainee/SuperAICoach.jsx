@@ -235,17 +235,17 @@ ${history}
 
       setMessages(prev => prev.filter(m => !m.loading).concat({ role: 'assistant', content: result }));
 
-      // Save consultation
+      // Save consultation fire-and-forget — a save failure must never show an error bubble
       const emailToSave = trainee?.user_email || trainee?.coach_email;
       if (emailToSave) {
-        await base44.entities.AIConsultation.create({
+        base44.entities.AIConsultation.create({
           trainee_email: emailToSave,
           date: new Date().toISOString(),
           topic: 'general',
           user_question: userText,
           ai_recommendation: result.substring(0, 200),
           full_response: result
-        });
+        }).catch(e => console.warn('[AICoach] consultation save failed:', e.message));
       }
     } catch (err) {
       setMessages(prev => prev.filter(m => !m.loading).concat({

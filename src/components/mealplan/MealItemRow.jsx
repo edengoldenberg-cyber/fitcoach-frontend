@@ -12,26 +12,37 @@ export default function MealItemRow({ item, itemIndex, mealIndex, planId, onMeal
     if (aiAlternatives) { setShowAlt(v => !v); return; }
     setLoading(true);
     setShowAlt(true);
-    const res = await base44.functions.invoke('replaceItemInMeal', {
-      plan_id: planId,
-      meal_index: mealIndex,
-      item_index: itemIndex,
-      action: 'replace'
-    });
-    setAiAlternatives(res.data?.alternatives || []);
-    setLoading(false);
+    try {
+      const res = await base44.functions.invoke('replaceItemInMeal', {
+        plan_id: planId,
+        meal_index: mealIndex,
+        item_index: itemIndex,
+        action: 'replace'
+      });
+      setAiAlternatives(res.data?.alternatives || []);
+    } catch (err) {
+      console.error('fetchAIAlternatives failed:', err.message);
+      setShowAlt(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const removeItem = async () => {
     setRemoving(true);
-    const res = await base44.functions.invoke('replaceItemInMeal', {
-      plan_id: planId,
-      meal_index: mealIndex,
-      item_index: itemIndex,
-      action: 'remove'
-    });
-    if (res.data?.updatedMeal) onMealUpdated(mealIndex, res.data.updatedMeal);
-    setRemoving(false);
+    try {
+      const res = await base44.functions.invoke('replaceItemInMeal', {
+        plan_id: planId,
+        meal_index: mealIndex,
+        item_index: itemIndex,
+        action: 'remove'
+      });
+      if (res.data?.updatedMeal) onMealUpdated(mealIndex, res.data.updatedMeal);
+    } catch (err) {
+      console.error('removeItem failed:', err.message);
+    } finally {
+      setRemoving(false);
+    }
   };
 
   return (

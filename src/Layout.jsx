@@ -126,7 +126,7 @@ export default function Layout({ children }) {
   ].filter(item => !item.module || item.alwaysShow || visibleModules[item.module] !== false);
 
   const coachNavItems = [
-    { icon: Users, label: 'מתאמנים', page: 'CoachDashboard' },
+    { icon: Home, label: 'בית', page: 'CoachDashboard' },
     { icon: Dumbbell, label: 'אימונים', page: 'CoachDailyWorkout' },
     { icon: TrendingUp, label: 'דוחות', page: 'CoachReports' },
     { icon: Settings, label: 'עוד', page: 'CoachSettings' },
@@ -222,9 +222,15 @@ export default function Layout({ children }) {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white border-b shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <h2 className="text-xl font-bold" style={{ color: '#79DBD6' }}>
-            FIT COACH PRO
-          </h2>
+          {isCoach ? (
+            <Link to={createPageUrl('CoachDashboard')} className="text-xl font-bold" style={{ color: '#79DBD6' }}>
+              FIT COACH PRO
+            </Link>
+          ) : (
+            <h2 className="text-xl font-bold" style={{ color: '#79DBD6' }}>
+              FIT COACH PRO
+            </h2>
+          )}
           <div className="flex items-center gap-2">
             {isCoach && (
               <Button

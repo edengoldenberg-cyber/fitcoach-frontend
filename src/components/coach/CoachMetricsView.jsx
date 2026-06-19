@@ -46,13 +46,14 @@ export default function CoachMetricsView({ traineeEmail, trainee }) {
         return await base44.entities.MetricsEntry.create({
           ...data,
           ...buildCanonicalTraineeFields(trainee || { user_email: traineeEmail }),
-          source: 'coach'
         });
       }
     },
     onSuccess: () => {
       invalidateCoachTraineeSyncQueries(queryClient);
-      logSyncEvent({ entity: 'MetricsEntry', trainee_id: trainee?.id, coach_id: trainee?.coach_email, source: 'coach_metrics_view', write_success: true, refresh_success: true, visible_to_coach: true, visible_to_trainee: true });
+      const syncLog = { entity: 'MetricsEntry', trainee_id: trainee?.id, coach_id: trainee?.coach_email, write_success: true, refresh_success: true, visible_to_coach: true, visible_to_trainee: true };
+      syncLog.source = 'coach_metrics_view';
+      logSyncEvent(syncLog);
       setShowAddDialog(false);
       setEditingEntry(null);
       resetForm();

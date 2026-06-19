@@ -73,13 +73,8 @@ export default function DailyWorkoutTemplateEditor({
         date,
         coach_email: coachEmail,
         title: title.trim(),
-        description: description.trim() || null,
-        workout_type: workoutType,
-        difficulty,
-        estimated_duration_minutes: duration ? parseInt(duration) : null,
-        exercises,
-        is_published: publish,
-        ...(publish ? { published_at: new Date().toISOString() } : {}),
+        exercises: JSON.stringify(exercises),
+        ...(publish ? { status: 'published' } : { status: 'draft' }),
       };
 
       if (editingTemplate) {

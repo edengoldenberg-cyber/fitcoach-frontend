@@ -71,6 +71,16 @@ const MEAL_TYPES = {
   snack: { label: 'חטיפים', icon: '🍎', color: 'bg-green-50 border-green-200' },
 };
 
+// Fields that exist in the MealEntry Prisma schema. Strip anything else before create/update.
+const VALID_MEAL_ENTRY_FIELDS = new Set([
+  'trainee_id','trainee_email','coach_email','user_id','date','meal_type',
+  'source','calories','protein','carbs','fat','food_name','quantity','unit',
+  'learning_event_type','notes',
+]);
+function pickMealFields(data) {
+  return Object.fromEntries(Object.entries(data || {}).filter(([k]) => VALID_MEAL_ENTRY_FIELDS.has(k)));
+}
+
 const safeString = (value, fallback = '') => (value === null || value === undefined ? fallback : String(value));
 const safeNumber = (value, fallback = 0) => {
   const num = Number(value);
@@ -212,7 +222,7 @@ export default function NutritionLog() {
         
         if (id) {
           const previousMeal = meals.find(m => m.id === id) || null;
-          const updatePayload = { ...data, ...buildCanonicalTraineeFields(trainee, user) };
+          const updatePayload = pickMealFields({ ...data, ...buildCanonicalTraineeFields(trainee, user) });
           console.log('💾 [MUTATION_UPDATE_PAYLOAD]', {
             id,
             food_name: updatePayload.food_name,
@@ -242,11 +252,11 @@ export default function NutritionLog() {
         // Prepare final data - preserve meal_type from incoming data, add trainee context
         const debugLogId = data?.debugLogId;
         const { debugLogId: _debugLogId, ...cleanData } = data || {};
-        const finalData = { 
+        const finalData = pickMealFields({
           ...cleanData,
           ...buildCanonicalTraineeFields(trainee, user),
-          date: cleanData.date || dateStr  // Use incoming date if provided, fallback to current
-        };
+          date: cleanData.date || dateStr,
+        });
         
         console.log('💾 [MUTATION_CREATE_DATA]', {
           food_name: finalData.food_name,
@@ -942,13 +952,13 @@ export default function NutritionLog() {
                   {showWaterLog && (
                       <div className="mt-4 space-y-2 border-t pt-4">
                         <div className="grid grid-cols-3 gap-2 mb-4">
-                          <Button size="sm" variant="outline" onClick={() => addWaterMutation.mutate(250)} className="text-xs">
+                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); addWaterMutation.mutate(250); }} className="text-xs">
                             250 מ״ל
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => addWaterMutation.mutate(500)} className="text-xs">
+                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); addWaterMutation.mutate(500); }} className="text-xs">
                             500 מ״ל
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => addWaterMutation.mutate(750)} className="text-xs">
+                          <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); addWaterMutation.mutate(750); }} className="text-xs">
                             750 מ״ל
                           </Button>
                         </div>

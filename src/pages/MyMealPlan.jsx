@@ -111,11 +111,12 @@ export default function MyMealPlan() {
   const [selectedDay, setSelectedDay] = useState(0);
   const [generatingWeekly, setGeneratingWeekly] = useState(false);
 
-  const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+  const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const { data: traineeList } = useQuery({
-    queryKey: ['trainee', user?.email],
-    queryFn: () => base44.entities.Trainee.filter({ user_email: user?.email }),
-    enabled: !!user?.email,
+    queryKey: ['wizard_trainee', user?.id],
+    queryFn: () => base44.entities.Trainee.filter({ user_id: user?.id }),
+    enabled: !!user?.id,
+    staleTime: 0,
   });
   const trainee = traineeList?.[0];
 
@@ -127,7 +128,7 @@ export default function MyMealPlan() {
   const prefs = prefsList?.[0];
 
   const { data: plan, isLoading, refetch } = useQuery({
-    queryKey: ['mealPlan', trainee?.id],
+    queryKey: ['activeMealPlan', trainee?.id],
     queryFn: async () => {
       if (!trainee?.id) return null;
       const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
@@ -144,33 +145,43 @@ export default function MyMealPlan() {
   });
 
   const handleRefresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['mealPlan', trainee?.id] });
+    await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
     await refetch();
   };
 
   const generateWeekly = async () => {
-    if (!prefs || !trainee) return;
+    if (!trainee) return;
     setGeneratingWeekly(true);
 
     // Fire-and-forget — don't await the long call
     base44.functions.invoke('generateWeeklyMealPlan', {
-      preferences_id: prefs.id,
-      trainee_id: trainee.id
+      trainee_id: trainee.id,
+      trainee_email: trainee.user_email,
     }).catch(() => {});
 
-    // Poll every 3s until a new weekly plan appears (up to 3 minutes)
+    // Poll every 3s until a new weekly plan appears (up to 60 seconds)
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 20;
     const poll = setInterval(async () => {
       attempts++;
-      const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
-      const weeklyPlan = plans.find(p => p.is_weekly && p.weekly_days?.length >= 7);
-      if (weeklyPlan || attempts >= maxAttempts) {
-        clearInterval(poll);
-        await queryClient.invalidateQueries({ queryKey: ['mealPlan', trainee?.id] });
-        await refetch();
-        setSelectedDay(0);
-        setGeneratingWeekly(false);
+      try {
+        const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
+        const weeklyPlan = plans.find(p => {
+          const days = typeof p.weekly_days === 'string' ? JSON.parse(p.weekly_days || '[]') : (p.weekly_days || []);
+          return p.is_weekly && Array.isArray(days) && days.length >= 7;
+        });
+        if (weeklyPlan || attempts >= maxAttempts) {
+          clearInterval(poll);
+          await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
+          await refetch();
+          setSelectedDay(0);
+          setGeneratingWeekly(false);
+        }
+      } catch {
+        if (attempts >= maxAttempts) {
+          clearInterval(poll);
+          setGeneratingWeekly(false);
+        }
       }
     }, 3000);
   };

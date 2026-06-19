@@ -356,7 +356,10 @@ const AuthenticatedApp = () => {
      {import.meta.env.DEV && <StartupTraceOverlay />}
      <Routes>
        <Route path="/" element={
-         MainPage ? (
+         !user ? null :
+         (user.role === 'admin' || user.role === 'coach') ? (
+           <Navigate to="/CoachDashboard" replace />
+         ) : MainPage ? (
            <LayoutWrapper currentPageName={mainPageKey}>
              <MainPage />
            </LayoutWrapper>

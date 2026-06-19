@@ -270,6 +270,7 @@ export default function CoachDailyWorkout() {
         rest_after_round_seconds: ex.rest_after_round_seconds || null
       }));
 
+      const exercisesStr = JSON.stringify(exercisesJson);
       if (!workoutId) {
         // Create new draft
         const newWorkout = await base44.entities.DailyWorkout.create({
@@ -277,7 +278,7 @@ export default function CoachDailyWorkout() {
           date: todayStr,
           title_he: title,
           description_he: description || null,
-          exercises: exercisesJson,
+          exercises: exercisesStr,
           status: 'draft'
         });
         workoutId = newWorkout.id;
@@ -287,7 +288,7 @@ export default function CoachDailyWorkout() {
         await base44.entities.DailyWorkout.update(workoutId, {
           title_he: title,
           description_he: description || null,
-          exercises: exercisesJson
+          exercises: exercisesStr
         });
         console.log('Updated workout:', workoutId);
       }
@@ -315,7 +316,7 @@ export default function CoachDailyWorkout() {
           description: description || null,
           workout_type: 'strength',
           difficulty: 'medium',
-          exercises: exercisesJson,
+          exercises: exercisesStr,
           is_published: true,
           published_at: new Date().toISOString(),
           source: 'main_builder', // marker so we can find/update this one
@@ -342,45 +343,9 @@ export default function CoachDailyWorkout() {
         console.log('Workout published successfully');
       } catch (publishError) {
         console.error('❌ Publish failed:', publishError);
-        
-        await base44.entities.SystemAuditLog.create({
-          debug_id: debugId,
-          action_type: 'PUBLISH_DAILY_WORKOUT',
-          actor_role: 'coach',
-          actor_email: user.email,
-          source_workout_id: workoutId,
-          status: 'fail',
-          error_code: 'PUBLISH_STATUS_UPDATE_FAILED',
-          error_message_he: 'נכשל בעדכון סטטוס הפרסום',
-          details: { 
-            error: publishError.message,
-            status: publishError.status || publishError.code,
-            workout_id: workoutId
-          }
-        });
-        
         const errorMsg = `שגיאה בפרסום:\n\nStatus: ${publishError.status || publishError.code || 'Unknown'}\nError: ${publishError.message}\nWorkout ID: ${workoutId}\n\n🔍 מזהה תקלה: ${debugId}`;
         throw new Error(errorMsg);
       }
-
-      // Success audit
-      const totalSets = exercisesJson.reduce((sum, ex) => sum + (ex.sets || 0), 0);
-      await base44.entities.SystemAuditLog.create({
-        debug_id: debugId,
-        action_type: 'PUBLISH_DAILY_WORKOUT',
-        actor_role: 'coach',
-        actor_email: user.email,
-        source_workout_id: workoutId,
-        status: 'success',
-        payload_summary: { 
-          exercises_count: exercisesJson.length, 
-          sets_count: totalSets 
-        },
-        details: {
-          workout_title: title,
-          date: todayStr
-        }
-      });
 
       // Send notifications via backend function (avoids rate limits)
       try {

@@ -14,13 +14,27 @@ export default function AddTraineeQuickDialog({ open, onOpenChange, coachEmail }
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      // Create a temporary email based on phone or name
       const timestamp = Date.now();
-      const tempEmail = phone 
+      const tempEmail = phone
         ? `temp_${phone.replace(/\D/g, '')}_${timestamp}@temp.local`
-        : `temp_${name.replace(/\s/g, '_')}_${timestamp}@temp.local`;
-      
+        : `temp_${name.replace(/\s/g, '_').toLowerCase()}_${timestamp}@temp.local`;
+
+      // Trainee.user_id is required (FK). Create the User record first.
+      let createdUser;
+      try {
+        createdUser = await base44.entities.User.create({
+          email: tempEmail,
+          full_name: name,
+          role: 'trainee',
+        });
+      } catch {
+        const existing = await base44.entities.User.filter({ email: tempEmail });
+        if (!existing.length) throw new Error('Failed to create user account');
+        createdUser = existing[0];
+      }
+
       const trainee = await base44.entities.Trainee.create({
+        user_id: createdUser.id,
         user_email: tempEmail,
         coach_email: coachEmail,
         full_name: name,
@@ -30,8 +44,8 @@ export default function AddTraineeQuickDialog({ open, onOpenChange, coachEmail }
           nutrition: false,
           water: false,
           workouts: true,
-          metrics: false
-        }
+          metrics: false,
+        },
       });
 
       return trainee;

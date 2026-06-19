@@ -112,7 +112,6 @@ export default function CoachSettings() {
           <div className="space-y-2">
             {[
               { label: '📱 WhatsApp', page: 'WhatsAppManager', icon: MessageCircle },
-              { label: '📋 Call Tasks', page: 'CallTasks', icon: Phone },
             ].map(({ label, page, icon: Icon }) => (
               <Link
                 key={page}

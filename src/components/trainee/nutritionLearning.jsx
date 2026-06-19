@@ -1,5 +1,15 @@
 import { base44 } from '@/api/base44Client';
 
+// Fields that exist in the production UserFoodItem Prisma schema.
+// All other fields (normalized_name, usage_count, per100_*, etc.) do not exist.
+const _UFI_FIELDS = new Set([
+  'trainee_id', 'coach_email', 'name', 'calories', 'protein', 'carbs',
+  'fat', 'amount', 'unit', 'visibility', 'active', 'source', 'barcode',
+]);
+function _pickUFI(data) {
+  return Object.fromEntries(Object.entries(data || {}).filter(([k]) => _UFI_FIELDS.has(k)));
+}
+
 export const normalizeFoodName = (value = '') => (value == null ? '' : value)
   .toString()
   .trim()
@@ -78,38 +88,27 @@ export async function upsertPersonalFoodItem({ user, trainee, manualFood, per100
       visibility: 'personal'
     });
 
-    const payload = {
-      user_id: user?.id,
+    const payload = _pickUFI({
       trainee_id: trainee.id,
-      food_name: manualFood.name.trim(),
-      normalized_name: normalized,
-      brand_name: manualFood.brand_name || '',
-      serving_size: Number(manualFood.quantity) || 100,
+      name: manualFood.name.trim(),
+      calories: Number(per100.calories) || 0,
+      protein: Number(per100.protein) || 0,
+      carbs: Number(per100.carbs) || 0,
+      fat: Number(per100.fat) || 0,
+      amount: Number(manualFood.quantity) || 100,
       unit: manualFood.unit || 'gram',
-      calories_per_100g: Number(per100.calories) || 0,
-      protein_per_100g: Number(per100.protein) || 0,
-      carbs_per_100g: Number(per100.carbs) || 0,
-      fat_per_100g: Number(per100.fat) || 0,
-      created_by_user: user?.email || trainee.user_email,
-      last_used_at: nowIso(),
-      active: true
-    };
+      visibility: 'personal',
+      active: true,
+      source: 'manual',
+    });
 
     if (existing?.[0]) {
       const item = existing[0];
-      await base44.entities.UserFoodItem.update(item.id, {
-        ...payload,
-        usage_count: (item.usage_count || 0) + 1
-      });
-      return { ...item, ...payload, usage_count: (item.usage_count || 0) + 1 };
+      await base44.entities.UserFoodItem.update(item.id, payload);
+      return { ...item, ...payload };
     }
 
-    return base44.entities.UserFoodItem.create({
-      ...payload,
-      visibility: 'personal',
-      created_at: nowIso(),
-      usage_count: 1
-    });
+    return base44.entities.UserFoodItem.create(payload);
   });
 }
 
@@ -182,37 +181,20 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
   });
   console.log(`[SAVE-AFC] UserFoodItem.filter result: ${existingByName?.length ?? 0} existing records`);
 
-  const payload = {
-    user_id: user?.id,
+  // Only send fields that exist in the production UserFoodItem schema.
+  const payload = _pickUFI({
     trainee_id: trainee.id,
-    food_name: correctedName,
-    normalized_name: normalizedCorrected,
-    brand_name: correctedMeal.brand || correctedMeal.brand_name || '',
-    serving_size: quantity,
+    name: correctedName,
+    calories: correctedMacros.calories,
+    protein: correctedMacros.protein,
+    carbs: correctedMacros.carbs,
+    fat: correctedMacros.fat,
+    amount: quantity,
     unit,
-    ...per100,
-    created_by_user: user?.email || trainee.user_email,
-    last_used_at: now,
-    active: true,
     visibility: 'personal',
+    active: true,
     source: 'ai_correction',
-    original_ai_name: originalName,
-    original_ai_text: correctedMeal.original_ai_text || notes || '',
-    source_text_segment: correctedMeal.source_text_segment || originalItem.source_text_segment || '',
-    original_ai_estimate: originalEstimate,
-    corrected_name: correctedName,
-    corrected_quantity: quantity,
-    corrected_unit: unit,
-    corrected_grams: correctedGrams,
-    corrected_calories: correctedMacros.calories,
-    corrected_protein: correctedMacros.protein,
-    corrected_carbs: correctedMacros.carbs,
-    corrected_fat: correctedMacros.fat,
-    corrected_macros: correctedMacros,
-    image_context: imageContext || '',
-    notes: notes || correctedMeal.notes || '',
-    ai_correction_notes: notes || `AI correction: ${originalName} → ${correctedName}`,
-  };
+  });
 
   let savedFood = null;
   // per100ForUsageTables is what gets written to UserRecentFoods + UserNutritionMemory.
@@ -227,10 +209,7 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
       `[CANONICAL-LOCK] prevented overwrite in saveAIFoodCorrection: "${correctedName}"`,
       `existing=${item.calories_per_100g} kcal/100g  incoming_ai=${per100.calories_per_100g} kcal/100g`
     );
-    await base44.entities.UserFoodItem.update(item.id, {
-      usage_count: (item.usage_count || 0) + 1,
-      last_used_at: now,
-    });
+    await base44.entities.UserFoodItem.update(item.id, _pickUFI({ name: correctedName }));
     savedFood = item;
     // Usage tables must reflect the canonical values, not the AI's estimate
     per100ForUsageTables = {
@@ -243,24 +222,11 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
     // isManualCorrection=true OR existing record has no canonical per100 yet — full update allowed
     console.log(`[SAVE-AFC] UserFoodItem.UPDATE id=${existingByName[0].id} food="${correctedName}"`);
     const item = existingByName[0];
-    await base44.entities.UserFoodItem.update(item.id, {
-      ...payload,
-      usage_count: (item.usage_count || 0) + 1,
-      often_edited_count: (item.often_edited_count || 0) + 1,
-      correction_count: (item.correction_count || item.often_edited_count || 0) + 1,
-      last_corrected_at: now
-    });
-    savedFood = { ...item, ...payload, usage_count: (item.usage_count || 0) + 1, correction_count: (item.correction_count || item.often_edited_count || 0) + 1 };
+    await base44.entities.UserFoodItem.update(item.id, _pickUFI(payload));
+    savedFood = { ...item, ...payload };
   } else {
     console.log(`[SAVE-AFC] UserFoodItem.CREATE food="${correctedName}"`);
-    savedFood = await base44.entities.UserFoodItem.create({
-      ...payload,
-      created_at: now,
-      usage_count: 1,
-      often_edited_count: 1,
-      correction_count: 1,
-      last_corrected_at: now
-    });
+    savedFood = await base44.entities.UserFoodItem.create(_pickUFI(payload));
     console.log(`[SAVE-AFC] UserFoodItem.CREATE result id=${savedFood?.id ?? 'FAILED (null)'}`);
   }
 

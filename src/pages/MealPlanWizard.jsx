@@ -80,11 +80,12 @@ export default function MealPlanWizard() {
   const [foodInput, setFoodInput] = useState('');
   const [dislikedInput, setDislikedInput] = useState('');
 
-  const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
-  const { data: traineeList } = useQuery({
-    queryKey: ['trainee', user?.email],
-    queryFn: () => base44.entities.Trainee.filter({ user_email: user?.email }),
-    enabled: !!user?.email,
+  const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const { data: traineeList, isLoading: traineeLoading } = useQuery({
+    queryKey: ['wizard_trainee', user?.id],
+    queryFn: () => base44.entities.Trainee.filter({ user_id: user?.id }),
+    enabled: !!user?.id,
+    staleTime: 0,
   });
   const trainee = traineeList?.[0];
 
@@ -153,7 +154,10 @@ export default function MealPlanWizard() {
   };
 
   const handleGenerate = async () => {
-    if (!trainee) return;
+    if (!trainee) {
+      alert('לא נמצאו פרטי מתאמן. נסה לרענן את הדף.');
+      return;
+    }
     setGenerating(true);
     try {
       // Sync calculated macros to Trainee — ensures NutritionLog shows same targets
@@ -609,14 +613,19 @@ export default function MealPlanWizard() {
 
             <button
               onClick={handleGenerate}
-              disabled={generating}
+              disabled={generating || traineeLoading || !trainee}
               className="w-full py-4 rounded-2xl text-white font-bold text-lg flex items-center justify-center gap-3 transition-all disabled:opacity-60"
-              style={{ background: generating ? '#94a3b8' : 'linear-gradient(135deg, #79DBD6, #3b82f6)' }}
+              style={{ background: (generating || traineeLoading || !trainee) ? '#94a3b8' : 'linear-gradient(135deg, #79DBD6, #3b82f6)' }}
             >
               {generating ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
                   בונה תפריט אישי...
+                </>
+              ) : (traineeLoading || !trainee) ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                  טוען נתונים...
                 </>
               ) : (
                 <>
