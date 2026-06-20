@@ -110,12 +110,20 @@ function normalizeEnrichedMealResult(data) {
     foods: ingredients,
     // Only keep AI questions that have both a non-empty question text AND at least one option.
     // The AI frequently returns questions with empty text or no options; those are unusable.
+    // Normalize options: AI returns strings like ["50 גרם","100 גרם"] but the UI expects
+    // objects with {label, value}. Convert strings → {label: opt, value: opt}.
     clarifying_questions: (data.clarifying_questions || []).filter(
       q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
-    ),
+    ).map(q => ({
+      ...q,
+      options: q.options.map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+    })),
     questions: (data.clarifying_questions || []).filter(
       q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
-    ),
+    ).map(q => ({
+      ...q,
+      options: q.options.map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+    })),
     debugLogId: data.debugLogId,
     wrapper_used: !!data.wrapper_used || !!data.safe_wrapper,
     fallback_used: !!data.fallback_used,

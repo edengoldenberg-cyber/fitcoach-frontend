@@ -10,7 +10,7 @@ import { ChevronRight, ChevronDown, ChevronUp, RefreshCw, Sparkles, Loader2, Cal
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
-function MealCard({ meal, mealIndex, planId, onMealUpdated }) {
+function MealCard({ meal, mealIndex, planId, onMealUpdated, dayIndex }) {
   const [expanded, setExpanded] = useState(true);
 
   const mealName = meal.meal_name || '';
@@ -60,6 +60,7 @@ function MealCard({ meal, mealIndex, planId, onMealUpdated }) {
               item={item}
               itemIndex={idx}
               mealIndex={mealIndex}
+              dayIndex={dayIndex}
               planId={planId}
               onMealUpdated={onMealUpdated}
             />
@@ -96,6 +97,7 @@ function DayView({ day, dayIndex, planId, onRefresh }) {
           key={idx}
           meal={meal}
           mealIndex={idx}
+          dayIndex={dayIndex}
           planId={planId}
           onMealUpdated={onRefresh}
         />

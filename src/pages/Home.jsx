@@ -28,8 +28,8 @@ export default function Home() {
   useEffect(() => {
     if (userLoading || traineeLoading || coachLoading) return;
 
-    // Check if user is a coach (has trainees)
-    if (coachTrainees && coachTrainees.length > 0) {
+    // Coach role or has trainees → CoachDashboard
+    if (user?.role === 'coach' || user?.role === 'admin' || (coachTrainees && coachTrainees.length > 0)) {
       navigate(createPageUrl('CoachDashboard'));
       return;
     }
@@ -37,12 +37,6 @@ export default function Home() {
     // Check if user is a trainee
     if (traineeProfile && traineeProfile.length > 0) {
       navigate(createPageUrl('TraineeHome'));
-      return;
-    }
-
-    // If admin, redirect to coach dashboard
-    if (user?.role === 'admin') {
-      navigate(createPageUrl('CoachDashboard'));
       return;
     }
 

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeftRight, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
-export default function MealItemRow({ item, itemIndex, mealIndex, planId, onMealUpdated }) {
+export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, planId, onMealUpdated }) {
   const [showAlt, setShowAlt] = useState(false);
   const [aiAlternatives, setAiAlternatives] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -17,6 +17,7 @@ export default function MealItemRow({ item, itemIndex, mealIndex, planId, onMeal
         plan_id: planId,
         meal_index: mealIndex,
         item_index: itemIndex,
+        day_index: dayIndex ?? 0,
         action: 'replace'
       });
       setAiAlternatives(res.data?.alternatives || []);

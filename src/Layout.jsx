@@ -56,7 +56,7 @@ export default function Layout({ children }) {
     enabled: !!user?.email,
   });
 
-  const isCoach = (coachTrainees && coachTrainees.length > 0) || user?.role === 'admin';
+  const isCoach = (coachTrainees && coachTrainees.length > 0) || user?.role === 'admin' || user?.role === 'coach';
 
   // Module visibility - default all true if not set
   const visibleModules = trainee?.visible_modules || {
