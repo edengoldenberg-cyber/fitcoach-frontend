@@ -1033,6 +1033,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
             )}
             <div className="flex gap-2">
               <Button
+                data-testid="analyze-meal-submit"
                 onClick={() => handleAnalyze()}
                 disabled={(!description.trim() && !photoUrl) || uploadingPhoto}
                 className="flex-1 text-white"

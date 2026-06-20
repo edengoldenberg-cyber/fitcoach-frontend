@@ -496,6 +496,7 @@ ${loginUrl}
               <div>
                 <Label>שם מלא *</Label>
                 <Input
+                  data-testid="trainee-full-name"
                   value={formData.full_name}
                   onChange={(e) => setFormData({...formData, full_name: e.target.value})}
                   placeholder="ישראל ישראלי"

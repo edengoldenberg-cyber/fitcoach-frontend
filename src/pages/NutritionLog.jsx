@@ -729,11 +729,10 @@ export default function NutritionLog() {
           {/* AI Buttons Row */}
           <div className="grid grid-cols-4 gap-2">
             <Button
+              data-testid="open-suggest-dialog"
               onClick={() => {
                 setAddingMealType('snack');
-                const panel = document.querySelector('[data-nutrition-smart-recommendations]');
-                if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                else setShowSuggestionDialog(true);
+                setShowSuggestionDialog(true);
               }}
               className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white shadow-lg text-xs"
             >
@@ -741,6 +740,7 @@ export default function NutritionLog() {
               הצע
             </Button>
             <Button
+              data-testid="open-analyze-dialog"
               onClick={() => setShowAnalyzeDialog(true)}
               className="bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white shadow-lg text-xs"
             >

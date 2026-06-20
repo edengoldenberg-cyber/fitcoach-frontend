@@ -152,6 +152,7 @@ export default function AIMealSuggestionDialog({ open, onClose, onSave, traineeE
               {QUESTIONS[currentQ].options.map((opt) => (
                 <button
                   key={opt.value}
+                  data-testid="suggest-option"
                   onClick={() => handleAnswer(QUESTIONS[currentQ].id, opt.value)}
                   className="p-4 rounded-xl border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50 transition-all text-center active:scale-95"
                 >

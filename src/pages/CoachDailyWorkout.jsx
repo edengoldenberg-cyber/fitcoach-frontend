@@ -788,6 +788,7 @@ export default function CoachDailyWorkout() {
                       return (
                         <button
                           key={ex.id}
+                          data-testid="exercise-picker-item"
                           onClick={() => addExercise(exerciseName, ex.id, ex)}
                           className="w-full text-right p-3 hover:bg-orange-50 transition-colors"
                         >

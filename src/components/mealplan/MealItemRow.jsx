@@ -89,6 +89,9 @@ export default function MealItemRow({ item, itemIndex, mealIndex, planId, onMeal
               <span className="text-xs text-slate-500 mr-2">מחפש חלופות...</span>
             </div>
           )}
+          {!loading && aiAlternatives && aiAlternatives.length === 0 && (
+            <p className="text-xs text-slate-400 text-center py-2">לא נמצאו חלופות מתאימות, נסה שוב</p>
+          )}
           {aiAlternatives?.map((alt, ai) => (
             <div key={ai} className="flex items-center gap-2 text-sm">
               <div className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
