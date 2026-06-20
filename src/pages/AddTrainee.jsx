@@ -170,38 +170,14 @@ export default function AddTrainee() {
           throw new Error(`שגיאה ביצירת רשומת מתאמן: ${traineeErr.message || 'שגיאה לא מזוהה'}`);
         }
 
-        // Step 4: Create personal access link for non-Gmail users
-        debugInfo.step = 'CREATE_ACCESS_LINK';
-        
-        const appUrl = window.location.origin;
+        // Step 4: Build invite link from the invite_token stored on the trainee record.
+        // AccessLink.jsx uses a public backend endpoint to validate tokens, so any user
+        // (authenticated or not) can open this link.
+        debugInfo.step = 'BUILD_INVITE_LINK';
+        const appUrl      = window.location.origin;
         const accessToken = trainee?.invite_token;
-        const loginUrl = accessToken ? `${appUrl}/AccessLink?token=${accessToken}` : `${appUrl}/AccessLink`;
-        let personalAccessLink = null;
-        const isGmail = normalizedEmail.endsWith('@gmail.com');
-        
-        if (!isGmail) {
-          try {
-            const token = generateSecureToken();
-            const tokenHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token))
-              .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join(''));
-            
-            const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 30); // Valid for 30 days
-            
-            await base44.entities.PersonalAccessLink.create({
-              trainee_user_id: createdUserId,
-              trainee_email: normalizedEmail,
-              token_hash: tokenHash,
-              expires_at: expiresAt.toISOString(),
-              created_by_coach_email: user?.email
-            });
-            
-            personalAccessLink = `${appUrl}/AccessLink?token=${token}`;
-            
-          } catch (linkErr) {
-            console.error('Failed to create personal access link:', linkErr);
-          }
-        }
+        const loginUrl    = accessToken ? `${appUrl}/AccessLink?token=${accessToken}` : `${appUrl}/AccessLink`;
+        const personalAccessLink = null; // no longer needed — invite_token on Trainee is sufficient
 
         // Step 5: Send WhatsApp invite (primary) — never blocks trainee creation
         debugInfo.step = 'SEND_WHATSAPP_INVITE';

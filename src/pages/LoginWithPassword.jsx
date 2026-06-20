@@ -13,6 +13,9 @@ export default function LoginWithPassword() {
   const queryClient = useQueryClient();
   const emailRef = useRef(null);
 
+  // Read optional ?from= redirect target (e.g. /AccessLink?token=XXX)
+  const fromUrl = new URLSearchParams(window.location.search).get('from') || null;
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -61,6 +64,13 @@ export default function LoginWithPassword() {
 
       // Welcome toast — requires <Toaster /> in app root; silently skipped if not mounted
       try { (await import('sonner')).toast.success(`ברוך הבא${user.full_name ? ' ' + user.full_name.split(' ')[0] : ''}!`); } catch { /* */ }
+
+      // If there is a ?from= param (e.g. from AccessLink invite flow), honour it
+      // before any role-based routing.
+      if (fromUrl) {
+        window.location.href = fromUrl;
+        return;
+      }
 
       // Role-based redirect — coach and admin both land on CoachDashboard
       // ExecutiveDashboard is accessible via the menu for admins, not the default home.

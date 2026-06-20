@@ -113,8 +113,21 @@ export default function MyMealPlan() {
 
   const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const { data: traineeList } = useQuery({
-    queryKey: ['wizard_trainee', user?.id],
-    queryFn: () => base44.entities.Trainee.filter({ user_id: user?.id }),
+    queryKey: ['wizard_trainee', user?.id, user?.email],
+    queryFn: async () => {
+      if (!user) return [];
+      // Primary: lookup by user_id (works once invite link has been consumed)
+      try {
+        const byId = await base44.entities.Trainee.filter({ user_id: user.id });
+        if (byId?.length) return byId;
+      } catch { /* ignore */ }
+      // Fallback: lookup by email (works for trainees whose user_id isn't linked yet)
+      try {
+        const byEmail = await base44.entities.Trainee.filter({ user_email: user.email });
+        if (byEmail?.length) return byEmail;
+      } catch { /* ignore */ }
+      return [];
+    },
     enabled: !!user?.id,
     staleTime: 0,
   });
