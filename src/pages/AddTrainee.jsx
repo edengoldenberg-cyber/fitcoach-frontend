@@ -29,6 +29,7 @@ export default function AddTrainee() {
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [loginUrl, setLoginUrl] = useState('');
   const [personalAccessLink, setPersonalAccessLink] = useState(null);
+  const [whatsappSent, setWhatsappSent] = useState(false);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -202,90 +203,39 @@ export default function AddTrainee() {
           }
         }
 
-        // Step 5: Send invitation email
-        debugInfo.step = 'SEND_INVITATION';
-        let emailSent = false;
-        let emailError = null;
-        
+        // Step 5: Send WhatsApp invite (primary) — never blocks trainee creation
+        debugInfo.step = 'SEND_WHATSAPP_INVITE';
+        let whatsappSent = false;
+        let whatsappError = null;
+        const inviteLink = personalAccessLink || loginUrl;
+
         try {
-          let emailBody;
-          
-          if (personalAccessLink) {
-            // Non-Gmail users - send personal access link
-            emailBody = `היי ${data.full_name.split(' ')[0]},
-
-ברוך הבא ל-FIT COACH PRO! 🎉
-
-${user?.full_name || 'המאמן שלך'} הזמין אותך להצטרף למערכת.
-
-להתחברות, לחץ/י על הקישור הבא:
-${personalAccessLink}
-
-ההתחברות תתבצע אוטומטית - לא צריך סיסמה 😊
-הקישור בתוקף ל-30 יום.
-
----
-FIT COACH PRO`;
-          } else if (isGmail) {
-            // Gmail users — send via server-side SMTP with short timeout
-            // (base44.users.inviteUser is not available in standalone mode)
-            emailBody = `היי ${data.full_name.split(' ')[0]},
-
-ברוך הבא ל-FIT COACH PRO! 🎉
-
-${user?.full_name || 'המאמן שלך'} הזמין אותך להצטרף למערכת.
-
-קיבלת מייל נפרד עם קישור להתחברות דרך Google.
-
-אם לא מצאת את המייל:
-1. בדוק בתיקיית "דואר זבל" / "Spam"
-2. חפש מייל מאת "FIT COACH PRO"
-3. או פנה למאמן שלך לעזרה
-
-התראה אותך בקרוב! 💪
-
----
-FIT COACH PRO`;
-          } else {
-            // Other email providers - instructions to login manually
-            emailBody = `היי ${data.full_name.split(' ')[0]},
-
-ברוך הבא ל-FIT COACH PRO! 🎉
-
-${user?.full_name || 'המאמן שלך'} הזמין אותך להצטרף למערכת.
-
-להתחברות:
-1. לחץ/י כאן: ${loginUrl}
-2. בחר/י "המשך עם Google"
-3. התחבר/י עם: ${normalizedEmail}
-
-זהו! פשוט וקל 😊
-
----
-FIT COACH PRO`;
-          }
-
-          if (!emailSent) {
-            // Send invitation via server-side SMTP (5s timeout)
-            const inviteRes = await Promise.race([
-              base44.functions.invoke('sendInviteEmail', {
-                to_email: normalizedEmail,
-                full_name: data.full_name,
-                login_url: personalAccessLink || loginUrl,
-              }),
-              new Promise((_, rej) => setTimeout(() => rej(new Error('sendInviteEmail timeout')), 5000))
-            ]);
-            if (inviteRes?.sent) emailSent = true;
-          }
-          
-        } catch (emailErr) {
-          debugInfo.errorCode = 'EMAIL_FAILED';
-          debugInfo.errorMessageRaw = emailErr.message || emailErr.toString();
-          emailError = emailErr.message || 'שגיאה לא ידועה';
-          console.error('Failed to send email:', emailErr);
+          const waRes = await Promise.race([
+            base44.functions.invoke('sendTraineeInviteViaWhatsApp', {
+              phone:       normalizedPhone,
+              name:        data.full_name,
+              invite_link: inviteLink,
+            }),
+            new Promise((_, rej) => setTimeout(() => rej(new Error('WhatsApp invite timeout')), 9000)),
+          ]);
+          whatsappSent = !!waRes?.sent;
+          if (!whatsappSent) whatsappError = waRes?.error || 'לא נשלח';
+        } catch (waErr) {
+          whatsappError = waErr.message;
+          console.error('WhatsApp invite failed (non-blocking):', waErr.message);
         }
 
-        return { trainee, loginUrl, emailSent, emailError, personalAccessLink };
+        // Step 6: Fire-and-forget email fallback (never blocks)
+        Promise.race([
+          base44.functions.invoke('sendInviteEmail', {
+            to_email:  normalizedEmail,
+            full_name: data.full_name,
+            login_url: inviteLink,
+          }),
+          new Promise(r => setTimeout(r, 5000)),
+        ]).catch(() => {});
+
+        return { trainee, loginUrl, inviteLink, whatsappSent, whatsappError, personalAccessLink };
         
       } catch (error) {
         // Debug logging
@@ -300,14 +250,15 @@ FIT COACH PRO`;
     },
     onSuccess: (result) => {
       setCreatedTrainee(result.trainee);
-      setLoginUrl(result.loginUrl);
-      setMagicLinkSent(result.emailSent);
+      setLoginUrl(result.inviteLink || result.loginUrl);
+      setWhatsappSent(result.whatsappSent);
+      setMagicLinkSent(false);
       setPersonalAccessLink(result.personalAccessLink);
       setSuccess(true);
-      
-      // Only log error if email failed AND no personal link was created
-      if (!result.emailSent && !result.personalAccessLink && result.emailError) {
-        console.error('Email send failed:', result.emailError);
+      if (result.whatsappSent) {
+        toast.success('המתאמן נוצר והזמנה נשלחה בוואטסאפ 💬');
+      } else {
+        toast('המתאמן נוצר. העתק/י את הקישור ושלח/י ידנית.');
       }
     },
   });
@@ -321,42 +272,14 @@ FIT COACH PRO`;
   };
 
   if (success) {
-    // Auto-copy personal access link if available (non-Gmail)
-    const linkToCopy = personalAccessLink || loginUrl;
-    if (linkToCopy) {
-      navigator.clipboard.writeText(linkToCopy).catch(() => {});
-    }
+    const displayLink = personalAccessLink || loginUrl;
+    if (displayLink) navigator.clipboard.writeText(displayLink).catch(() => {});
 
-    const isGmail = formData.user_email.toLowerCase().endsWith('@gmail.com');
-    
-    const copyMessage = personalAccessLink ? 
-      `היי ${formData.full_name.split(' ')[0]} 👋
-
-ברוך הבא ל-FIT COACH PRO! 🎉
-
-להתחברות, לחץ/י על הקישור הזה:
-${personalAccessLink}
-
-הקישור יפתח את המערכת ישירות - לא צריך סיסמה או Google 😊
-
-הקישור בתוקף ל-30 יום.
-אם יש בעיה - דבר/י איתי.` :
-      `היי ${formData.full_name.split(' ')[0]} 👋
-
-ברוך הבא ל-FIT COACH PRO! 🎉
-
-${magicLinkSent ? `שלחתי לך מייל עם קישור להתחברות.` : `להתחברות למערכת:`}
-
-${loginUrl}
-
-הוראות:
-1. לחץ/י על הקישור
-2. בחר/י "המשך עם Google"
-3. התחבר/י עם: ${formData.user_email}
-
-זהו! פשוט וקל 😊
-
-אם יש בעיה - דבר/י איתי.`;
+    const waMessage =
+      `שלום ${formData.full_name.split(' ')[0]} 👋\n` +
+      `הוזמנת לאפליקציית FitCoach Pro של Shape Studio.\n\n` +
+      `להתחברות והגדרת החשבון:\n${displayLink}\n\n` +
+      `אם הקישור לא נפתח, העתק/י אותו לדפדפן.`;
 
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4" dir="rtl">
@@ -365,69 +288,34 @@ ${loginUrl}
             <Check className="w-8 h-8 text-emerald-600" />
           </div>
           <h2 className="text-xl font-bold text-slate-800 mb-2">המתאמן נוסף בהצלחה!</h2>
-          
-          {personalAccessLink ? (
-            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-purple-800 mb-2 font-medium">
-                🔐 קישור אישי נוצר (אין Gmail)
-              </p>
-              <p className="text-xs text-purple-700 mb-2">
-                שלח את הקישור הזה למתאמן ב-WhatsApp:
-              </p>
-              <div className="bg-white p-2 rounded text-xs break-all border border-purple-200 mb-2">
-                {personalAccessLink}
-              </div>
-              <p className="text-xs text-purple-600">
-                ✓ הקישור הועתק אוטומטית
-                <br />
-                ✓ התחברות ישירה בלי סיסמה
-                <br />
-                ✓ בתוקף ל-30 יום
-              </p>
-            </div>
-          ) : magicLinkSent ? (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-blue-800 mb-2">
-                ✅ נשלח מייל עם הזמנה ל:
-              </p>
-              <p className="font-mono text-sm text-blue-900">{formData.user_email}</p>
-              <p className="text-xs text-blue-700 mt-2">
-                המתאמן צריך ללחוץ על הקישור במייל ולהתחבר עם Google.
-              </p>
+
+          {/* WhatsApp invite status */}
+          {whatsappSent ? (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-green-800 font-medium">💬 הזמנה נשלחה בוואטסאפ</p>
+              <p className="text-xs text-green-700 mt-1">המתאמן קיבל הודעה עם קישור כניסה ישיר.</p>
             </div>
           ) : (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-              <p className="text-sm text-red-800 mb-2 font-medium">
-                ❌ שליחת ההזמנה במייל נכשלה
-              </p>
-              <p className="text-xs text-red-700 mb-2">
-                שלח את הקישור הבא למתאמן ב-WhatsApp:
-              </p>
-              <div className="bg-white p-2 rounded text-xs break-all border border-red-200">
-                {loginUrl}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <p className="text-sm text-amber-800 font-medium mb-1">⚠️ שליחת וואטסאפ נכשלה — שלח/י ידנית</p>
+              <p className="text-xs text-amber-700 mb-2">העתק/י את ההודעה הבאה ושלח/י ב-WhatsApp:</p>
+              <div className="bg-white p-2 rounded text-xs text-right border border-amber-200 mb-2 whitespace-pre-wrap">
+                {waMessage}
               </div>
-              <p className="text-xs text-red-600 mt-2">
-                💡 הקישור הועתק אוטומטית - הדבק אותו ב-WhatsApp
-              </p>
+              <Button size="sm" variant="outline" className="w-full"
+                onClick={() => { navigator.clipboard.writeText(waMessage); toast.success('הועתק!'); }}>
+                העתק הודעה לוואטסאפ
+              </Button>
             </div>
           )}
 
-          {(personalAccessLink || loginUrl) && (
+          {/* Access link always shown */}
+          {displayLink && (
             <div className="bg-slate-50 border rounded-lg p-3 mb-4">
-              <p className="text-xs text-slate-600 mb-2">
-                {personalAccessLink ? 'קישור אישי:' : 'קישור להתחברות:'}
-              </p>
-              <p className="text-xs font-mono text-slate-700 break-all bg-white p-2 rounded border">
-                {personalAccessLink || loginUrl}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full mt-2"
-                onClick={() => {
-                  navigator.clipboard.writeText(personalAccessLink || loginUrl);
-                }}
-              >
+              <p className="text-xs text-slate-600 mb-1">קישור כניסה למתאמן:</p>
+              <p className="text-xs font-mono text-slate-700 break-all bg-white p-2 rounded border">{displayLink}</p>
+              <Button size="sm" variant="outline" className="w-full mt-2"
+                onClick={() => { navigator.clipboard.writeText(displayLink); toast.success('הועתק!'); }}>
                 העתק קישור
               </Button>
             </div>
