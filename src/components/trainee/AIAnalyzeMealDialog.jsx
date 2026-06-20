@@ -179,7 +179,16 @@ function normalizeAnalysisResult(data, input) {
 
 function getSmartQuestions(data, input, fallbackQuestions = []) {
   const confidence = ['high', 'medium', 'low'].includes(data?.confidence) ? data.confidence : 'low';
-  const rawQuestions = Array.isArray(data?.clarifying_questions) && data.clarifying_questions.length > 0 ? data.clarifying_questions : fallbackQuestions;
+  // Normalize options here too — AI returns string arrays, UI needs {label,value} objects.
+  // This is the fallback path; normalizeEnrichedMealResult handles the primary path.
+  const normalizeOpts = q => ({
+    ...q,
+    options: (q.options || []).map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+  });
+  const rawQuestions = (Array.isArray(data?.clarifying_questions) && data.clarifying_questions.length > 0
+    ? data.clarifying_questions
+    : fallbackQuestions
+  ).map(normalizeOpts);
   const mealText = String(input || '').toLowerCase();
   const highImpactQuestions = buildClientHighImpactQuestions(input);
   const hasExplicitQuantity = /\d+|חצי|כף|כפית|כוס|פרוס|משולש|גרם|מנה/.test(mealText);
