@@ -121,8 +121,29 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
     try {
       let uploadedUrl = imageUrl;
       if (!uploadedUrl) {
-        const uploadResult = await base44.integrations.Core.UploadFile({ file: imageFile });
-        uploadedUrl = uploadResult.file_url;
+        // Convert image to compressed base64 data URL (no external upload service needed)
+        uploadedUrl = await new Promise((resolve, reject) => {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(imageFile);
+          img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            const MAX_DIM = 1024;
+            let { width, height } = img;
+            if (width > MAX_DIM || height > MAX_DIM) {
+              const ratio = Math.min(MAX_DIM / width, MAX_DIM / height);
+              width = Math.round(width * ratio);
+              height = Math.round(height * ratio);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
+          };
+          img.onerror = reject;
+          img.src = objectUrl;
+        });
         setImageUrl(uploadedUrl);
       }
 
@@ -131,7 +152,8 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
       if (notesOverride?.trim()) payload.user_notes = notesOverride.trim();
 
       const response = await base44.functions.invoke('analyzeAndEnrichMealPhoto', payload);
-      const result = response.data;
+      // Server wraps result under data.response — use same path as AIAnalyzeMealDialog
+      const result = response?.data?.response ?? response?.data;
 
       // If backend says it needs clarification — show questions
       if (result.needs_clarification && result.clarifying_questions?.length > 0) {
@@ -143,9 +165,26 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
         return;
       }
 
-      const items = applyCanonicalLock(result.items || [], personalFoods);
+      // Normalize items: AI returns `amount` field, component expects `grams`
+      const normalizedItems = (result.items || []).map(item => {
+        const grams = item.grams || item.amount || item.quantity_grams || 100;
+        // If calories are 0 but total_calories is set, distribute evenly as fallback
+        let calories = item.calories || 0;
+        let protein  = item.protein  || 0;
+        let carbs    = item.carbs    || 0;
+        let fat      = item.fat      || 0;
+        if (calories === 0 && (result.total_calories || 0) > 0 && (result.items || []).length > 0) {
+          const n = result.items.length;
+          calories = Math.round((result.total_calories || 0) / n);
+          protein  = Math.round((result.total_protein  || 0) / n);
+          carbs    = Math.round((result.total_carbs    || 0) / n);
+          fat      = Math.round((result.total_fat      || 0) / n);
+        }
+        return { ...item, grams, calories, protein, carbs, fat };
+      });
+      const items = applyCanonicalLock(normalizedItems, personalFoods);
       setAnalysis(result);
-      setOriginalAiItems(result.items || []);
+      setOriginalAiItems(normalizedItems);
       setEditedItems(items);
       setExpandedItems({});
 
@@ -389,8 +428,8 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
     const response = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
       meal_text: `${foodName} ${editedItems[index].grams}g`
     });
-    const result = response.data;
-    if (result.items?.length > 0) {
+    const result = response?.data?.response ?? response?.data;
+    if (result?.items?.length > 0) {
       const updatedItems = [...editedItems];
       const newItem = result.items[0];
       updatedItems[index] = { ...newItem, name: newItem.name, grams: editedItems[index].grams, _corrected: true };

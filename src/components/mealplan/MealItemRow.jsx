@@ -58,6 +58,11 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
             <span className="text-amber-500">פ:{Math.round(item.carbs)}ג</span>
             <span className="text-green-500">ש:{Math.round(item.fat)}ג</span>
           </div>
+          {item.alternative && (
+            <div className="mt-1 text-[11px] text-slate-400">
+              ↔ חלופה: <span className="text-teal-600 font-medium">{item.alternative}</span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
