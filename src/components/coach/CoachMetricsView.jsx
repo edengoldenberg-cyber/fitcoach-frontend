@@ -39,14 +39,13 @@ export default function CoachMetricsView({ traineeEmail, trainee }) {
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
+      // MetricsEntry schema does NOT have user_id — strip it from canonical fields
+      const { user_id: _uid, ...canonicalFields } = buildCanonicalTraineeFields(trainee || { user_email: traineeEmail });
       const existing = entries.find(e => e.date === data.date);
       if (existing) {
-        return await base44.entities.MetricsEntry.update(existing.id, { ...data, ...buildCanonicalTraineeFields(trainee || { user_email: traineeEmail }) });
+        return await base44.entities.MetricsEntry.update(existing.id, { ...data, ...canonicalFields });
       } else {
-        return await base44.entities.MetricsEntry.create({
-          ...data,
-          ...buildCanonicalTraineeFields(trainee || { user_email: traineeEmail }),
-        });
+        return await base44.entities.MetricsEntry.create({ ...data, ...canonicalFields });
       }
     },
     onSuccess: () => {

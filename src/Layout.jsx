@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -22,6 +22,7 @@ if (typeof window !== 'undefined') {
 
 export default function Layout({ children }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname;
   const [showCoachMenu, setShowCoachMenu] = React.useState(false);
   const [showDiagnostics, setShowDiagnostics] = React.useState(false);
@@ -56,7 +57,9 @@ export default function Layout({ children }) {
     enabled: !!user?.email,
   });
 
-  const isCoach = (coachTrainees && coachTrainees.length > 0) || user?.role === 'admin' || user?.role === 'coach';
+  // Check role from JWT first (immediately available) so the logo is a link before coachTrainees loads
+  const isCoachByRole = user?.role === 'admin' || user?.role === 'coach';
+  const isCoach = isCoachByRole || (coachTrainees && coachTrainees.length > 0);
 
   // Module visibility - default all true if not set
   const visibleModules = trainee?.visible_modules || {
@@ -355,10 +358,17 @@ export default function Layout({ children }) {
               {navItems.map(({ icon: Icon, label, page, badge }) => {
                 const url = createPageUrl(page);
                 const isActive = currentPath === url || currentPath.includes(page);
+                const isHomeBtn = page === 'CoachDashboard' && isCoach;
+                // When Home is clicked while already on CoachDashboard, pass closePanel=true
+                // so the inline trainee panel closes and the dashboard view shows.
+                const handleNavClick = isHomeBtn
+                  ? (e) => { e.preventDefault(); navigate(url, { state: { closePanel: true } }); }
+                  : undefined;
                 return (
                   <Link
                     key={page}
                     to={url}
+                    onClick={handleNavClick}
                     className="flex flex-col items-center justify-center flex-1 h-full transition-colors relative min-w-0"
                     style={{ color: isActive ? '#79DBD6' : '#94a3b8' }}
                   >

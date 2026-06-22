@@ -16,7 +16,7 @@ import {
   Target, TrendingUp, Sparkles, Send, Plus, Settings, ChevronLeft,
   BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock, ArrowRight
 } from "lucide-react";
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
@@ -697,12 +697,22 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
 
 // ─── Main Coach Dashboard ────────────────────────────────────────────────────
 export default function CoachDashboard() {
+  const location = useLocation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedTrainee, setSelectedTrainee] = useState(null);
   const today = getIsraelDateString();
+
+  // When the user navigates back to CoachDashboard (e.g. clicking the Home button
+  // from inside the inline trainee panel), close the panel so the dashboard shows.
+  // location.state?.closePanel is set by Layout when "בית" is clicked while already here.
+  React.useEffect(() => {
+    if (location.state?.closePanel) {
+      setSelectedTrainee(null);
+    }
+  }, [location.key]);
   const recentStart = getIsraelDateString(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
   const queryClient = useQueryClient();
 
