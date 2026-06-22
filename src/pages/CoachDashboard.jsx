@@ -706,7 +706,13 @@ export default function CoachDashboard() {
   const recentStart = getIsraelDateString(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
   const queryClient = useQueryClient();
 
-  const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    retry: 3,
+    retryDelay: 1000,
+    staleTime: 60_000,
+  });
   const { data: trainees = [], isLoading } = useQuery({
     queryKey: ['trainees', user?.email],
     queryFn: async () => {
@@ -714,6 +720,11 @@ export default function CoachDashboard() {
       return records.filter(t => !['deleted', 'inactive'].includes(t.status));
     },
     enabled: !!user?.email,
+    // Preserve the last known trainee list on any refetch failure (network hiccup, token refresh).
+    // Without this, a transient 401 or network error clears data to undefined → trainees = [] → shows 0.
+    placeholderData: (previousData) => previousData,
+    retry: 2,
+    staleTime: 30_000,
   });
   // Load ALL trainees for this coach, including deleted/inactive — for restore tab.
   // Uses a coach_email filter instead of global list() to avoid full-table scan.

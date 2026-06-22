@@ -110,14 +110,17 @@ export default function ResendInviteDialog({ open, onClose, trainee }) {
             <div className={`rounded-lg p-3 text-sm ${waResult.sent ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
               {waResult.sent ? (
                 <>
-                  <p className="text-green-800 font-medium">✅ ההזמנה נשלחה בוואטסאפ</p>
-                  {waResult.whatsapp_id && <p className="text-green-700 text-xs mt-1">ID: {waResult.whatsapp_id}</p>}
+                  <p className="text-green-800 font-medium">✅ נשלח לבדיקה — בדוק שהמתאמן קיבל</p>
+                  <p className="text-green-700 text-xs mt-1">אם לא קיבל תוך דקה, השתמש בכפתורי ההעתקה למטה</p>
+                  {waResult.whatsapp_id && <p className="text-green-600 text-xs mt-0.5 font-mono">ID: {waResult.whatsapp_id}</p>}
                 </>
               ) : (
                 <>
-                  <p className="text-red-800 font-medium">❌ שליחה נכשלה — שלח/י ידנית</p>
+                  <p className="text-red-800 font-medium">
+                    {waResult.not_on_whatsapp ? '⚠️ המספר לא רשום בוואטסאפ' : '❌ שליחה נכשלה'}
+                  </p>
                   {waResult.error && <p className="text-red-700 text-xs mt-1">{waResult.error}</p>}
-                  {waResult.invite_link && <p className="text-xs mt-1 text-red-600 break-all">{waResult.invite_link}</p>}
+                  <p className="text-red-700 text-xs mt-1 font-medium">השתמש/י בכפתורי ההעתקה למטה לשליחה ידנית</p>
                 </>
               )}
             </div>

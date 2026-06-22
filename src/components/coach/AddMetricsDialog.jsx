@@ -27,18 +27,16 @@ export default function AddMetricsDialog({ open, onClose, traineeEmail, traineeN
   const addMetrics = useMutation({
     mutationFn: async (data) => {
       return await base44.entities.MetricsEntry.create({
-        trainee_id: trainee?.id,
-        user_id: trainee?.user_id,
-        trainee_email: trainee?.user_email || traineeEmail,
-        coach_email: trainee?.coach_email,
-        date: data.date,
-        weight_kg: data.weight_kg ? parseFloat(data.weight_kg) : undefined,
+        trainee_id:       trainee?.id,
+        trainee_email:    trainee?.user_email || traineeEmail,
+        coach_email:      trainee?.coach_email,
+        date:             data.date,
+        weight_kg:        data.weight_kg        ? parseFloat(data.weight_kg)        : undefined,
         body_fat_percent: data.body_fat_percent ? parseFloat(data.body_fat_percent) : undefined,
-        water_percent: data.water_percent ? parseFloat(data.water_percent) : undefined,
-        muscle_mass_kg: data.muscle_mass_kg ? parseFloat(data.muscle_mass_kg) : undefined,
-        body_age_years: data.body_age_years ? parseInt(data.body_age_years) : undefined,
-        notes: data.notes || undefined,
-        source: 'coach',
+        water_percent:    data.water_percent     ? parseFloat(data.water_percent)    : undefined,
+        muscle_mass_kg:   data.muscle_mass_kg   ? parseFloat(data.muscle_mass_kg)   : undefined,
+        body_age_years:   data.body_age_years   ? parseInt(data.body_age_years)     : undefined,
+        notes:            data.notes || undefined,
       });
     },
     onSuccess: () => {
