@@ -18,6 +18,23 @@ let _accessToken = typeof localStorage !== 'undefined'
   ? localStorage.getItem('fitcoach_token') || ''
   : '';
 
+// ─── Refresh deduplication ────────────────────────────────────────────────────
+// When the JWT expires, every concurrent API call (home page loads 5-6 in parallel)
+// would each try to refresh independently — hammering the rate limiter with 4-6
+// simultaneous POST /api/auth/refresh calls and getting 429s.
+// A single shared promise ensures exactly ONE refresh attempt goes out at a time;
+// all waiters receive the same result.
+let _refreshInFlight = null;
+
+// ─── Session expiry notification ──────────────────────────────────────────────
+// Dispatched when refresh fails so AuthContext can redirect to login.
+// Components must NOT redirect themselves — only AuthContext does.
+function _notifySessionExpired() {
+  try {
+    window.dispatchEvent(new CustomEvent('fitcoach:session_expired'));
+  } catch { /* SSR or non-browser env */ }
+}
+
 // ─── Core fetch helper ───────────────────────────────────────────────────────
 
 async function apiFetch(method, path, body = null, extraHeaders = {}) {
@@ -43,7 +60,7 @@ async function apiFetch(method, path, body = null, extraHeaders = {}) {
   if (res.status === 401) {
     const refreshed = await _tryRefresh();
     if (refreshed) {
-      // Retry the original request with the new token
+      // Retry the original request with the refreshed token
       headers['Authorization'] = `Bearer ${_accessToken}`;
       const retry = await fetch(url, {
         method,
@@ -61,7 +78,8 @@ async function apiFetch(method, path, body = null, extraHeaders = {}) {
       }
       return retry.json();
     }
-    // Refresh failed — throw so AuthContext can handle
+    // Refresh failed permanently — notify AuthContext to redirect to login
+    _notifySessionExpired();
     const errData = await res.json().catch(() => ({}));
     const err = Object.assign(new Error(errData.error || 'Unauthorized'), {
       status: 401,
@@ -83,22 +101,33 @@ async function apiFetch(method, path, body = null, extraHeaders = {}) {
 }
 
 async function _tryRefresh() {
-  try {
-    const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-    if (!res.ok) return false;
-    const data = await res.json();
-    if (data.access_token) {
-      _accessToken = data.access_token;
-      localStorage.setItem('fitcoach_token', _accessToken);
-      return true;
+  // Deduplicate: if a refresh is already in flight, wait for it instead of
+  // sending a second request. This prevents rate-limit (429) hits when multiple
+  // API calls fail simultaneously on token expiry.
+  if (_refreshInFlight) return _refreshInFlight;
+
+  _refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      if (data.access_token) {
+        _accessToken = data.access_token;
+        try { localStorage.setItem('fitcoach_token', _accessToken); } catch { /* */ }
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    } finally {
+      _refreshInFlight = null;
     }
-    return false;
-  } catch {
-    return false;
-  }
+  })();
+
+  return _refreshInFlight;
 }
 
 // ─── auth ─────────────────────────────────────────────────────────────────────
@@ -268,6 +297,36 @@ const asServiceRole = {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
+// ─── integrations.Core shim ──────────────────────────────────────────────────
+// Replaces the old @base44/sdk integrations module.
+// Components that call base44.integrations.Core.UploadFile / InvokeLLM now work
+// against our own backend without the old Base44 cloud service.
+
+const integrationsCoreShim = {
+  // Convert a File/Blob to a base64 data URL — same approach as AddMealFromPhoto.jsx.
+  // Returns { file_url: 'data:image/...;base64,...' }.
+  UploadFile: ({ file }) => {
+    const fileData = file instanceof File ? file : (file instanceof Blob ? file : null);
+    if (!fileData) return Promise.reject(new Error('UploadFile: file must be a File or Blob'));
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = (e) => resolve({ file_url: e.target.result });
+      reader.onerror = ()  => reject(new Error('UploadFile: failed to read file'));
+      reader.readAsDataURL(fileData);
+    });
+  },
+
+  // Proxy arbitrary LLM prompts through the backend askAICoach function.
+  // The old SDK accepted response_json_schema; we map that to json_mode.
+  InvokeLLM: ({ prompt, response_json_schema, ...rest }) =>
+    apiFetch('POST', '/api/functions/askAICoach', {
+      prompt,
+      json_mode: !!response_json_schema,
+    }).then(r => r?.data?.response ?? r?.response ?? r),
+};
+
+const integrationsShim = { Core: integrationsCoreShim };
+
 export const base44 = {
   auth,
   entities,
@@ -277,7 +336,7 @@ export const base44 = {
   setToken: (token) => auth.setToken(token, true),
   getConfig: () => ({ appId: 'fitcoach', serverUrl: API_BASE }),
   cleanup: () => { _accessToken = ''; },
-  get integrations() { return {}; },
+  get integrations() { return integrationsShim; },
   get connectors() { return {}; },
   get agents() { return {}; },
   get appLogs() { return { list: () => Promise.resolve([]), logUserInApp: () => Promise.resolve() }; },

@@ -26,6 +26,7 @@ import AccessLink from './pages/AccessLink';
 import SetPassword from './pages/SetPassword';
 import LoginWithPassword from './pages/LoginWithPassword';
 import ResetPassword from './pages/ResetPassword';
+import AuthDiagnostic from './pages/AuthDiagnostic';
 import DebugPage from './pages/DebugPage';
 import DebugCrashes from './pages/DebugCrashes';
 import TraineeQA from './pages/TraineeQA';
@@ -465,6 +466,7 @@ const AuthenticatedApp = () => {
       <Route path="/SetPassword" element={<SetPassword />} />
       <Route path="/LoginWithPassword" element={<LoginWithPassword />} />
       <Route path="/ResetPassword" element={<ResetPassword />} />
+      <Route path="/AuthDiagnostic" element={<AuthDiagnostic />} />
       <Route path="/DebugPage" element={<AdminRoute><LayoutWrapper currentPageName="DebugPage"><DebugPage /></LayoutWrapper></AdminRoute>} />
       <Route path="/DebugCrashes" element={<AdminRoute><LayoutWrapper currentPageName="DebugCrashes"><DebugCrashes /></LayoutWrapper></AdminRoute>} />
       <Route path="/TraineeQA" element={<AdminRoute><LayoutWrapper currentPageName="TraineeQA"><TraineeQA /></LayoutWrapper></AdminRoute>} />
