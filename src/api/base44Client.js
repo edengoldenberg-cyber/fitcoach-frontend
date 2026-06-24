@@ -31,7 +31,13 @@ let _refreshInFlight = null;
 // Components must NOT redirect themselves — only AuthContext does.
 function _notifySessionExpired() {
   try {
-    window.dispatchEvent(new CustomEvent('fitcoach:session_expired'));
+    // Don't redirect if already on a public auth page — avoids redirect loops
+    // when AuthContext's /me call gets 401 during the login flow itself.
+    const isAuthPage = /\/(LoginWithPassword|AccessLink|SetPassword|ResetPassword|AccessCodeLogin)/i
+      .test(window.location.pathname);
+    if (!isAuthPage) {
+      window.dispatchEvent(new CustomEvent('fitcoach:session_expired'));
+    }
   } catch { /* SSR or non-browser env */ }
 }
 
@@ -58,28 +64,36 @@ async function apiFetch(method, path, body = null, extraHeaders = {}) {
 
   // Auto-refresh on 401
   if (res.status === 401) {
-    const refreshed = await _tryRefresh();
-    if (refreshed) {
-      // Retry the original request with the refreshed token
-      headers['Authorization'] = `Bearer ${_accessToken}`;
-      const retry = await fetch(url, {
-        method,
-        headers,
-        credentials: 'include',
-        body: body != null ? JSON.stringify(body) : undefined,
-      });
-      if (!retry.ok) {
-        const errData = await retry.json().catch(() => ({}));
-        const err = Object.assign(new Error(errData.error || retry.statusText), {
-          status: retry.status,
-          data: errData,
+    // Only attempt refresh + session_expired notification when we actually had a
+    // token that was sent. If _accessToken is empty (unauthenticated page load,
+    // public route, or fresh context) there is no session to recover — just throw.
+    const hadToken = !!headers['Authorization'];
+
+    if (hadToken) {
+      const refreshed = await _tryRefresh();
+      if (refreshed) {
+        // Retry the original request with the refreshed token
+        headers['Authorization'] = `Bearer ${_accessToken}`;
+        const retry = await fetch(url, {
+          method,
+          headers,
+          credentials: 'include',
+          body: body != null ? JSON.stringify(body) : undefined,
         });
-        throw err;
+        if (!retry.ok) {
+          const errData = await retry.json().catch(() => ({}));
+          const err = Object.assign(new Error(errData.error || retry.statusText), {
+            status: retry.status,
+            data: errData,
+          });
+          throw err;
+        }
+        return retry.json();
       }
-      return retry.json();
+      // Had a token, refresh failed — session is dead. Notify AuthContext.
+      _notifySessionExpired();
     }
-    // Refresh failed permanently — notify AuthContext to redirect to login
-    _notifySessionExpired();
+
     const errData = await res.json().catch(() => ({}));
     const err = Object.assign(new Error(errData.error || 'Unauthorized'), {
       status: 401,
