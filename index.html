@@ -1,11 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="he" dir="rtl">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="https://base44.com/logo_v2.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="manifest" href="/manifest.json" />
-    <title>Base44 APP</title>
+
+    <!-- iOS PWA: tells Safari to treat this as a standalone app -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="FitCoach" />
+    <!-- iOS uses apple-touch-icon (not manifest icons) for home screen -->
+    <link rel="apple-touch-icon" href="https://base44.com/logo_v2.svg" />
+
+    <title>FitCoach Pro</title>
   </head>
   <body>
     <div id="root"></div>
