@@ -53,7 +53,6 @@ import AIMealAnalysisFlowReport from './pages/AIMealAnalysisFlowReport';
 import DebugFoods from './pages/DebugFoods';
 import { useLocation, Navigate } from 'react-router-dom';
 import React, { useEffect, useMemo, useState } from 'react';
-import LoginDiagnosticScreen from './components/shared/LoginDiagnosticScreen';
 import GoogleLoginScreen from './components/shared/GoogleLoginScreen';
 import StartupTraceOverlay, { startupTrace } from './components/shared/StartupTraceOverlay';
 import AdminRoute from './components/auth/AdminRoute';
@@ -318,22 +317,21 @@ const AuthenticatedApp = () => {
     return <GoogleLoginScreen />;
   }
 
-  // Handle authentication errors (only if user is null)
-  if (authError && !isPublicRoute && !user) {
-    if (authError.type === 'user_not_registered') {
+  // AUTH GUARD: no authenticated user on a protected page → redirect to login
+  if (!user && !isPublicRoute) {
+    if (authError?.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
-    } else if (authError.type === 'auth_required') {
-      console.log('[App] auth_required with no user → showing diagnostic screen');
-      return <LoginDiagnosticScreen />;
     }
-  }
-
-  // Fallback: if user is null after auth check (not direct entry, not public route)
-  if (user === null && !isLoadingAuth && !isPublicRoute && !isDirectEntry) {
-    if (!authError) {
-      navigateToLogin();
-      return null;
+    // If a token exists but auth is still running after startup timeout, keep spinner
+    // to avoid a premature redirect while the /me call is still in-flight.
+    if (startupTimedOut && localStorage.getItem('fitcoach_token')) {
+      return (
+        <div className="fixed inset-0 flex items-center justify-center flex-col gap-3">
+          <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
+        </div>
+      );
     }
+    return <Navigate to="/LoginWithPassword" replace />;
   }
 
   // After Google login: if user is now authenticated and there's a pending access token

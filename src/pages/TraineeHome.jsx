@@ -25,7 +25,6 @@ import { ArrowRight } from 'lucide-react';
 import NotificationAlert from '../components/trainee/NotificationAlert';
 import EditPersonalInfo from '../components/trainee/EditPersonalInfo';
 import AutoLinkUserOnLogin from '../components/shared/AutoLinkUserOnLogin';
-import LoginDiagnosticScreen from '../components/shared/LoginDiagnosticScreen';
 import SuggestFoodDialog from '../components/trainee/SuggestFoodDialog';
 import HomeHeader from '../components/trainee/home/HomeHeader';
 import DailyStatsRow from '../components/trainee/home/DailyStatsRow';
@@ -584,7 +583,8 @@ function TraineeHomeContent() {
   }
 
   if (!user) {
-    return <LoginDiagnosticScreen />;
+    window.location.replace('/LoginWithPassword');
+    return null;
   }
 
   // No trainee record found for this user — show contact-coach message
