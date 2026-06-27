@@ -27,7 +27,27 @@ export default function SetPasswordPage() {
     const sessionData = sessionStorage.getItem('temp_access_session');
     if (!sessionData) {
       addTrace('session_found', 'NO');
-      // Don't redirect immediately — user might have arrived directly; show manual entry button
+      // No sessionStorage session — check if the user has a live JWT instead.
+      // This handles the case where AccessCodeLogin issued a JWT but temp_access_session
+      // was lost (e.g. page refresh, cross-tab). Fall back to the authenticated user.
+      (async () => {
+        try {
+          const authUser = await base44.auth.me();
+          if (authUser?.id) {
+            addTrace('session_from_jwt', authUser.email);
+            setTempSession({
+              userId:              authUser.id,
+              userEmail:           authUser.email,
+              fullName:            authUser.full_name || '',
+              isTemporary:         false,
+              requirePasswordSetup: true,
+              timestamp:           Date.now(),
+            });
+          }
+        } catch {
+          // No JWT either — leave tempSession null → show "no session" screen
+        }
+      })();
       return;
     }
 
@@ -128,6 +148,8 @@ export default function SetPasswordPage() {
         const trainee = trainees[0];
         addTrace('trainee_user_id_before', trainee.user_id || 'null');
 
+        const isFirstLogin = !trainee.first_login_at;
+
         const traineeUpdates = {
           last_login_at: new Date().toISOString(),
           invite_status: 'joined',
@@ -136,12 +158,17 @@ export default function SetPasswordPage() {
         if (!trainee.user_id) {
           traineeUpdates.user_id = userId;
         }
-        if (!trainee.first_login_at) {
+        if (isFirstLogin) {
           traineeUpdates.first_login_at = new Date().toISOString();
         }
 
         await base44.entities.Trainee.update(trainee.id, traineeUpdates);
         addTrace('trainee_user_id_after', userId);
+
+        // Fire welcome WhatsApp on first login — non-blocking, idempotent safety net
+        if (isFirstLogin) {
+          base44.functions.invoke('sendWelcomeWhatsApp', { trainee_id: trainee.id }).catch(() => {});
+        }
       }
 
       // Step 5: Clean up session data

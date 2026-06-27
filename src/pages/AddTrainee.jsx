@@ -179,27 +179,25 @@ export default function AddTrainee() {
         const loginUrl    = accessToken ? `${appUrl}/AccessLink?token=${accessToken}` : `${appUrl}/AccessLink`;
         const personalAccessLink = null; // no longer needed — invite_token on Trainee is sufficient
 
-        // Step 5: Send WhatsApp invite (primary) — never blocks trainee creation
+        // Step 5: Enqueue WhatsApp invite via onTraineeCreated (queue-based, idempotent)
         debugInfo.step = 'SEND_WHATSAPP_INVITE';
         let whatsappSent = false;
         let whatsappError = null;
-        const inviteLink = personalAccessLink || loginUrl;
 
         try {
           const waRes = await Promise.race([
-            base44.functions.invoke('sendTraineeInviteViaWhatsApp', {
-              phone:       normalizedPhone,
-              name:        data.full_name,
-              invite_link: inviteLink,
-            }),
+            base44.functions.invoke('onTraineeCreated', { data: trainee }),
             new Promise((_, rej) => setTimeout(() => rej(new Error('WhatsApp invite timeout')), 9000)),
           ]);
-          whatsappSent = !!waRes?.sent;
-          if (!whatsappSent) whatsappError = waRes?.error || 'לא נשלח';
+          // sent=true means enqueued successfully (will be delivered by queue worker)
+          whatsappSent = !!waRes?.sent || !!(waRes?.queue_id);
+          if (!whatsappSent && !waRes?.duplicate) whatsappError = waRes?.error || waRes?.reason || 'לא נשלח';
         } catch (waErr) {
           whatsappError = waErr.message;
           console.error('WhatsApp invite failed (non-blocking):', waErr.message);
         }
+
+        const inviteLink = personalAccessLink || loginUrl;
 
         // Step 6: Fire-and-forget email fallback (never blocks)
         Promise.race([
@@ -297,11 +295,12 @@ export default function AddTrainee() {
             </div>
           )}
 
+
           <Button
             className="w-full mb-2"
             variant="outline"
             onClick={() => {
-              navigator.clipboard.writeText(copyMessage);
+              navigator.clipboard.writeText(waMessage);
               toast.success('ההודעה הועתקה');
             }}
           >
