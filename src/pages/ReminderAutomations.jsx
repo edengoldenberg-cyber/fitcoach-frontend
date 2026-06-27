@@ -303,19 +303,40 @@ function AutomationCard({ automation, allTrainees, todayStr, activeProvider, isA
     setShowConfirm(false);
     setTestLoading(true);
     try {
-      // Direct send — bypasses scheduler, queue, time windows
-      const res = await base44.functions.invoke('testAutomationMessage', {
-        automationId: automation.id,
-        testPhone: testPhone.trim(),
+      // Queue-based send: enqueue → run worker → return result
+      const normalized = normalizedTestPhone;
+      const idempotencyKey = `reminder-test:${automation.id}:${normalized}:${new Date().toISOString().slice(0,16)}`;
+      const enqRes = await base44.functions.invoke('enqueueWhatsAppMessage', {
+        coachEmail:    '',
+        toPhoneE164:   normalized,
+        toName:        'Test',
+        renderedText:  `🧪 טסט אוטומציה: ${automation.name}\n${new Date().toLocaleString('he-IL')}`,
+        templateKey:   automation.id,
+        contextType:   'reminder_test',
+        idempotencyKey,
       });
-      const data = res?.data || {};
+      const queueId = enqRes?.data?.record?.id || enqRes?.data?.data?.record?.id;
+      const isDup   = !!(enqRes?.data?.duplicate || enqRes?.data?.data?.duplicate);
+
+      // Run worker to deliver
+      const workerRes = await base44.functions.invoke('whatsAppQueueWorker', {});
+      const processed = workerRes?.data?.processed ?? 0;
+
+      const data = {
+        success:   !!queueId || isDup,
+        testMode:  false,
+        phone:     normalized,
+        preview:   `טסט: ${automation.name}`,
+        queueId,
+        duplicate: isDup,
+        worker_processed: processed,
+      };
       setTestResult(data);
-      if (data.success || data.testMode) {
-        toast.success(`✅ טסט נשלח ל-${normalizedTestPhone}`);
-      } else if (data.blocked) {
-        toast.warning('⛔ חסום על ידי Kill Switch');
+
+      if (data.success) {
+        toast.success(`✅ טסט נשלח ל-${normalized}${isDup ? ' (כפיל)' : ''} — Queue: ${(queueId||'').slice(-8)}`);
       } else {
-        toast.error(`❌ ${data.error || data.message || 'שגיאה לא ידועה'}`);
+        toast.error(`❌ ${enqRes?.error || 'שגיאה'}`);
       }
     } catch (e) {
       toast.error('שגיאה: ' + (e.message || 'לא ניתן לשלוח'));

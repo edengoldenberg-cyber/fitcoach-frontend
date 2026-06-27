@@ -75,6 +75,7 @@ import TraineeProfile from './pages/TraineeProfile';
 import TraineeQA from './pages/TraineeQA';
 import UnitsDebug from './pages/UnitsDebug';
 import WaterLog from './pages/WaterLog';
+import WhatsAppAutomations from './pages/WhatsAppAutomations';
 import WhatsAppManager from './pages/WhatsAppManager';
 import WorkoutDetails from './pages/WorkoutDetails';
 import WorkoutLog from './pages/WorkoutLog';
@@ -156,6 +157,7 @@ export const PAGES = {
     // TraineeQA removed from auto-route loop — explicit AdminRoute in App.jsx
     "UnitsDebug": UnitsDebug,
     "WaterLog": WaterLog,
+    "WhatsAppAutomations": WhatsAppAutomations,
     "WhatsAppManager": WhatsAppManager,
     "WorkoutDetails": WorkoutDetails,
     "WorkoutLog": WorkoutLog,
