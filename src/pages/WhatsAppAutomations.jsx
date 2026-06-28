@@ -476,6 +476,15 @@ export default function WhatsAppAutomations() {
     queryFn:  () => base44.auth.me(),
   });
 
+  // Coach/admin only — trainees should never see this page
+  if (user && user.role !== 'admin' && user.role !== 'coach') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50" dir="rtl">
+        <p className="text-slate-500">אין הרשאה לצפייה בדף זה.</p>
+      </div>
+    );
+  }
+
   const { data: automations = [], isLoading, refetch } = useQuery({
     queryKey: ['whatsappAutomations', user?.email],
     queryFn:  () => base44.entities.WhatsAppAutomation.filter({ coach_email: user?.email }),

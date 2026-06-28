@@ -150,6 +150,7 @@ export default function Layout({ children }) {
       { icon: TrendingUp, label: 'דוחות', page: 'CoachReports' },
     ]},
     { category: '💬 WhatsApp', icon: MessageCircle, items: [
+      { icon: Zap,           label: '🤖 אוטומציות WhatsApp', page: 'WhatsAppAutomations' },
       { icon: MessageCircle, label: '📱 WhatsApp', page: 'WhatsAppManager' },
     ]},
 
@@ -359,10 +360,16 @@ export default function Layout({ children }) {
                 const url = createPageUrl(page);
                 const isActive = currentPath === url || currentPath.includes(page);
                 const isHomeBtn = page === 'CoachDashboard' && isCoach;
-                // When Home is clicked while already on CoachDashboard, pass closePanel=true
-                // so the inline trainee panel closes and the dashboard view shows.
+                // When Home is clicked while on CoachDashboard (possibly inside trainee panel),
+                // dispatch a custom DOM event so the inline panel closes immediately —
+                // this is more reliable than relying on React Router same-URL navigation
+                // creating a new location.key.
                 const handleNavClick = isHomeBtn
-                  ? (e) => { e.preventDefault(); navigate(url, { state: { closePanel: true } }); }
+                  ? (e) => {
+                      e.preventDefault();
+                      window.dispatchEvent(new CustomEvent('fitcoach:closePanels'));
+                      navigate(url, { state: { closePanel: true } });
+                    }
                   : undefined;
                 return (
                   <Link
