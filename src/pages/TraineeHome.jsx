@@ -333,7 +333,7 @@ function TraineeHomeContent() {
 
   const { data: todayTemplates = [] } = useQuery({
     queryKey: ['dailyWorkoutTemplates', 'home', today],
-    queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: today, is_published: true }, '-created_date', 20),
+    queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: today, status: 'published' }, '-created_date', 20),
     enabled: !!user?.email,
   });
 

@@ -140,7 +140,7 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
 
     try {
       const response = await base44.functions.invoke('analyzeAndEnrichMealPhoto', { meal_text: freeText });
-      const result = response.data;
+      const result = response?.data?.response ?? response?.data;
 
       if (!result.items || result.items.length === 0) {
         setError('לא זוהו מספיק רכיבים — אפשר לערוך את התיאור או לנסות שוב.');
@@ -153,7 +153,16 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
       setConfidence(result.confidence || 'medium');
       setUncertaintyScore(result.uncertainty_score ?? null);
       setAnalysisNotes(result.notes || 'ניתוח ראשוני — חלק מהכמויות הוערכו');
-      setClarifyingQuestions((result.clarifying_questions || []).slice(0, 3));
+      setClarifyingQuestions(
+        (result.clarifying_questions || [])
+          .map(q => ({
+            ...q,
+            options: (q.options || []).map(opt =>
+              typeof opt === 'string' ? { label: opt, value: opt } : opt
+            ),
+          }))
+          .slice(0, 3)
+      );
       setOriginalAiItems(result.items.map(item => ({ ...item, grams: item.grams || 100 })));
       setAnalyzedItems(learnedItems.map(item => ({ ...item, grams: item.grams || 100 })));
       setStep('review');
@@ -205,7 +214,7 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
       const response = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
         meal_text: `${item.name} ${grams} גרם`
       });
-      const result = response.data;
+      const result = response?.data?.response ?? response?.data;
       const firstItem = result?.items?.[0];
       if (!firstItem) {
         setError(result?.reason || 'לא הצלחתי לנתח את המוצר הזה');
@@ -270,13 +279,23 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
         meal_text: freeText,
         user_answers: nextAnswers
       });
-      const result = response.data;
+      const result = response?.data?.response ?? response?.data;
       const learnedItems = applyCanonicalLock(result.items || [], personalFoods);
       setMealName(result.meal_name || mealName);
       setConfidence(result.confidence || 'medium');
       setUncertaintyScore(result.uncertainty_score ?? null);
       setAnalysisNotes(result.notes || 'הארוחה חושבה מחדש לפי התשובות שלך');
-      setClarifyingQuestions((result.clarifying_questions || []).filter(q => !nextAnswers[q.id]).slice(0, 3));
+      setClarifyingQuestions(
+        (result.clarifying_questions || [])
+          .filter(q => !nextAnswers[q.id])
+          .map(q => ({
+            ...q,
+            options: (q.options || []).map(opt =>
+              typeof opt === 'string' ? { label: opt, value: opt } : opt
+            ),
+          }))
+          .slice(0, 3)
+      );
       setOriginalAiItems((result.items || []).map(item => ({ ...item, grams: item.grams || 100 })));
       setAnalyzedItems(learnedItems.map(item => ({ ...item, grams: item.grams || 100 })));
     } catch (err) {

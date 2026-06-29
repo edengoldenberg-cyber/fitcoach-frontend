@@ -705,9 +705,15 @@ export default function CoachDashboard() {
   const [selectedTrainee, setSelectedTrainee] = useState(null);
   const today = getIsraelDateString();
 
-  // When the user navigates back to CoachDashboard (e.g. clicking the Home button
-  // from inside the inline trainee panel), close the panel so the dashboard shows.
-  // location.state?.closePanel is set by Layout when "בית" is clicked while already here.
+  // Close inline trainee panel when "בית" bottom nav is clicked.
+  // Primary: custom DOM event (reliable even for same-URL navigation where location.key may not change).
+  // Backup: location.state?.closePanel set by Layout via navigate().
+  React.useEffect(() => {
+    const handler = () => setSelectedTrainee(null);
+    window.addEventListener('fitcoach:closePanels', handler);
+    return () => window.removeEventListener('fitcoach:closePanels', handler);
+  }, []);
+
   React.useEffect(() => {
     if (location.state?.closePanel) {
       setSelectedTrainee(null);

@@ -84,7 +84,7 @@ export default function LoginWithPassword() {
       const trainee = trainees[0] || null;
 
       if (!trainee) {
-        navigate('/SetPassword');
+        navigate('/TraineeHome');
         return;
       }
 

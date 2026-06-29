@@ -9,11 +9,22 @@ const createSessionId = () => `ONB-${Date.now().toString(36)}-${Math.random().to
 export default function OnboardingScreen() {
   const sessionId = useRef(createSessionId()).current;
   const startTime = useRef(Date.now()).current;
-  const [stepIndex, setStepIndex] = useState(0);
-  const [completedSteps, setCompletedSteps] = useState([]);
+
+  // Restore state if user navigated away and came back via the "go to feature" button
+  const savedState = (() => {
+    try { return JSON.parse(localStorage.getItem('onboarding_state') || 'null'); } catch { return null; }
+  })();
+
+  const [stepIndex, setStepIndex] = useState(savedState?.stepIndex ?? 0);
+  const [completedSteps, setCompletedSteps] = useState(savedState?.completedSteps ?? []);
   const [showSuccess, setShowSuccess] = useState(false);
   const [firstSuccessfulAction, setFirstSuccessfulAction] = useState(null);
   const [skippedSteps, setSkippedSteps] = useState([]);
+
+  // Clear restored state once loaded so it doesn't interfere next time
+  React.useEffect(() => {
+    if (savedState) localStorage.removeItem('onboarding_state');
+  }, []);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],

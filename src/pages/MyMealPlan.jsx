@@ -77,13 +77,19 @@ function DayView({ day, dayIndex, planId, onRefresh }) {
   const handleMealUpdated = () => onRefresh();
   const dayName = day.day_name && day.day_name !== 'null' ? day.day_name : DAY_NAMES_FALLBACK[dayIndex] || `יום ${dayIndex + 1}`;
 
+  const meals = Array.isArray(day.meals) ? day.meals : [];
+  const dayCals  = day.daily_calories || meals.reduce((s, m) => s + (m.meal_calories || 0), 0);
+  const dayPro   = day.daily_protein  || meals.reduce((s, m) => s + (m.meal_protein  || 0), 0);
+  const dayCarbs = day.daily_carbs    || meals.reduce((s, m) => s + (m.meal_carbs    || 0), 0);
+  const dayFat   = day.daily_fat      || meals.reduce((s, m) => s + (m.meal_fat      || 0), 0);
+
   return (
     <div className="space-y-3">
       <MacroWheels
-        calories={day.daily_calories || 0}
-        protein={day.daily_protein || 0}
-        carbs={day.daily_carbs || 0}
-        fat={day.daily_fat || 0}
+        calories={dayCals}
+        protein={dayPro}
+        carbs={dayCarbs}
+        fat={dayFat}
         title={`יום ${dayName} — ערכים תזונתיים`}
       />
       {day.is_eating_out_day && (
@@ -168,29 +174,32 @@ export default function MyMealPlan() {
     if (!trainee) return;
     setGeneratingWeekly(true);
 
-    // Fire-and-forget — don't await the long call
+    // Fire-and-forget — server generates the plan asynchronously
     base44.functions.invoke('generateWeeklyMealPlan', {
       trainee_id: trainee.id,
       trainee_email: trainee.user_email,
     }).catch(() => {});
 
-    // Poll every 3s until a new weekly plan appears (up to 60 seconds)
+    // Poll every 4s for up to 90s (increased from 60s to allow for longer AI calls)
     let attempts = 0;
-    const maxAttempts = 20;
+    const maxAttempts = 22; // 22 × 4s = 88s
     const poll = setInterval(async () => {
       attempts++;
       try {
         const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
         const weeklyPlan = plans.find(p => {
-          const days = typeof p.weekly_days === 'string' ? JSON.parse(p.weekly_days || '[]') : (p.weekly_days || []);
+          const days = typeof p.weekly_days === 'string' ? (() => { try { return JSON.parse(p.weekly_days || '[]'); } catch { return []; } })() : (p.weekly_days || []);
           return p.is_weekly && Array.isArray(days) && days.length >= 7;
         });
         if (weeklyPlan || attempts >= maxAttempts) {
           clearInterval(poll);
-          await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
-          await refetch();
-          setSelectedDay(0);
-          setGeneratingWeekly(false);
+          try {
+            await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
+            await refetch();
+            setSelectedDay(0);
+          } catch { /* ignore refresh errors */ } finally {
+            setGeneratingWeekly(false);
+          }
         }
       } catch {
         if (attempts >= maxAttempts) {
@@ -314,10 +323,10 @@ export default function MyMealPlan() {
           <>
             {/* Single day view */}
             <MacroWheels
-              calories={plan.daily_calories || 0}
-              protein={plan.daily_protein || 0}
-              carbs={plan.daily_carbs || 0}
-              fat={plan.daily_fat || 0}
+              calories={plan.total_calories || 0}
+              protein={plan.total_protein || 0}
+              carbs={plan.total_carbs || 0}
+              fat={plan.total_fat || 0}
               title="ערכים תזונתיים יומיים"
             />
 

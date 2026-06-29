@@ -76,6 +76,7 @@ import TraineeQA from './pages/TraineeQA';
 import UnitsDebug from './pages/UnitsDebug';
 import WaterLog from './pages/WaterLog';
 import WhatsAppAutomations from './pages/WhatsAppAutomations';
+import MissionControl from './pages/MissionControl';
 import WhatsAppManager from './pages/WhatsAppManager';
 import WorkoutDetails from './pages/WorkoutDetails';
 import WorkoutLog from './pages/WorkoutLog';
@@ -158,6 +159,7 @@ export const PAGES = {
     "UnitsDebug": UnitsDebug,
     "WaterLog": WaterLog,
     "WhatsAppAutomations": WhatsAppAutomations,
+    "MissionControl": MissionControl,
     "WhatsAppManager": WhatsAppManager,
     "WorkoutDetails": WorkoutDetails,
     "WorkoutLog": WorkoutLog,

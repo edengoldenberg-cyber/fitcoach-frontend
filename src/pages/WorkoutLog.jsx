@@ -44,8 +44,14 @@ export default function WorkoutLog() {
   const { data: trainee } = useQuery({
     queryKey: ['trainee', user?.email],
     queryFn: async () => {
-      const trainees = await base44.entities.Trainee.filter({ user_email: user?.email });
-      return trainees[0];
+      // Use list() (no filter) so the ownership filter can match by user_id OR user_email.
+      // Filtering by user_email directly fails when the Trainee record has user_email=null
+      // (coach created trainee by phone only; user_email not yet populated).
+      const trainees = await base44.entities.Trainee.list();
+      const t = trainees[0] || null;
+      // Ensure user_email is always set so downstream save calls have a valid trainee_email.
+      if (t && !t.user_email) t.user_email = user?.email;
+      return t;
     },
     enabled: !!user?.email,
   });
@@ -126,7 +132,7 @@ export default function WorkoutLog() {
   // Fetch published multi-workout templates for today
   const { data: todayTemplates = [] } = useQuery({
     queryKey: ['dailyWorkoutTemplates', 'trainee', dateStr],
-    queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: dateStr, is_published: true }, '-created_date', 20),
+    queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: dateStr, status: 'published' }, '-created_date', 20),
     enabled: !!user?.email,
   });
 

@@ -11,6 +11,17 @@ import { applyCanonicalLock, batchUpdateNutritionMemory, saveAIFoodCorrection } 
 import { toast } from 'sonner';
 import { getIsraelDateString } from '@/utils/nutritionSync';
 
+// Only fields that exist in the MealEntry Prisma schema.
+// Sending extra fields (per100_*, grams_final, ai_original_food_name, etc.)
+// causes Prisma to throw PrismaClientValidationError and the save fails.
+const VALID_MEAL_FIELDS = new Set([
+  'trainee_id','trainee_email','coach_email','user_id','date','meal_type',
+  'source','calories','protein','carbs','fat','food_name','quantity','unit',
+  'learning_event_type','notes',
+]);
+const pickMealFields = (data) =>
+  Object.fromEntries(Object.entries(data || {}).filter(([k]) => VALID_MEAL_FIELDS.has(k)));
+
 const ANALYZING_MESSAGES = [
   '🔍 GPT-4o סורק ומזהה מאכלים...',
   '🧪 Claude מחשב ערכי תזונה מדויקים...',
@@ -155,8 +166,9 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
       // Server wraps result under data.response — use same path as AIAnalyzeMealDialog
       const result = response?.data?.response ?? response?.data;
 
-      // If backend says it needs clarification — show questions
-      if (result.needs_clarification && result.clarifying_questions?.length > 0) {
+      // Show clarification whenever the backend returns questions (amount/type unknown).
+      // Note: backend never sets needs_clarification — check the questions array directly.
+      if (result.clarifying_questions?.length > 0) {
         setClarifyingQuestions(result.clarifying_questions);
         const defaults = {};
         result.clarifying_questions.forEach(q => { defaults[q.id] = q.default_value || ''; });
@@ -307,59 +319,55 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
     setStep('saving');
     const today = getIsraelDateString();
     let learnedCorrection = false;
-    let failedItemName = null;
     const savedMeals = [];
+    const savedIds = []; // track for rollback
+
     try {
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index];
         if (!item.name || item.calories === 0) continue;
         const originalItem = originalAiItems[index] || {};
         const grams = item.grams || 100;
-        // Derive per100 from canonical values if available; fall back to item absolute / grams
         const per100_kcal    = item.per100_kcal    || (grams > 0 ? (item.calories || 0) / grams * 100 : 0);
         const per100_protein = item.per100_protein || (grams > 0 ? (item.protein  || 0) / grams * 100 : 0);
         const per100_carbs   = item.per100_carbs   || (grams > 0 ? (item.carbs    || 0) / grams * 100 : 0);
         const per100_fat     = item.per100_fat     || (grams > 0 ? (item.fat      || 0) / grams * 100 : 0);
-        console.log(`[PHOTO-SAVE] "${item.name}" grams=${grams} kcal=${item.calories} per100_kcal=${per100_kcal.toFixed(2)} source=${item.nutrition_source || 'ai'}`);
-        const mealData = {
+        console.log(`[PHOTO-SAVE] "${item.name}" grams=${grams} kcal=${item.calories} per100=${per100_kcal.toFixed(2)}`);
+
+        // Build payload with ONLY schema-valid fields — extra fields (per100_*, grams_final,
+        // ai_original_food_name, etc.) cause Prisma PrismaClientValidationError and block all saves.
+        const mealData = pickMealFields({
           trainee_id: trainee?.id,
           user_id: user?.id,
           trainee_email: trainee?.user_email || traineeEmail,
           date: today,
           meal_type: selectedMealType,
           food_name: item.name,
-          user_food_item_id: item.user_food_item_id,
-          // user_food_item_id is set by applyCanonicalLock for matched items — use as scope indicator
-          food_database_scope: item.user_food_item_id ? 'personal' : 'ai',
+          source: 'photo_ai',
           learning_event_type: item._corrected || item.user_food_item_id ? 'correction' : 'photo',
-          ai_original_food_name: originalItem.name || originalItem.name_he || item.name,
           quantity: grams,
           unit: 'gram',
-          grams_equivalent: grams,
-          grams_final: grams,
           calories: Math.round((per100_kcal    / 100) * grams),
           protein:  Math.round(((per100_protein / 100) * grams) * 10) / 10,
           carbs:    Math.round(((per100_carbs   / 100) * grams) * 10) / 10,
           fat:      Math.round(((per100_fat     / 100) * grams) * 10) / 10,
-          per100_kcal,
-          per100_protein,
-          per100_carbs,
-          per100_fat,
-        };
+        });
+
         if (item._corrected && trainee) {
-          const savedFood = await saveAIFoodCorrection({ user, trainee, originalItem, correctedMeal: mealData, imageContext: imageUrl || '', notes: userNotes });
-          mealData.user_food_item_id = savedFood?.id || mealData.user_food_item_id;
-          mealData.food_database_scope = 'personal';
+          await saveAIFoodCorrection({
+            user, trainee, originalItem,
+            correctedMeal: { ...mealData, food_name: item.name },
+            imageContext: imageUrl || '',
+            notes: userNotes,
+          }).catch(err => console.warn('[NON-FATAL] saveAIFoodCorrection:', err.message));
           learnedCorrection = true;
         }
-        failedItemName = item.name;
-        await base44.entities.MealEntry.create(mealData);
-        failedItemName = null;
-        savedMeals.push(mealData);
+
+        const saved = await base44.entities.MealEntry.create(mealData);
+        savedIds.push(saved.id);
+        savedMeals.push({ ...mealData, id: saved.id });
       }
-      // Update TraineeNutritionProfile so photo meals count toward total_meals_logged,
-      // average_calories_per_meal, and meal_timing_habits — same as NutritionLog-routed saves.
-      // All ingredients are passed at once so batchUpdateNutritionMemory counts them as ONE meal.
+
       if (trainee && savedMeals.length > 0) {
         batchUpdateNutritionMemory({ trainee, meals: savedMeals }).catch(err =>
           console.warn('[NON-FATAL] photo meal profile flush failed — MealEntry already committed.', err)
@@ -369,8 +377,12 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
       onSuccess();
       handleClose();
     } catch (err) {
-      console.error('[AddMealFromPhoto] partial save failure', err);
-      toast.error(`שגיאה בשמירת${failedItemName ? ` "${failedItemName}"` : ' הארוחה'} — חלק מהמרכיבים לא נשמרו`);
+      console.error('[AddMealFromPhoto] save failure — rolling back', savedIds.length, 'saved entries', err);
+      // Atomic rollback: remove any successfully-saved entries so there's no partial state
+      if (savedIds.length > 0) {
+        await Promise.allSettled(savedIds.map(id => base44.entities.MealEntry.delete(id)));
+      }
+      toast.error('שגיאה בשמירת הארוחה — לא נשמר שום דבר. נסה שוב.');
       setStep('review');
     }
   };

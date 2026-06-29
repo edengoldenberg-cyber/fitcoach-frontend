@@ -55,7 +55,10 @@ export default function TraineeDailyWorkout() {
   const todayWorkout = dailyWorkouts?.find(w => w?.date === todayStr) || dailyWorkouts?.[0];
 
   // Extract exercises from the workout JSON - with safety
-  const todayExercises = Array.isArray(todayWorkout?.exercises) ? todayWorkout.exercises : [];
+  const rawEx = todayWorkout?.exercises;
+  const todayExercises = Array.isArray(rawEx)
+    ? rawEx
+    : (typeof rawEx === 'string' ? (() => { try { return JSON.parse(rawEx); } catch { return []; } })() : []);
   
   console.log('[TraineeDailyWorkout] Workout exercises:', todayExercises.length);
 
@@ -89,8 +92,10 @@ export default function TraineeDailyWorkout() {
 
   const saveExerciseMutation = useMutation({
     mutationFn: async ({ exercise, sets }) => {
+      // trainee?.user_email may be undefined if the Trainee record has user_email=null;
+      // the backend falls back to req.user.email from the JWT in that case.
       const result = await base44.functions.invoke('saveExerciseProgress', {
-        trainee_email: trainee.user_email,
+        trainee_email: trainee?.user_email,
         date: format(new Date(), 'yyyy-MM-dd'),
         workout_id: todayWorkout?.id,
         exercise_name: exercise.exercise_name || exercise.name,
@@ -110,15 +115,15 @@ export default function TraineeDailyWorkout() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['traineeWorkouts'] });
       queryClient.invalidateQueries({ queryKey: ['todayTraineeWorkout'] });
-      
+
       // Refresh previous workouts after save
       const exerciseIds = todayExercises
         .filter(ex => ex?.exercise_id || ex?.exercise_name)
         .map(ex => ex.exercise_id || ex.exercise_name);
-      
+
       if (exerciseIds.length > 0) {
         base44.functions.invoke('getPreviousWorkouts', {
-          trainee_email: trainee.user_email,
+          trainee_email: trainee?.user_email,
           exercise_ids: exerciseIds
         }).then(result => {
           if (result.data?.success) {

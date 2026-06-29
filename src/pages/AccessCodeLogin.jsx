@@ -22,129 +22,54 @@ export default function AccessCodeLoginPage() {
     setError('');
 
     try {
-      // Validate code format
       if (!/^\d{6}$/.test(accessCode)) {
         throw new Error('קוד חייב להיות 6 ספרות');
       }
 
-      // Hash code
-      const encoder = new TextEncoder();
-      const data = encoder.encode(accessCode);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const codeHash = Array.from(new Uint8Array(hashBuffer))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-
-      // Find code
-      const codes = await base44.entities.AccessCode.filter({ 
-        trainee_email: email.toLowerCase().trim(),
-        code_hash: codeHash
+      // Call the public backend function — no prior JWT needed.
+      // The backend validates the code, marks it used, and issues a real JWT.
+      const result = await base44.functions.invoke('verifyAccessCode', {
+        email: email.toLowerCase().trim(),
+        code: accessCode,
       });
 
-      if (codes.length === 0) {
-        throw new Error('קוד שגוי או לא נמצא');
+      if (!result.ok) {
+        const messages = {
+          INVALID_CODE:       'קוד שגוי או לא נמצא',
+          CODE_ALREADY_USED:  'הקוד כבר נוצל. בקש/י קוד חדש מהמאמן.',
+          CODE_EXPIRED:       'הקוד פג תוקף. בקש/י קוד חדש מהמאמן.',
+          TOO_MANY_ATTEMPTS:  'חרגת ממספר הניסיונות המותר. בקש/י קוד חדש מהמאמן.',
+          USER_NOT_FOUND:     'משתמש לא נמצא',
+          INVALID_FORMAT:     'קוד חייב להיות 6 ספרות',
+          MISSING_FIELDS:     'יש למלא אימייל וקוד',
+        };
+        throw new Error(messages[result.errorCode] || 'שגיאה בהתחברות');
       }
 
-      const code = codes[0];
+      // Store the JWT — exactly like password login.
+      // This sets localStorage['fitcoach_token'] so all subsequent API calls
+      // include Authorization: Bearer <token> and req.user is always populated.
+      base44.auth.setToken(result.access_token, true);
 
-      // Check if used
-      if (code.used_at) {
-        throw new Error('הקוד כבר נוצל. בקש/י קוד חדש מהמאמן.');
-      }
+      toast.success(`ברוך הבא${result.user_full_name ? ' ' + result.user_full_name.split(' ')[0] : ''}!`);
 
-      // Check expiry
-      if (new Date(code.expires_at) < new Date()) {
-        throw new Error('הקוד פג תוקף. בקש/י קוד חדש מהמאמן.');
-      }
-
-      // Check attempts
-      if (code.attempts_count >= 5) {
-        throw new Error('חרגת ממספר הניסיונות המותר. בקש/י קוד חדש מהמאמן.');
-      }
-
-      // Mark as used
-      await base44.entities.AccessCode.update(code.id, {
-        used_at: new Date().toISOString()
-      });
-
-      // Get user
-      const users = await base44.entities.User.filter({ id: code.trainee_user_id });
-      if (users.length === 0) {
-        throw new Error('משתמש לא נמצא');
-      }
-      const user = users[0];
-
-      // Update trainee login
-      const trainees = await base44.entities.Trainee.filter({ user_email: user.email });
-      if (trainees.length > 0) {
-        const trainee = trainees[0];
-        const updates = { last_login_at: new Date().toISOString() };
-        if (!trainee.first_login_at) {
-          updates.first_login_at = new Date().toISOString();
-        }
-        await base44.entities.Trainee.update(trainee.id, updates);
-      }
-
-      // Create temp session for password setup
-      const tempSession = {
-        userId: user.id,
-        userEmail: user.email,
-        fullName: user.full_name,
-        isTemporary: true,
-        requirePasswordSetup: true,
-        timestamp: Date.now()
-      };
-      sessionStorage.setItem('temp_access_session', JSON.stringify(tempSession));
-
-      toast.success(`ברוך הבא ${user.full_name}!`);
-      
-      // Check if password exists
-      const credentials = await base44.entities.Credentials.filter({ user_id: user.id });
-      if (credentials.length === 0 || !credentials[0].password_hash) {
-        // Redirect to set password
+      if (!result.has_password) {
+        // First-time user — needs to set a password.
+        // Store temp session so SetPassword.jsx can read userId/email.
+        sessionStorage.setItem('temp_access_session', JSON.stringify({
+          userId:              result.user_id,
+          userEmail:           result.user_email,
+          fullName:            result.user_full_name,
+          isTemporary:         false,
+          requirePasswordSetup: true,
+          timestamp:           Date.now(),
+        }));
         navigate(createPageUrl('SetPassword'));
       } else {
-        // Already has password, create permanent session
-        const sessionData = {
-          userId: user.id,
-          userEmail: user.email,
-          fullName: user.full_name,
-          role: user.role,
-          loginTime: new Date().toISOString(),
-          rememberMe: true
-        };
-        localStorage.setItem('fitcoach_session', JSON.stringify(sessionData));
-        navigate(createPageUrl('TraineeHome'));
+        navigate('/');
       }
-
     } catch (err) {
-      console.error('Code login error:', err);
-      
-      // Increment attempts if code was found
-      if (err.message !== 'קוד שגוי או לא נמצא') {
-        try {
-          const encoder = new TextEncoder();
-          const data = encoder.encode(accessCode);
-          const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-          const codeHash = Array.from(new Uint8Array(hashBuffer))
-            .map(b => b.toString(16).padStart(2, '0'))
-            .join('');
-          
-          const codes = await base44.entities.AccessCode.filter({ 
-            trainee_email: email.toLowerCase().trim(),
-            code_hash: codeHash
-          });
-          
-          if (codes.length > 0) {
-            await base44.entities.AccessCode.update(codes[0].id, {
-              attempts_count: (codes[0].attempts_count || 0) + 1
-            });
-          }
-        } catch (updateErr) {
-          console.error('Failed to update attempts:', updateErr);
-        }
-      }
-      
+      console.error('[AccessCodeLogin] error:', err);
       setError(err.message || 'שגיאה בהתחברות');
     } finally {
       setLoading(false);
