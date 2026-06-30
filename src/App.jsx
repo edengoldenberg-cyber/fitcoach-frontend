@@ -1,4 +1,4 @@
-import { Toaster } from "@/components/ui/toaster"
+﻿import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import { pagesConfig } from './pages.config'
@@ -51,6 +51,7 @@ import OnboardingAnalytics from './pages/OnboardingAnalytics';
 import NutritionAIDebugCenter from './pages/NutritionAIDebugCenter';
 import AIMealAnalysisFlowReport from './pages/AIMealAnalysisFlowReport';
 import DebugFoods from './pages/DebugFoods';
+import CanonicalFoodReview from './pages/CanonicalFoodReview';
 import { useLocation, Navigate } from 'react-router-dom';
 import React, { useEffect, useMemo, useState } from 'react';
 import GoogleLoginScreen from './components/shared/GoogleLoginScreen';
@@ -590,6 +591,13 @@ const AuthenticatedApp = () => {
         </AdminRoute>
       } />
       <Route path="/debug-foods" element={<AdminRoute><DebugFoods /></AdminRoute>} />
+      <Route path="/CanonicalFoodReview" element={
+        <CoachRoute>
+          <LayoutWrapper currentPageName="CanonicalFoodReview">
+            <CanonicalFoodReview />
+          </LayoutWrapper>
+        </CoachRoute>
+      } />
       <Route path="/OnboardingScreen" element={<OnboardingScreen />} />
       <Route path="/login" element={<LoginRedirect />} />
       <Route path="/Login" element={<LoginRedirect />} />

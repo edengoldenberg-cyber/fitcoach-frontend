@@ -1,9 +1,9 @@
-import React from 'react';
+﻿import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Home, Utensils, Dumbbell, Scale, Users, MessageCircle, Activity, Bell, Settings, TrendingUp, LogOut, Menu, X, Sparkles, Star, Wrench, Brain, BookOpen, Zap, Eye, Trophy, FileText } from 'lucide-react';
+import { Home, Utensils, Dumbbell, Scale, Users, MessageCircle, Activity, Bell, Settings, TrendingUp, LogOut, Menu, X, Sparkles, Star, Wrench, Brain, BookOpen, Zap, Eye, Trophy, FileText, Database } from 'lucide-react';
 
 import PWAInstallPrompt from './components/shared/PWAInstallPrompt';
 import PushNotificationSetup from './components/shared/PushNotificationSetup';
@@ -148,6 +148,7 @@ export default function Layout({ children }) {
     { category: 'ניתוח ובקרה', icon: Activity, items: [
       { icon: Activity, label: 'QA', page: 'TraineeQA' },
       { icon: TrendingUp, label: 'דוחות', page: 'CoachReports' },
+      { icon: Database, label: '🧠 מזון קנוני — למידה עצמית', page: 'CanonicalFoodReview' },
     ]},
     { category: '💬 WhatsApp', icon: MessageCircle, items: [
       { icon: Zap,           label: '🤖 אוטומציות WhatsApp', page: 'WhatsAppAutomations' },
