@@ -95,10 +95,16 @@ export default function AutomationSettings() {
   });
 
   const { data: trainee } = useQuery({
-    queryKey: ['trainee', user?.email],
+    queryKey: ['trainee', user?.email, user?.id],
     queryFn: async () => {
-      const list = await base44.entities.Trainee.filter({ user_email: user.email });
-      return list[0] || null;
+      // Primary: lookup by user_id (most reliable — works even if user_email is null on the record)
+      if (user.id) {
+        const byId = await base44.entities.Trainee.filter({ user_id: user.id });
+        if (byId.length > 0) return byId[0];
+      }
+      // Fallback: lookup by email
+      const byEmail = await base44.entities.Trainee.filter({ user_email: user.email });
+      return byEmail[0] || null;
     },
     enabled: !!user?.email,
   });
@@ -106,6 +112,7 @@ export default function AutomationSettings() {
   const { data: prefsRaw, isLoading } = useQuery({
     queryKey: ['notifPrefs', trainee?.id],
     queryFn: async () => {
+      // The ownership filter now handles trainee_id OR trainee_email lookup on the backend
       const list = await base44.entities.NotificationPreferences.filter({ trainee_id: trainee.id });
       return list[0] || null;
     },
