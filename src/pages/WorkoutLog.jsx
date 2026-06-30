@@ -129,12 +129,17 @@ export default function WorkoutLog() {
     enabled: !!trainee?.user_email,
   });
 
-  // Fetch published multi-workout templates for today
-  const { data: todayTemplates = [] } = useQuery({
+  // Fetch published multi-workout templates for today.
+  // DailyWorkoutTemplate shares the same DB table as DailyWorkout; deduplicate by
+  // removing any template whose ID matches todayDailyWorkout (the primary workout).
+  const { data: todayTemplatesRaw = [] } = useQuery({
     queryKey: ['dailyWorkoutTemplates', 'trainee', dateStr],
     queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: dateStr, status: 'published' }, '-created_date', 20),
     enabled: !!user?.email,
   });
+  const todayTemplates = todayDailyWorkout
+    ? todayTemplatesRaw.filter(t => t.id !== todayDailyWorkout.id)
+    : todayTemplatesRaw;
 
   const { data: allTraineeExercises = [] } = useQuery({
     queryKey: ['allTraineeExercises', traineeWorkouts.map(w => w.id)],

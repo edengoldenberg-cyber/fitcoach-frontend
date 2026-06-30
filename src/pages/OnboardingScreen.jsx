@@ -16,9 +16,17 @@ export default function OnboardingScreen() {
   })();
 
   const [stepIndex, setStepIndex] = useState(savedState?.stepIndex ?? 0);
-  const [completedSteps, setCompletedSteps] = useState(savedState?.completedSteps ?? []);
-  const [showSuccess, setShowSuccess] = useState(false);
-  const [firstSuccessfulAction, setFirstSuccessfulAction] = useState(null);
+  const [completedSteps, setCompletedSteps] = useState(() => {
+    const base = savedState?.completedSteps ?? [];
+    // Auto-mark the step the user navigated TO as completed when they return
+    if (savedState?.returnStep && !base.includes(savedState.returnStep)) {
+      return [...base, savedState.returnStep];
+    }
+    return base;
+  });
+  // Auto-show success burst when returning from a feature the user visited
+  const [showSuccess, setShowSuccess] = useState(!!savedState?.returnStep);
+  const [firstSuccessfulAction, setFirstSuccessfulAction] = useState(savedState?.returnStep || null);
   const [skippedSteps, setSkippedSteps] = useState([]);
 
   // Clear restored state once loaded so it doesn't interfere next time

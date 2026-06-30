@@ -48,7 +48,7 @@ export default function CopyWorkoutDialogTrainee({ open, onClose, workout, train
             exercise_id: ex.exercise_id || null,
             name: ex.exercise_name || ex.name,
             notes: ex.notes || '',
-            sets: Array.isArray(ex.sets) 
+            sets: Array.isArray(ex.sets)
               ? ex.sets.map((s, idx) => ({
                   setIndex: idx + 1,
                   weight: 0,
@@ -65,34 +65,9 @@ export default function CopyWorkoutDialogTrainee({ open, onClose, workout, train
         };
 
         const created = await base44.entities.TraineeWorkout.create(newWorkout);
-        
-        // Log success
-        await base44.entities.CopyLog.create({
-          action_type: 'copy_all',
-          trainee_email: traineeEmail,
-          target_date: targetDate,
-          daily_workout_id: workout.id,
-          payload_json: {
-            exercises_count: sourceExercises.length,
-            source_title: workout.title_he || workout.title
-          },
-          success: true,
-          duration_ms: Date.now() - startTime
-        });
-        
         return created;
-      } catch (error) {
-        // Log failure
-        await base44.entities.CopyLog.create({
-          action_type: 'copy_all',
-          trainee_email: traineeEmail,
-          target_date: targetDate,
-          daily_workout_id: workout.id,
-          error_text: error.message,
-          success: false,
-          duration_ms: Date.now() - startTime
-        });
-        throw error;
+      } catch (err) {
+        throw err;
       }
     },
     onSuccess: async (createdWorkout) => {

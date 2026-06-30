@@ -105,16 +105,16 @@ export default function AutoLinkUserOnLogin() {
     }
 
     // Step 2: Try to find trainee by email (case-insensitive, trimmed)
-    const traineesByEmail = allTrainees.filter(t => 
-      t.user_email?.toLowerCase().trim() === normalizedEmail
+    const traineesByEmail = allTrainees.filter(t =>
+      (t.user_email || '').toLowerCase().trim() === normalizedEmail
     );
 
     console.log('[AutoLink] Found', traineesByEmail.length, 'trainees by email');
 
     if (traineesByEmail.length === 0) {
       // No trainee found - try also by full_name as last resort
-      const traineesByName = allTrainees.filter(t => 
-        t.full_name?.toLowerCase().trim() === user.full_name?.toLowerCase().trim()
+      const traineesByName = allTrainees.filter(t =>
+        (t.full_name || '').toLowerCase().trim() === (user.full_name || '').toLowerCase().trim()
       );
       
       if (traineesByName.length === 1 && !traineesByName[0].user_id) {

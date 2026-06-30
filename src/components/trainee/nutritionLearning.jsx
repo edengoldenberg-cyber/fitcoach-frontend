@@ -299,6 +299,31 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
   }); // end _withFoodLock
 }
 
+// Derive per-100g values from a UserFoodItem record.
+// UserFoodItem stores `calories` (absolute) and `amount` (grams), NOT `calories_per_100g`.
+// This was the silent bug: applyCanonicalLock checked `f.calories_per_100g` which is
+// undefined in the schema → Number(undefined) = NaN → match never fired.
+function per100FromUserFoodItem(f) {
+  // Some records were created with calories_per_100g populated directly (legacy path).
+  if (Number(f.calories_per_100g) > 0) {
+    return {
+      calories_per_100g: Number(f.calories_per_100g),
+      protein_per_100g:  Number(f.protein_per_100g  || 0),
+      carbs_per_100g:    Number(f.carbs_per_100g    || 0),
+      fat_per_100g:      Number(f.fat_per_100g      || 0),
+    };
+  }
+  // Standard path: derive from absolute calories + stored amount (grams).
+  const storedGrams = Number(f.amount || 100) || 100;
+  const factor = 100 / storedGrams;
+  return {
+    calories_per_100g: Math.round((Number(f.calories || 0) * factor) * 10) / 10,
+    protein_per_100g:  Math.round((Number(f.protein  || 0) * factor) * 10) / 10,
+    carbs_per_100g:    Math.round((Number(f.carbs    || 0) * factor) * 10) / 10,
+    fat_per_100g:      Math.round((Number(f.fat      || 0) * factor) * 10) / 10,
+  };
+}
+
 // Source-of-truth enforcement exported for all nutrition entry dialogs.
 // Priority 1: exact normalized-name match. Priority 2: bidirectional substring.
 // Works with items that use either `quantity_grams` (AIAnalyzeMealDialog) or `grams` (AddMealFromPhoto).
@@ -308,15 +333,18 @@ export function applyCanonicalLock(ingredients = [], personalFoods = []) {
     const ingName = normalizeFoodName(ing.name || ing.food_name || '');
     if (!ingName) return ing;
 
-    let match = personalFoods.find(f => {
+    // Derive per100 for each personal food upfront (fixes the calories_per_100g field mismatch)
+    const foodsWithPer100 = personalFoods.map(f => ({ ...f, _per100: per100FromUserFoodItem(f) }));
+
+    let match = foodsWithPer100.find(f => {
       const s = normalizeFoodName(f.normalized_name || f.food_name || '');
-      return s && s === ingName && Number(f.calories_per_100g) > 0;
+      return s && s === ingName && f._per100.calories_per_100g > 0;
     });
     let matchType = 'exact';
 
     if (!match) {
-      match = personalFoods
-        .filter(f => Number(f.calories_per_100g) > 0)
+      match = foodsWithPer100
+        .filter(f => f._per100.calories_per_100g > 0)
         .sort((a, b) => {
           const aN = normalizeFoodName(a.normalized_name || a.food_name || '');
           const bN = normalizeFoodName(b.normalized_name || b.food_name || '');
@@ -330,24 +358,25 @@ export function applyCanonicalLock(ingredients = [], personalFoods = []) {
     }
 
     if (!match) {
-      console.log(`[CANONICAL-LOCK] skipped no match for "${ingName}"`);
+      console.log(`[CANONICAL-LOCK] no match for "${ingName}"`);
       return ing;
     }
 
+    const p100 = match._per100;
     // Support both quantity_grams (AIAnalyzeMealDialog) and grams (AddMealFromPhoto)
     const grams = Number(ing.quantity_grams || ing.grams || 100) || 100;
     const factor = grams / 100;
-    console.log(`[CANONICAL-LOCK] applied (${matchType}) "${ingName}" → stored ${match.calories_per_100g} kcal/100g`);
+    console.log(`[CANONICAL-LOCK] applied (${matchType}) "${ingName}" → ${p100.calories_per_100g} kcal/100g × ${grams}g`);
     return {
       ...ing,
-      per100_kcal:    match.calories_per_100g,
-      per100_protein: match.protein_per_100g,
-      per100_carbs:   match.carbs_per_100g,
-      per100_fat:     match.fat_per_100g,
-      calories: Math.round(match.calories_per_100g * factor),
-      protein:  Math.round(match.protein_per_100g  * factor * 10) / 10,
-      carbs:    Math.round(match.carbs_per_100g    * factor * 10) / 10,
-      fat:      Math.round(match.fat_per_100g      * factor * 10) / 10,
+      per100_kcal:    p100.calories_per_100g,
+      per100_protein: p100.protein_per_100g,
+      per100_carbs:   p100.carbs_per_100g,
+      per100_fat:     p100.fat_per_100g,
+      calories: Math.round(p100.calories_per_100g * factor),
+      protein:  Math.round(p100.protein_per_100g  * factor * 10) / 10,
+      carbs:    Math.round(p100.carbs_per_100g    * factor * 10) / 10,
+      fat:      Math.round(p100.fat_per_100g      * factor * 10) / 10,
       nutrition_source: 'personal_canonical',
       user_food_item_id: match.id || ing.user_food_item_id,
     };

@@ -118,18 +118,20 @@ function TraineeMiniCard({ trainee, stats, selected, selectMode, onSelect, onDel
                 ⚖️ {daysUntilWeighIn} ימים
               </Badge>
             )}
-            {/* notif status indicator */}
+            {/* notif status indicator — click navigates to Automation Builder */}
+            <Link to={createPageUrl('ReminderAutomations')} onClick={e => e.stopPropagation()} title="עבור לבנאי האוטומציות">
             {!remindersOn ? (
-              <span title="תזכורות כבויות" className="flex items-center gap-0.5 text-[10px] text-red-400 font-medium">
+              <span className="flex items-center gap-0.5 text-[10px] text-red-400 font-medium hover:text-red-600 cursor-pointer">
                 <BellOff className="w-3 h-3" />כבוי
               </span>
             ) : mutedDays.length > 0 ? (
-              <span title={`מושתק: ${mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}`} className="flex items-center gap-0.5 text-[10px] text-amber-500 font-medium">
+              <span title={`מושתק: ${mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}`} className="flex items-center gap-0.5 text-[10px] text-amber-500 font-medium hover:text-amber-700 cursor-pointer">
                 <BellOff className="w-3 h-3" />{mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}
               </span>
             ) : (
-              <Bell className="w-3 h-3 text-teal-400" title="תזכורות פעילות" />
+              <Bell className="w-3 h-3 text-teal-400 hover:text-teal-600 cursor-pointer" />
             )}
+            </Link>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Utensils className="w-3 h-3 text-emerald-500" />

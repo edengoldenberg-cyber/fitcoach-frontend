@@ -325,15 +325,38 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
     try {
       for (let index = 0; index < editedItems.length; index++) {
         const item = editedItems[index];
-        if (!item.name || item.calories === 0) continue;
-        const originalItem = originalAiItems[index] || {};
+        if (!item.name) continue;
+
+        // ── Root-cause trace for calories=0 ────────────────────────────────
+        // The flow is: AI JSON → normalizedItems → applyCanonicalLock → editedItems → here.
+        // If calories is 0 here, log the full chain so the exact loss point is visible.
         const grams = item.grams || 100;
         const per100_kcal    = item.per100_kcal    || (grams > 0 ? (item.calories || 0) / grams * 100 : 0);
         const per100_protein = item.per100_protein || (grams > 0 ? (item.protein  || 0) / grams * 100 : 0);
         const per100_carbs   = item.per100_carbs   || (grams > 0 ? (item.carbs    || 0) / grams * 100 : 0);
         const per100_fat     = item.per100_fat     || (grams > 0 ? (item.fat      || 0) / grams * 100 : 0);
-        console.log(`[PHOTO-SAVE] "${item.name}" grams=${grams} kcal=${item.calories} per100=${per100_kcal.toFixed(2)}`);
+        const finalCalories  = Math.round((per100_kcal / 100) * grams);
 
+        if (finalCalories === 0) {
+          const originalItem = originalAiItems[index] || {};
+          console.error('[PHOTO-SAVE-TRACE] calories=0 detected — full chain:', {
+            step: 'editedItems',
+            food: item.name,
+            original_ai_calories: originalItem.calories,
+            item_calories_in_editedItems: item.calories,
+            item_grams: item.grams,
+            item_per100_kcal: item.per100_kcal,
+            derived_per100_kcal: per100_kcal,
+            final_calories: finalCalories,
+            nutrition_source: item.nutrition_source,
+          });
+          // Skip items where the nutrition chain produced 0 — but report the exact path
+          continue;
+        }
+
+        console.log(`[PHOTO-SAVE] "${item.name}" grams=${grams} editedCalories=${item.calories} per100=${per100_kcal.toFixed(2)} finalCalories=${finalCalories}`);
+
+        const originalItem = originalAiItems[index] || {};
         // Build payload with ONLY schema-valid fields — extra fields (per100_*, grams_final,
         // ai_original_food_name, etc.) cause Prisma PrismaClientValidationError and block all saves.
         const mealData = pickMealFields({
@@ -347,7 +370,7 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
           learning_event_type: item._corrected || item.user_food_item_id ? 'correction' : 'photo',
           quantity: grams,
           unit: 'gram',
-          calories: Math.round((per100_kcal    / 100) * grams),
+          calories: finalCalories,
           protein:  Math.round(((per100_protein / 100) * grams) * 10) / 10,
           carbs:    Math.round(((per100_carbs   / 100) * grams) * 10) / 10,
           fat:      Math.round(((per100_fat     / 100) * grams) * 10) / 10,
@@ -368,6 +391,11 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
         savedMeals.push({ ...mealData, id: saved.id });
       }
 
+      if (savedMeals.length === 0) {
+        toast.error('לא ניתן לשמור — ערכי התזונה חסרים. נסה לנתח מחדש.');
+        setStep('review');
+        return;
+      }
       if (trainee && savedMeals.length > 0) {
         batchUpdateNutritionMemory({ trainee, meals: savedMeals }).catch(err =>
           console.warn('[NON-FATAL] photo meal profile flush failed — MealEntry already committed.', err)

@@ -331,11 +331,16 @@ function TraineeHomeContent() {
     enabled: !!user?.email,
   });
 
-  const { data: todayTemplates = [] } = useQuery({
+  const { data: todayTemplatesRaw = [] } = useQuery({
     queryKey: ['dailyWorkoutTemplates', 'home', today],
     queryFn: () => base44.entities.DailyWorkoutTemplate.filter({ date: today, status: 'published' }, '-created_date', 20),
     enabled: !!user?.email,
   });
+  // Deduplicate: DailyWorkoutTemplate shares the same DB table as DailyWorkout;
+  // filter out any template record that is already the primary daily workout.
+  const todayTemplates = todayDailyWorkout
+    ? todayTemplatesRaw.filter(t => t.id !== todayDailyWorkout.id)
+    : todayTemplatesRaw;
 
   const { data: onlineDailyWorkout } = useQuery({
     queryKey: ['onlineDailyWorkout', user?.email, today],

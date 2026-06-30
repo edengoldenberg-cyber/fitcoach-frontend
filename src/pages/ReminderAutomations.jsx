@@ -562,10 +562,26 @@ export default function ReminderAutomations() {
     return defaults;
   });
 
+  // Sync current toggle states to the database so the cron job honours them
+  const syncToDb = useCallback(async (nextGlobalEnabled, nextActiveStates, coachEmail) => {
+    if (!coachEmail) return;
+    try {
+      const res = await base44.functions.invoke('syncCoachAutomationPrefs', {
+        coachEmail,
+        globalEnabled: nextGlobalEnabled,
+        activeAutomations: nextActiveStates,
+      });
+      if (!res?.ok) console.warn('[ReminderAutomations] syncToDb failed:', res?.error);
+    } catch (e) {
+      console.warn('[ReminderAutomations] syncToDb error:', e.message);
+    }
+  }, []);
+
   const handleGlobalToggle = (val) => {
     setGlobalEnabled(val);
     ls_set(GLOBAL_KEY, val);
-    toast.success(val ? '⚠️ אוטומציות הופעלו גלובלית' : '🔒 אוטומציות חסומות — לא יישלח כלום');
+    toast.success(val ? '⚠️ אוטומציות הופעלו גלובלית — מסנכרן עם מסד הנתונים...' : '🔒 אוטומציות חסומות — לא יישלח כלום');
+    syncToDb(val, activeStates, user?.email);
   };
 
   const handleToggle = useCallback((automationId) => {

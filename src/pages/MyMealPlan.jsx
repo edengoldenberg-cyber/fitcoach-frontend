@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -169,6 +169,34 @@ export default function MyMealPlan() {
     await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
     await refetch();
   };
+
+  // Bug 4 fix: When the active plan loads, sync its calorie/protein/carbs/fat totals
+  // back to the trainee's target_* fields so the nutrition dashboard circles match.
+  useEffect(() => {
+    if (!plan || !trainee?.id) return;
+    const planCal  = plan.total_calories || 0;
+    const planPro  = plan.total_protein  || 0;
+    const planCarb = plan.total_carbs    || 0;
+    const planFat  = plan.total_fat      || 0;
+    if (!planCal && !planPro) return; // no meaningful values yet
+    // Only sync if the trainee targets diverge from the plan values
+    if (
+      trainee.target_calories !== planCal ||
+      trainee.target_protein  !== planPro ||
+      trainee.target_carbs    !== planCarb ||
+      trainee.target_fat      !== planFat
+    ) {
+      base44.entities.Trainee.update(trainee.id, {
+        target_calories: planCal,
+        target_protein:  planPro,
+        target_carbs:    planCarb,
+        target_fat:      planFat,
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ['trainee'] });
+        queryClient.invalidateQueries({ queryKey: ['wizard_trainee'] });
+      }).catch(() => {});
+    }
+  }, [plan?.id, trainee?.id]);
 
   const generateWeekly = async () => {
     if (!trainee) return;

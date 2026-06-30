@@ -1,0 +1,180 @@
+{
+  "r1": {
+    "url": "https://fitcoach-frontend-omega.vercel.app/CoachDashboard",
+    "errs": [],
+    "path": "./pw-shots/live-verify/000-coach-home.png"
+  },
+  "r2": {
+    "errs": [
+      {
+        "type": "console",
+        "text": "Failed to load resource: the server responded with a status of 400 ()"
+      },
+      {
+        "type": "console",
+        "text": "Failed to create personal access link: Error: Unknown entity\n    at Fn (https://fitcoach-frontend-omega.vercel.app/assets/index-BsbXkmco.js:770:69770)\n    at async Object.mutationFn (https://fitcoach-frontend-omega.vercel.app/assets/index-BsbXkmco.js:849:5708)"
+      },
+      {
+        "type": "console",
+        "text": "Failed to send email: TypeError: Cannot read properties of undefined (reading 'SendEmail')\n    at Object.mutationFn (https://fitcoach-frontend-omega.vercel.app/assets/index-BsbXkmco.js:892:53)"
+      },
+      {
+        "type": "console",
+        "text": "Email send failed: Cannot read properties of undefined (reading 'SendEmail')"
+      }
+    ],
+    "dbRecord": {
+      "id": "cmqizojvs003slatktnoadm9v",
+      "user_id": "cmqizojhq003qlatkvozh17w8",
+      "user_email": "live-test-1781756271703@test.local",
+      "coach_id": null,
+      "coach_email": "admin@fitcoach.local",
+      "full_name": "Live Test User",
+      "phone": "+972527654321",
+      "gender": null,
+      "birth_year": null,
+      "height_cm": null,
+      "weight_kg": null,
+      "goal": null,
+      "activity_level": null,
+      "medical_notes": null,
+      "profile_image": null,
+      "units": "metric",
+      "status": "active",
+      "onboarding_status": "pending",
+      "invite_token": "f7419fd948a0c51db50dc11b224a8eca9cd2a16497a8f10dd5bef1b48e6abff3",
+      "invite_status": null,
+      "last_login_at": null,
+      "first_login_at": null,
+      "visible_modules": null,
+      "target_calories": null,
+      "target_protein": null,
+      "target_carbs": null,
+      "target_fat": null,
+      "water_target_ml": 2500,
+      "created_at": "2026-06-18T04:17:54.088Z",
+      "updated_at": "2026-06-18T04:17:54.089Z"
+    },
+    "text": "\n    FIT COACH PROתפריט מאמןהתנתקהמתאמן נוסף בהצלחה!❌ שליחת ההזמנה במייל נכשלהשלח את הקישור הבא למתאמן ב-WhatsApp:https://fitcoach-frontend-omega.vercel.app/AccessLink?token=f7419fd948a0c51db50dc11b224a8eca9cd2a16497a8f10dd5bef1b48e6abff3💡 הקישור הועתק אוטומטית - הדבק אותו ב-WhatsAppקישור להתחברות:https://fitcoach-frontend-omega.vercel.app/AccessLink?token=f7419fd948a0c51db50dc11b224a8eca9cd2a16497a8f10dd5bef1b48e6abff3העתק קישורהעתק הודעה למתאמןרשימת מתאמניםפרופיל המתאמן\n  \n\n",
+    "path": "./pw-shots/live-verify/003-add-trainee-result.png"
+  },
+  "r3": {
+    "errs": [],
+    "fieldErrs": [],
+    "path": "./pw-shots/live-verify/008-edit-saved.png"
+  },
+  "r4": {
+    "errs": [],
+    "phoneErr": [],
+    "text": "\n    FIT COACH PROתפריט מאמןהתנתקהגדרות מאמןתזונהמאגר מזוןConversations📱 WhatsAppניתוח ובקרהQAדוחותמתאמניםאימוניםדוחותעוד\n  \n\n",
+    "path": "./pw-shots/live-verify/009-coach-settings.png"
+  },
+  "r5": {
+    "exerciseCount": 5,
+    "emptyShown": false,
+    "path": "./pw-shots/live-verify/011-exercise-picker.png"
+  },
+  "r6": {
+    "url": "https://fitcoach-frontend-omega.vercel.app/OnboardingScreen",
+    "path": "./pw-shots/live-verify/012-trainee-home.png"
+  },
+  "r7": {
+    "stillOpen": true,
+    "errs": [],
+    "waterEntry": {
+      "id": "cmqizpwb8003ylatkowvb70or",
+      "trainee_id": "cmqiciru3000alatknhud9fe0",
+      "trainee_email": "edengoldenberg+e2e@gmail.com",
+      "date": "2026-06-18",
+      "amount_ml": 250,
+      "created_at": "2026-06-18T04:18:56.852Z"
+    },
+    "path": "./pw-shots/live-verify/015-water-after-250.png"
+  },
+  "r8": {
+    "hasCalories": true,
+    "hasMacros": true,
+    "hasQuestions": false,
+    "prismaErr": [],
+    "dialogGone": true,
+    "mealEntry": {
+      "id": "cmqizqv630042latk8habse37",
+      "trainee_id": "cmqiciru3000alatknhud9fe0",
+      "trainee_email": "edengoldenberg+e2e@gmail.com",
+      "coach_email": "admin@fitcoach.local",
+      "user_id": "cmqicirg10008latk4jho9pno",
+      "date": "2026-06-18",
+      "meal_type": "lunch",
+      "source": "manual",
+      "calories": 120,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 15,
+      "food_name": "שמן זית",
+      "quantity": 100,
+      "unit": "gram",
+      "learning_event_type": "ai",
+      "notes": "ניתוח AI: חביתה עם 2 ביצים וכף שמן זית",
+      "created_at": "2026-06-18T04:19:42.027Z",
+      "updated_at": "2026-06-18T04:19:42.028Z",
+      "items": []
+    },
+    "path": "./pw-shots/live-verify/021-nutrition-log-after-save.png"
+  },
+  "log": [
+    "Coach API token obtained: true",
+    "URL after login: https://fitcoach-frontend-omega.vercel.app/CoachDashboard",
+    "Errors after login: 0 — none",
+    "Prisma errors: Failed to create personal access link: Error: Unknown entity\n    at Fn (https://fitcoach-frontend-om",
+    "Success text visible: true",
+    "DB record created: id=cmqizojvs003slatktnoadm9v",
+    "Error text on page: no",
+    "Clicking trainee: \"Live Test User\"",
+    "Field-error Prisma errors: none",
+    "All errors: none",
+    "ReferenceError/Phone crash: NONE",
+    "Page loaded (has הגדרות מאמן): true",
+    "WhatsApp visible: true",
+    "Call Tasks visible: false",
+    "All errors: none",
+    "DB exercises (top 5): מתח, כתפיים קדמיות, דדליפט, סקוואט, לחיצת חזה",
+    "DB exercise count: 5",
+    "Empty state shown: false",
+    "Exercises in picker: true",
+    "Trainee URL after login: https://fitcoach-frontend-omega.vercel.app/OnboardingScreen",
+    "Errors: Failed to load resource: the server responded with a status of 403 () | Failed to load resource: the server responded with a status of 400 () | Failed to load resource: the server responded with a status of 400 ()",
+    "Panel stays open after 250ml: true",
+    "Prisma errors: none",
+    "DB WaterEntry (250ml): id=cmqizpwb8003ylatkowvb70or amount=250",
+    "AI analysis started...",
+    "AI result - calories: true, macros: true, clarification: false",
+    "Prisma errors on save: none",
+    "Dialog closed after save (success indicator): true",
+    "DB meals today (recent): שמן זית(120kcal), ביצה(143kcal), שמן זית(120kcal)",
+    "Meal entry (חביתה/ביצה): id=cmqizqv630042latk8habse37 cal=120"
+  ],
+  "shots": [
+    "./pw-shots/live-verify/000-coach-home.png",
+    "./pw-shots/live-verify/001-add-trainee-form.png",
+    "./pw-shots/live-verify/002-add-trainee-filled.png",
+    "./pw-shots/live-verify/003-add-trainee-result.png",
+    "./pw-shots/live-verify/004-coach-dashboard-list.png",
+    "./pw-shots/live-verify/005-trainee-detail-open.png",
+    "./pw-shots/live-verify/006-edit-dialog-open.png",
+    "./pw-shots/live-verify/007-edit-dialog-filled.png",
+    "./pw-shots/live-verify/008-edit-saved.png",
+    "./pw-shots/live-verify/009-coach-settings.png",
+    "./pw-shots/live-verify/010-workout-log.png",
+    "./pw-shots/live-verify/011-exercise-picker.png",
+    "./pw-shots/live-verify/012-trainee-home.png",
+    "./pw-shots/live-verify/013-nutrition-log.png",
+    "./pw-shots/live-verify/014-water-expanded.png",
+    "./pw-shots/live-verify/015-water-after-250.png",
+    "./pw-shots/live-verify/016-ai-dialog-open.png",
+    "./pw-shots/live-verify/017-ai-filled.png",
+    "./pw-shots/live-verify/018-ai-result.png",
+    "./pw-shots/live-verify/019-ai-before-save.png",
+    "./pw-shots/live-verify/020-ai-after-save.png",
+    "./pw-shots/live-verify/021-nutrition-log-after-save.png"
+  ]
+}

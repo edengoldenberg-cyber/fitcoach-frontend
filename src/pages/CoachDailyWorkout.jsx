@@ -335,32 +335,22 @@ export default function CoachDailyWorkout() {
 
       if (!workoutId) throw new Error('מזהה אימון חסר - לא ניתן לפרסם');
 
-      // Sync to DailyWorkoutTemplate
+      // Clean up any duplicate DailyWorkoutTemplate records for today that are NOT the main
+      // workout (the DailyWorkout entity and DailyWorkoutTemplate share the same DB table;
+      // a previous bug caused an extra template record to be created on every publish).
       try {
-        const existingTemplates = await base44.entities.DailyWorkoutTemplate.filter({
+        const allTodayRecords = await base44.entities.DailyWorkoutTemplate.filter({
           coach_email: user.email,
           date: todayStr,
         });
-        const mainBuilderTemplate = existingTemplates.find((t) => t.source === 'main_builder');
-        const templatePayload = {
-          coach_email: user.email,
-          date: todayStr,
-          title,
-          description: description || null,
-          workout_type: 'strength',
-          difficulty: 'medium',
-          exercises: exercisesStr,
-          is_published: true,
-          published_at: new Date().toISOString(),
-          source: 'main_builder',
-        };
-        if (mainBuilderTemplate) {
-          await base44.entities.DailyWorkoutTemplate.update(mainBuilderTemplate.id, templatePayload);
-        } else {
-          await base44.entities.DailyWorkoutTemplate.create(templatePayload);
+        // Delete any records that are NOT the main workout ID
+        for (const rec of allTodayRecords) {
+          if (rec.id !== workoutId) {
+            await base44.entities.DailyWorkoutTemplate.delete(rec.id).catch(() => {});
+          }
         }
-      } catch (syncErr) {
-        console.error('Template sync failed (non-fatal):', syncErr);
+      } catch (cleanupErr) {
+        console.error('Duplicate cleanup failed (non-fatal):', cleanupErr);
       }
 
       try {
