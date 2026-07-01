@@ -189,15 +189,9 @@ export default function AddTrainee() {
             base44.functions.invoke('onTraineeCreated', { data: trainee }),
             new Promise((_, rej) => setTimeout(() => rej(new Error('WhatsApp invite timeout')), 9000)),
           ]);
-          // sent=true means enqueued successfully (will be delivered by queue worker)
+          // sent=true means enqueued + worker triggered server-side (delivery guaranteed)
           whatsappSent = !!waRes?.sent || !!(waRes?.queue_id);
           if (!whatsappSent && !waRes?.duplicate) whatsappError = waRes?.error || waRes?.reason || 'לא נשלח';
-
-          // Immediately run the queue worker to attempt delivery right away
-          // (worker also runs on a 5-minute cron but this provides instant delivery)
-          if (whatsappSent || waRes?.duplicate) {
-            base44.functions.invoke('whatsAppQueueWorker', {}).catch(() => {});
-          }
         } catch (waErr) {
           whatsappError = waErr.message;
           console.error('WhatsApp invite failed (non-blocking):', waErr.message);
