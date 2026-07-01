@@ -105,11 +105,12 @@ export default function AddTrainee() {
         }
 
         let createdUserId = null;
+        let userJustCreated = false; // track whether we created the user or reused existing
 
         // Step 2: Create user record (role=user), or reuse existing
         debugInfo.step = 'CREATE_USER';
         debugInfo.errorSource = 'DB';
-        
+
         try {
           const newUser = await base44.entities.User.create({
             email: normalizedEmail,
@@ -117,12 +118,14 @@ export default function AddTrainee() {
             role: 'user'
           });
           createdUserId = newUser.id;
+          userJustCreated = true;
         } catch (userErr) {
-          // User might already exist (e.g. Gmail user already in system) — try to find it
+          // User already exists — reuse their id (common for re-invited trainees)
           try {
             const existingUsers = await base44.entities.User.filter({ email: normalizedEmail });
             if (existingUsers.length > 0) {
               createdUserId = existingUsers[0].id;
+              userJustCreated = false; // reusing, do NOT delete on failure
             } else {
               throw userErr;
             }
@@ -132,41 +135,59 @@ export default function AddTrainee() {
             throw new Error(`שגיאה ביצירת משתמש: ${userErr.message || 'שגיאה לא מזוהה'}`);
           }
         }
-        
-        // Step 3: Create trainee record
+
+        // Step 3: Create OR update trainee record
+        // If a non-deleted trainee already exists for this email (re-invite scenario),
+        // UPDATE it with a fresh invite_token rather than trying to CREATE a duplicate.
         debugInfo.step = 'CREATE_TRAINEE';
         debugInfo.errorSource = 'DB';
-        
+
         let trainee;
         try {
           const inviteToken = generateSecureToken();
-          
-          trainee = await base44.entities.Trainee.create({
-            user_id: createdUserId,
-            user_email: normalizedEmail,
-            phone: normalizedPhone,
-            full_name: data.full_name,
-            gender: data.gender || null,
-            height_cm: data.height_cm || null,
-            coach_email: user?.email,
-            status: 'active',
-            invite_token: inviteToken,
-          });
-          
+
+          // Re-fetch current trainee state (after cleanup ran above)
+          const currentTrainees = await base44.entities.Trainee.filter({ user_email: normalizedEmail });
+          const existingActive  = currentTrainees.find(t => t.status !== 'deleted');
+
+          if (existingActive) {
+            // Re-invite: update the existing trainee with fresh token + current data
+            trainee = await base44.entities.Trainee.update(existingActive.id, {
+              user_id:       createdUserId,
+              user_email:    normalizedEmail,
+              phone:         normalizedPhone,
+              full_name:     data.full_name,
+              coach_email:   user?.email,
+              status:        'active',
+              invite_token:  inviteToken,
+              invite_status: 'pending',
+            });
+          } else {
+            // New trainee: create fresh
+            trainee = await base44.entities.Trainee.create({
+              user_id:    createdUserId,
+              user_email: normalizedEmail,
+              phone:      normalizedPhone,
+              full_name:  data.full_name,
+              gender:     data.gender || null,
+              height_cm:  data.height_cm || null,
+              coach_email: user?.email,
+              status:     'active',
+              invite_token: inviteToken,
+            });
+          }
+
         } catch (traineeErr) {
           debugInfo.errorCode = 'TRAINEE_CREATE_FAILED';
           debugInfo.errorMessageRaw = traineeErr.message || traineeErr.toString();
-          
-          // Rollback: Delete the user we just created
-          if (createdUserId) {
-            try {
-              await base44.entities.User.delete(createdUserId);
-              console.log('Rolled back user creation');
-            } catch (rollbackErr) {
-              console.error('Failed to rollback:', rollbackErr);
-            }
+
+          // Rollback: ONLY delete users we actually just created — never delete pre-existing users
+          if (userJustCreated && createdUserId) {
+            await base44.entities.User.delete(createdUserId).catch(err =>
+              console.error('Failed to rollback user creation:', err)
+            );
           }
-          
+
           throw new Error(`שגיאה ביצירת רשומת מתאמן: ${traineeErr.message || 'שגיאה לא מזוהה'}`);
         }
 
