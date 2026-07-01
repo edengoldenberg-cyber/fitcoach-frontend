@@ -1,32 +1,46 @@
 import React, { useState } from 'react';
-import { MessageSquare, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { MessageSquare, Send, Loader2, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
 export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [lastResponse, setLastResponse] = useState(null);
+  const [result, setResult] = useState(null); // { changed, ai_response, before, after }
 
   const send = async () => {
     if (!text.trim() || loading) return;
     setLoading(true);
-    setLastResponse(null);
+    setResult(null);
     try {
       const res = await base44.functions.invoke('mealPlanFeedback', {
-        plan_id: planId,
-        feedback: text,
-        day_index: dayIndex || 0
+        plan_id:   planId,
+        feedback:  text.trim(),
+        day_index: dayIndex || 0,
       });
-      setLastResponse(res.data?.ai_response || 'התפריט עודכן בהצלחה!');
-      setText('');
-      if (onPlanUpdated) onPlanUpdated();
+
+      const data = res.data || res;
+      setResult({
+        changed:      !!data.changed,
+        ai_response:  data.ai_response || (data.changed ? 'התפריט עודכן!' : 'לא בוצע שינוי.'),
+        before:       data.before  || null,
+        after:        data.after   || null,
+      });
+
+      if (data.changed) {
+        setText('');
+        if (onPlanUpdated) onPlanUpdated();
+      }
     } catch (err) {
       console.error('mealPlanFeedback failed:', err.message);
-      setLastResponse('שגיאה זמנית — נסה שוב.');
+      setResult({ changed: false, ai_response: 'שגיאה זמנית — נסה שוב.' });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleKey = (e) => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) send();
   };
 
   return (
@@ -39,31 +53,66 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
           <div className="w-8 h-8 rounded-xl bg-purple-50 flex items-center justify-center">
             <MessageSquare className="w-4 h-4 text-purple-500" />
           </div>
-          <span className="font-semibold text-slate-800 text-sm">הערות לתפריט</span>
+          <span className="font-semibold text-slate-800 text-sm">שינויים בתפריט</span>
         </div>
-        <span className="text-xs text-purple-500">בקש שינויים מה-AI</span>
+        <span className="text-xs text-purple-500">בקש שינוי מה-AI</span>
       </button>
 
       {open && (
         <div className="px-4 pb-4 border-t border-slate-50 pt-3 space-y-3">
-          {lastResponse && (
-            <div className="flex items-start gap-2 bg-green-50 rounded-xl p-3 border border-green-100">
-              <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-green-800 text-right leading-relaxed">{lastResponse}</p>
+          {/* Result panel */}
+          {result && (
+            <div className={`rounded-xl p-3 border text-sm text-right leading-relaxed ${
+              result.changed
+                ? 'bg-green-50 border-green-200'
+                : 'bg-amber-50 border-amber-200'
+            }`}>
+              <div className="flex items-start gap-2 mb-2">
+                {result.changed
+                  ? <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                  : <XCircle      className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />}
+                <p className={result.changed ? 'text-green-800' : 'text-amber-800'}>
+                  {result.ai_response}
+                </p>
+              </div>
+
+              {/* BEFORE / AFTER comparison — shown only when a real change occurred */}
+              {result.changed && result.before && result.after && (
+                <div className="mt-2 pt-2 border-t border-green-200">
+                  <div className="grid grid-cols-3 gap-2 text-xs text-center">
+                    <div className="bg-white rounded-lg px-2 py-1.5 border border-slate-200">
+                      <p className="text-slate-400 mb-0.5">לפני</p>
+                      <p className="font-bold text-slate-700">{result.before.calories} קק"ל</p>
+                      <p className="text-slate-500">ח{result.before.protein}ג פ{result.before.carbs}ג ש{result.before.fat}ג</p>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <ArrowRight className="w-4 h-4 text-green-500" />
+                    </div>
+                    <div className="bg-green-100 rounded-lg px-2 py-1.5 border border-green-300">
+                      <p className="text-green-600 mb-0.5">אחרי</p>
+                      <p className="font-bold text-green-800">{result.after.calories} קק"ל</p>
+                      <p className="text-green-700">ח{result.after.protein}ג פ{result.after.carbs}ג ש{result.after.fat}ג</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          <div className="text-xs text-slate-400 text-right mb-1">
-            לדוגמה: "אני לא אוהב קוטג', תחליף משהו אחר" / "תוסיף לי פרי בבוקר" / "תפחית פחמימות בערב"
+          <div className="text-xs text-slate-400 text-right">
+            דוגמאות: "שנה ל-1800 קלוריות" / "הגדל חלבון" / "החלף ארוחת בוקר" / "תפריט צמחוני"
           </div>
+
           <textarea
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder="כתוב מה תרצה לשנות בתפריט..."
+            onKeyDown={handleKey}
+            placeholder="מה תרצה לשנות בתפריט?"
             className="w-full border border-slate-200 rounded-xl p-3 text-sm text-right resize-none focus:outline-none focus:border-teal-400"
             rows={3}
             dir="rtl"
           />
+
           <button
             onClick={send}
             disabled={loading || !text.trim()}
@@ -73,15 +122,16 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
             {loading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                מעדכן תפריט...
+                מחשב שינוי...
               </>
             ) : (
               <>
                 <Send className="w-4 h-4" />
-                שלח הערה
+                בצע שינוי
               </>
             )}
           </button>
+          <p className="text-xs text-slate-400 text-center">Ctrl+Enter לשליחה מהירה</p>
         </div>
       )}
     </div>
