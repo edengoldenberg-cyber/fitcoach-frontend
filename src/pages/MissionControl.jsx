@@ -1391,7 +1391,7 @@ function AnalyticsSection({ queueItems, automations }) {
 function LogsSection({ coachEmail }) {
   const { data: logsRes, isLoading } = useQuery({
     queryKey: ['automationLogs', coachEmail],
-    queryFn:  () => base44.entities.AutomationAuditLog.filter({ trainee_email: coachEmail }),
+    queryFn:  () => base44.entities.AutomationAuditLog.filter({}),
     enabled:  !!coachEmail,
     staleTime: 30000,
   });
