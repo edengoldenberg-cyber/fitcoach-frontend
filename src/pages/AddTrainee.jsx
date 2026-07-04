@@ -47,201 +47,67 @@ export default function AddTrainee() {
 
   const createTraineeMutation = useMutation({
     mutationFn: async (data) => {
-      const debugInfo = {
-        step: '',
-        errorCode: '',
-        errorSource: '',
-        errorMessageRaw: ''
-      };
-
-      try {
-        // Normalize and validate input
-        debugInfo.step = 'VALIDATION';
-        const normalizedEmail = data.user_email?.trim().toLowerCase() || '';
-        let normalizedPhone = data.phone?.replace(/[\s-]/g, '') || '';
-        
-        // Normalize Israeli phone format
-        if (normalizedPhone.startsWith('0')) {
-          normalizedPhone = '+972' + normalizedPhone.substring(1);
-        } else if (normalizedPhone.startsWith('972')) {
-          normalizedPhone = '+' + normalizedPhone;
-        } else if (!normalizedPhone.startsWith('+')) {
-          normalizedPhone = '+972' + normalizedPhone;
-        }
-        
-        if (!normalizedPhone || !data.full_name || !normalizedEmail) {
-          debugInfo.errorCode = 'VALIDATION_FAILED';
-          debugInfo.errorSource = 'UI';
-          debugInfo.errorMessageRaw = 'חסרים שדות חובה (טלפון, שם, אימייל)';
-          throw new Error('חובה למלא: טלפון, שם מלא ואימייל');
-        }
-
-        // Step 1: Clean up deleted records
-        debugInfo.step = 'CLEANUP';
-        try {
-          const existingTrainees = await base44.entities.Trainee.filter({ user_email: normalizedEmail });
-          const deletedTrainee = existingTrainees.find(t => t.status === 'deleted');
-          if (deletedTrainee) {
-            await base44.entities.Trainee.delete(deletedTrainee.id);
-            
-            // Clean up ghost users
-            const oldUsers = await base44.entities.User.filter({ email: normalizedEmail });
-            for (const oldUser of oldUsers) {
-              const timestamp = Date.now();
-              const randomSuffix = Math.random().toString(36).substring(7);
-              const aliasEmail = `ghost_${timestamp}_${randomSuffix}@cleanup.fitcoach.local`;
-              try {
-                await base44.entities.User.update(oldUser.id, {
-                  email: aliasEmail,
-                  full_name: `[GHOST_${timestamp}] ${oldUser.full_name || ''}`
-                });
-              } catch (updateErr) {
-                await base44.entities.User.delete(oldUser.id);
-              }
-            }
-          }
-        } catch (cleanupErr) {
-          console.warn('Cleanup warning:', cleanupErr);
-        }
-
-        let createdUserId = null;
-        let userJustCreated = false; // track whether we created the user or reused existing
-
-        // Step 2: Create user record (role=user), or reuse existing
-        debugInfo.step = 'CREATE_USER';
-        debugInfo.errorSource = 'DB';
-
-        try {
-          const newUser = await base44.entities.User.create({
-            email: normalizedEmail,
-            full_name: data.full_name,
-            role: 'user'
-          });
-          createdUserId = newUser.id;
-          userJustCreated = true;
-        } catch (userErr) {
-          // User already exists — reuse their id (common for re-invited trainees)
-          try {
-            const existingUsers = await base44.entities.User.filter({ email: normalizedEmail });
-            if (existingUsers.length > 0) {
-              createdUserId = existingUsers[0].id;
-              userJustCreated = false; // reusing, do NOT delete on failure
-            } else {
-              throw userErr;
-            }
-          } catch {
-            debugInfo.errorCode = 'USER_CREATE_FAILED';
-            debugInfo.errorMessageRaw = userErr.message || userErr.toString();
-            throw new Error(`שגיאה ביצירת משתמש: ${userErr.message || 'שגיאה לא מזוהה'}`);
-          }
-        }
-
-        // Step 3: Create OR update trainee record
-        // If a non-deleted trainee already exists for this email (re-invite scenario),
-        // UPDATE it with a fresh invite_token rather than trying to CREATE a duplicate.
-        debugInfo.step = 'CREATE_TRAINEE';
-        debugInfo.errorSource = 'DB';
-
-        let trainee;
-        try {
-          const inviteToken = generateSecureToken();
-
-          // Re-fetch current trainee state (after cleanup ran above)
-          const currentTrainees = await base44.entities.Trainee.filter({ user_email: normalizedEmail });
-          const existingActive  = currentTrainees.find(t => t.status !== 'deleted');
-
-          if (existingActive) {
-            // Re-invite: update the existing trainee with fresh token + current data
-            trainee = await base44.entities.Trainee.update(existingActive.id, {
-              user_id:       createdUserId,
-              user_email:    normalizedEmail,
-              phone:         normalizedPhone,
-              full_name:     data.full_name,
-              coach_email:   user?.email,
-              status:        'active',
-              invite_token:  inviteToken,
-              invite_status: 'pending',
-            });
-          } else {
-            // New trainee: create fresh
-            trainee = await base44.entities.Trainee.create({
-              user_id:    createdUserId,
-              user_email: normalizedEmail,
-              phone:      normalizedPhone,
-              full_name:  data.full_name,
-              gender:     data.gender || null,
-              height_cm:  data.height_cm || null,
-              coach_email: user?.email,
-              status:     'active',
-              invite_token: inviteToken,
-            });
-          }
-
-        } catch (traineeErr) {
-          debugInfo.errorCode = 'TRAINEE_CREATE_FAILED';
-          debugInfo.errorMessageRaw = traineeErr.message || traineeErr.toString();
-
-          // Rollback: ONLY delete users we actually just created — never delete pre-existing users
-          if (userJustCreated && createdUserId) {
-            await base44.entities.User.delete(createdUserId).catch(err =>
-              console.error('Failed to rollback user creation:', err)
-            );
-          }
-
-          throw new Error(`שגיאה ביצירת רשומת מתאמן: ${traineeErr.message || 'שגיאה לא מזוהה'}`);
-        }
-
-        // Step 4: Build invite link from the invite_token stored on the trainee record.
-        // AccessLink.jsx uses a public backend endpoint to validate tokens, so any user
-        // (authenticated or not) can open this link.
-        debugInfo.step = 'BUILD_INVITE_LINK';
-        const appUrl      = window.location.origin;
-        const accessToken = trainee?.invite_token;
-        const loginUrl    = accessToken ? `${appUrl}/AccessLink?token=${accessToken}` : `${appUrl}/AccessLink`;
-        const personalAccessLink = null; // no longer needed — invite_token on Trainee is sufficient
-
-        // Step 5: Enqueue WhatsApp invite via onTraineeCreated (queue-based, idempotent)
-        debugInfo.step = 'SEND_WHATSAPP_INVITE';
-        let whatsappSent = false;
-        let whatsappError = null;
-
-        try {
-          const waRes = await Promise.race([
-            base44.functions.invoke('onTraineeCreated', { data: trainee }),
-            new Promise((_, rej) => setTimeout(() => rej(new Error('WhatsApp invite timeout')), 9000)),
-          ]);
-          // sent=true means enqueued + worker triggered server-side (delivery guaranteed)
-          whatsappSent = !!waRes?.sent || !!(waRes?.queue_id);
-          if (!whatsappSent && !waRes?.duplicate) whatsappError = waRes?.error || waRes?.reason || 'לא נשלח';
-        } catch (waErr) {
-          whatsappError = waErr.message;
-          console.error('WhatsApp invite failed (non-blocking):', waErr.message);
-        }
-
-        const inviteLink = personalAccessLink || loginUrl;
-
-        // Step 6: Fire-and-forget email fallback (never blocks)
-        Promise.race([
-          base44.functions.invoke('sendInviteEmail', {
-            to_email:  normalizedEmail,
-            full_name: data.full_name,
-            login_url: inviteLink,
-          }),
-          new Promise(r => setTimeout(r, 5000)),
-        ]).catch(() => {});
-
-        return { trainee, loginUrl, inviteLink, whatsappSent, whatsappError, personalAccessLink };
-        
-      } catch (error) {
-        // Debug logging
-        console.error('CREATE_TRAINEE_ERROR:', {
-          ...debugInfo,
-          originalError: error.message
-        });
-        
-        // User-friendly error or pass through our custom errors
-        throw error;
+      // ── Normalize inputs ───────────────────────────────────────────────────
+      const normalizedEmail = data.user_email?.trim().toLowerCase() || '';
+      let normalizedPhone = data.phone?.replace(/[\s-]/g, '') || '';
+      if (normalizedPhone.startsWith('0')) {
+        normalizedPhone = '+972' + normalizedPhone.substring(1);
+      } else if (normalizedPhone.startsWith('972') && !normalizedPhone.startsWith('+')) {
+        normalizedPhone = '+' + normalizedPhone;
+      } else if (!normalizedPhone.startsWith('+')) {
+        normalizedPhone = '+972' + normalizedPhone;
       }
+
+      if (!normalizedPhone || !data.full_name || !normalizedEmail) {
+        throw new Error('חובה למלא: טלפון, שם מלא ואימייל');
+      }
+
+      const inviteToken = generateSecureToken();
+
+      // ── Single atomic server call (handles zombie users, P2002, re-invite) ─
+      const res = await base44.functions.invoke('createTraineeSafe', {
+        email:        normalizedEmail,
+        full_name:    data.full_name,
+        phone:        normalizedPhone,
+        gender:       data.gender || null,
+        height_cm:    data.height_cm || null,
+        invite_token: inviteToken,
+      });
+
+      if (!res?.ok || !res?.data?.trainee) {
+        throw new Error(res?.error || 'שגיאה ביצירת המתאמן — נסה שוב');
+      }
+
+      const trainee = res.data.trainee;
+
+      // ── Build invite link ──────────────────────────────────────────────────
+      const appUrl     = window.location.origin;
+      const token      = trainee.invite_token || inviteToken;
+      const loginUrl   = token ? `${appUrl}/AccessLink?token=${token}` : `${appUrl}/AccessLink`;
+
+      // ── Enqueue WhatsApp invite (non-blocking) ─────────────────────────────
+      let whatsappSent = false;
+      try {
+        const waRes = await Promise.race([
+          base44.functions.invoke('onTraineeCreated', { data: trainee }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 9000)),
+        ]);
+        whatsappSent = !!waRes?.sent || !!waRes?.queue_id;
+      } catch (waErr) {
+        console.error('WhatsApp invite failed (non-blocking):', waErr.message);
+      }
+
+      // ── Fire-and-forget email fallback ─────────────────────────────────────
+      Promise.race([
+        base44.functions.invoke('sendInviteEmail', {
+          to_email:  normalizedEmail,
+          full_name: data.full_name,
+          login_url: loginUrl,
+        }),
+        new Promise(r => setTimeout(r, 5000)),
+      ]).catch(() => {});
+
+      return { trainee, loginUrl, inviteLink: loginUrl, whatsappSent, personalAccessLink: null };
     },
     onSuccess: (result) => {
       setCreatedTrainee(result.trainee);

@@ -6,8 +6,21 @@ import { useQuery } from '@tanstack/react-query';
 import { Plus, Dumbbell } from 'lucide-react';
 
 const normalizeName = (name) => {
+  if (!name) return '';
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 };
+
+// Check if an exercise matches the search query across all name fields + aliases
+function matchesQuery(ex, query) {
+  const q = normalizeName(query);
+  if (!q) return false;
+  if (normalizeName(ex.name_he).includes(q)) return true;
+  if (normalizeName(ex.name).includes(q)) return true;
+  // Search aliases (already parsed as array by JSON_FIELDS parser on server)
+  const aliases = Array.isArray(ex.aliases) ? ex.aliases : [];
+  if (aliases.some(a => normalizeName(a).includes(q))) return true;
+  return false;
+}
 
 export default function ExerciseAutocomplete({ 
   value, 
@@ -33,11 +46,10 @@ export default function ExerciseAutocomplete({
   }, [value]);
 
   const suggestions = inputValue.trim().length >= 2
-    ? allExercises.filter(ex => {
-        const normalized = normalizeName(ex.name_he);
-        const searchNormalized = normalizeName(inputValue);
-        return normalized.includes(searchNormalized);
-      }).slice(0, 8)
+    ? allExercises
+        .filter(ex => ex.canonical_id == null) // only show canonical exercises
+        .filter(ex => matchesQuery(ex, inputValue))
+        .slice(0, 8)
     : [];
 
   const handleInputChange = (e) => {
@@ -122,10 +134,15 @@ export default function ExerciseAutocomplete({
                   <div className="flex-1">
                     <p className="font-medium text-slate-800">{exercise.name_he}</p>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
-                        {exercise.muscle_group_primary}
-                      </span>
-                      {(exercise.equipment ?? []).slice(0, 2).map(eq => (
+                      {(exercise.muscle_group || exercise.muscle_group_primary) && (
+                        <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
+                          {exercise.muscle_group || exercise.muscle_group_primary}
+                        </span>
+                      )}
+                      {(typeof exercise.equipment === 'string'
+                          ? exercise.equipment.split(',').map(s => s.trim()).filter(Boolean)
+                          : Array.isArray(exercise.equipment) ? exercise.equipment : []
+                        ).slice(0, 2).map(eq => (
                         <span key={eq} className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded">
                           {eq}
                         </span>

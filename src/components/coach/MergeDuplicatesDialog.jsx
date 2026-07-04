@@ -17,13 +17,14 @@ export default function MergeDuplicatesDialog({ open, onClose }) {
       return response.data;
     },
     onSuccess: (data) => {
-      setReport(data.report);
+      const report = data?.report ?? { step: 'completed', exercisesMerged: 0, totalExercises: 0, duplicateGroups: 0, finalCount: 0, duration: 0, errors: [] };
+      setReport(report);
       queryClient.invalidateQueries({ queryKey: ['allExercises'] });
-      
-      if (data.report.exercisesMerged === 0) {
+
+      if ((report.exercisesMerged ?? 0) === 0) {
         toast.info('לא נמצאו כפילויות לאיחוד');
       } else {
-        toast.success(`✅ אוחדו ${data.report.exercisesMerged} תרגילים כפולים`);
+        toast.success(`✅ אוחדו ${report.exercisesMerged} תרגילים כפולים`);
       }
     },
     onError: (err) => {
