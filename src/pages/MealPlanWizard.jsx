@@ -170,9 +170,10 @@ export default function MealPlanWizard() {
         });
       }
 
-      // Generate plan (backend reads target_calories/protein from Trainee)
+      // Generate plan — pass full prefs so AI prompt includes all user constraints
       const res = await base44.functions.invoke('generatePersonalMealPlan', {
         trainee_id: trainee.id,
+        prefs,
       });
 
       const planId = res?.data?.plan?.id;

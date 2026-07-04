@@ -1,18 +1,17 @@
 import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { base44 } from '@/api/base44Client';
-import { Loader2, Sparkles, ChefHat, CheckCircle, ArrowRight } from "lucide-react";
+import { Loader2, Sparkles, ChefHat, CheckCircle } from "lucide-react";
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 
-const MEAL_TYPES = [
-  { value: 'breakfast', label: 'ארוחת בוקר', icon: '🌅' },
-  { value: 'lunch', label: 'ארוחת צהריים', icon: '☀️' },
-  { value: 'dinner', label: 'ארוחת ערב', icon: '🌙' },
-  { value: 'snack', label: 'חטיף', icon: '🍎' },
-];
+const MEAL_TYPE_MAP = {
+  'בוקר': 'breakfast',
+  'צהריים': 'lunch',
+  'ערב': 'dinner',
+  'חטיף': 'snack',
+};
 
 const QUESTIONS = [
   {
@@ -48,7 +47,7 @@ const QUESTIONS = [
 ];
 
 export default function AIMealSuggestionDialog({ open, onClose, onSave, traineeEmail, selectedDate }) {
-  const [step, setStep] = useState('questions'); // questions | loading | result | selectMeal
+  const [step, setStep] = useState('questions'); // questions | loading | result
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState({});
   const [suggestion, setSuggestion] = useState(null);
@@ -258,41 +257,16 @@ export default function AIMealSuggestionDialog({ open, onClose, onSave, traineeE
                 ← הצע שוב
               </Button>
               <Button
-                onClick={() => setStep('selectMeal')}
+                onClick={() => handleAddToJournal(MEAL_TYPE_MAP[answers.mealType] || 'snack')}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white"
               >
                 <CheckCircle className="w-4 h-4 ml-1" />
-                הוסף ליומן
+                שמור ליומן
               </Button>
             </div>
           </div>
         )}
 
-        {/* STEP: SELECT MEAL TYPE */}
-        {step === 'selectMeal' && (
-          <div className="space-y-4">
-            <div className="text-center">
-              <p className="font-semibold text-slate-800 mb-1">באיזה ארוחה להוסיף?</p>
-              <p className="text-sm text-slate-500">"{suggestion?.meal_name}"</p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {MEAL_TYPES.map((type) => (
-                <button
-                  key={type.value}
-                  onClick={() => handleAddToJournal(type.value)}
-                  className="p-4 rounded-xl border-2 border-slate-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all text-center"
-                >
-                  <div className="text-3xl mb-1">{type.icon}</div>
-                  <div className="font-medium text-slate-700 text-sm">{type.label}</div>
-                </button>
-              ))}
-            </div>
-            <Button variant="outline" onClick={() => setStep('result')} className="w-full">
-              <ArrowRight className="w-4 h-4 ml-1" />
-              חזור להצעה
-            </Button>
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );
