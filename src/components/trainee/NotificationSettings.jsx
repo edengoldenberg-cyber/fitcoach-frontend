@@ -20,8 +20,8 @@ export default function NotificationSettings({ userEmail }) {
   const queryClient = useQueryClient();
 
   const { data: prefList = [], isLoading } = useQuery({
-    queryKey: ['notificationPreference', userEmail],
-    queryFn: () => base44.entities.NotificationPreference.filter({ trainee_email: userEmail }),
+    queryKey: ['notificationPreferences', userEmail],
+    queryFn: () => base44.entities.NotificationPreferences.filter({ trainee_email: userEmail }),
     enabled: !!userEmail,
   });
 
@@ -38,32 +38,45 @@ export default function NotificationSettings({ userEmail }) {
   const [disabledDays, setDisabledDays] = useState([]);
 
   useEffect(() => {
-    if (pref || trainee) {
-      setEnabled(pref?.whatsapp_reminders_enabled ?? true);
-      setDisabledDays(pref?.disabled_days || []);
+    if (pref) {
+      setEnabled(pref.whatsapp_reminders_enabled ?? false);
+      setDisabledDays(pref.disabled_days || []);
     }
-  }, [pref, trainee]);
+  }, [pref]);
+
+  // Build the full set of fields written on every save.
+  // When the master toggle is ON, all reminder types are enabled.
+  // When OFF, all are disabled. Coach can refine via the automations panel.
+  const buildPrefsPayload = (masterEnabled) => ({
+    whatsapp_reminders_enabled:   masterEnabled,
+    nutrition_reminders_enabled:  masterEnabled,
+    water_reminders_enabled:      masterEnabled,
+    workout_reminders_enabled:    masterEnabled,
+    weigh_in_reminders_enabled:   masterEnabled,
+    inactivity_reminders_enabled: masterEnabled,
+  });
 
   const saveMutation = useMutation({
     mutationFn: async (data) => {
       if (pref?.id) {
-        await base44.entities.NotificationPreference.update(pref.id, data);
+        return base44.entities.NotificationPreferences.update(pref.id, data);
       } else {
-        await base44.entities.NotificationPreference.create({ trainee_email: userEmail, ...data });
+        return base44.entities.NotificationPreferences.create({ trainee_email: userEmail, ...data });
       }
-
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notificationPreference', userEmail] });
-      queryClient.invalidateQueries({ queryKey: ['notificationSettingsTrainee', userEmail] });
-      queryClient.invalidateQueries({ queryKey: ['trainee'] });
-      toast.success('ההגדרות נשמרו');
+      queryClient.invalidateQueries({ queryKey: ['notificationPreferences', userEmail] });
+      toast.success('ההגדרות נשמרו ✓');
+    },
+    onError: (err) => {
+      console.error('[NotificationSettings] save error:', err);
+      toast.error('שגיאה בשמירת ההגדרות');
     },
   });
 
   const handleToggleEnabled = (val) => {
     setEnabled(val);
-    saveMutation.mutate({ whatsapp_reminders_enabled: val, disabled_days: disabledDays });
+    saveMutation.mutate(buildPrefsPayload(val));
   };
 
   const handleToggleDay = (dayKey) => {
@@ -71,7 +84,8 @@ export default function NotificationSettings({ userEmail }) {
       ? disabledDays.filter(d => d !== dayKey)
       : [...disabledDays, dayKey];
     setDisabledDays(updated);
-    saveMutation.mutate({ whatsapp_reminders_enabled: enabled, disabled_days: updated });
+    // disabled_days is UI-only preference — not in NotificationPreferences schema,
+    // so we store it only locally (and in a future schema field if added).
   };
 
   if (isLoading) return <p className="text-center text-slate-400 py-8">טוען הגדרות...</p>;
