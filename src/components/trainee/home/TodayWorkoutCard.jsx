@@ -6,13 +6,18 @@ import { createPageUrl } from '@/utils';
 export default function TodayWorkoutCard({ todayDailyWorkout, todayTemplates = [], rotationSessionToday, onlineDailyWorkout, traineeWorkout, onAddManual }) {
   const navigate = useNavigate();
   const isDone = !!traineeWorkout || rotationSessionToday?.status === 'completed';
-  const hasMultipleTemplates = todayTemplates.length > 1;
+  // hasMultipleWorkouts: true when there is a primary daily workout AND at least 1 additional
+  // workout in templates (both share the same DB table; TraineeHome deduplicates them).
+  // Bug was: `todayTemplates.length > 1` — with 2 total workouts, templates=[workout2] (length=1),
+  // so 1 > 1 = false and the second workout was never shown.
+  const totalDailyWorkouts = (todayDailyWorkout ? 1 : 0) + todayTemplates.length;
+  const hasMultipleTemplates = totalDailyWorkouts > 1;
   const todayTemplate = todayTemplates?.[0] || null;
   const workout = hasMultipleTemplates ? todayTemplate : (todayDailyWorkout || todayTemplate || rotationSessionToday || onlineDailyWorkout);
   const exercisePreview = rotationSessionToday?.exercises?.slice(0, 3).map(e => e.exercise_name || e.name).filter(Boolean).join(' • ');
   const exerciseCount = todayDailyWorkout?.exercises?.length || todayTemplate?.exercises?.length || onlineDailyWorkout?.exercises?.length || 0;
   const workoutTitle = hasMultipleTemplates
-    ? `${todayTemplates.length} אימונים זמינים היום`
+    ? `${totalDailyWorkouts} אימונים זמינים היום`
     : (todayDailyWorkout?.title_he || todayTemplate?.title || rotationSessionToday?.title || onlineDailyWorkout?.title || 'אימון היום');
 
   return (
@@ -46,7 +51,13 @@ export default function TodayWorkoutCard({ todayDailyWorkout, todayTemplates = [
             </p>
           )}
           <button
-            onClick={() => navigate(createPageUrl(rotationSessionToday || onlineDailyWorkout ? 'TraineeOnlineTraining' : 'WorkoutLog'))}
+            onClick={() => navigate(createPageUrl(
+              rotationSessionToday || onlineDailyWorkout
+                ? 'TraineeOnlineTraining'
+                : hasMultipleTemplates
+                  ? 'TraineeDailyWorkout'
+                  : 'WorkoutLog'
+            ))}
             className="w-full flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl py-3 text-sm font-semibold transition-colors"
           >
             {hasMultipleTemplates ? '🏋️ בחר אימון' : (isDone ? '📊 צפה באימון' : '💪 התחל אימון')}
