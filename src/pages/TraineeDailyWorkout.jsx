@@ -13,6 +13,9 @@ import CopyWorkoutDialogTrainee from '../components/trainee/CopyWorkoutDialogTra
 import SupersetGroupCard from '../components/trainee/SupersetGroupCard';
 import { toast } from 'sonner';
 
+// Build marker — injected at build time so users can confirm their device is running the latest code.
+const BUILD_TS = typeof __BUILD_TS__ !== 'undefined' ? __BUILD_TS__ : 'dev';
+
 export default function TraineeDailyWorkout() {
   const queryClient = useQueryClient();
   const [previousWorkouts, setPreviousWorkouts] = useState({});
@@ -61,7 +64,14 @@ export default function TraineeDailyWorkout() {
     ? rawEx
     : (typeof rawEx === 'string' ? (() => { try { return JSON.parse(rawEx); } catch { return []; } })() : []);
   
-  console.log('[TraineeDailyWorkout] Workout exercises:', todayExercises.length);
+  // ── Debug logging — visible in browser console ──────────────────────────
+  console.log('[TraineeDailyWorkout] BUILD:', BUILD_TS);
+  console.log('[TraineeDailyWorkout] todayStr:', todayStr);
+  console.log('[TraineeDailyWorkout] coach_email:', trainee?.coach_email);
+  console.log('[TraineeDailyWorkout] dailyWorkouts (total from API):', dailyWorkouts.length);
+  console.log('[TraineeDailyWorkout] todayWorkouts (after date filter):', todayWorkouts?.length);
+  console.log('[TraineeDailyWorkout] workout titles:', todayWorkouts?.map(w => w.title || w.title_he));
+  // ── end debug ────────────────────────────────────────────────────────────
 
   // Fetch previous workout data for all exercises
   useEffect(() => {
@@ -303,6 +313,27 @@ export default function TraineeDailyWorkout() {
               {todayWorkouts.length > 1 ? `${todayWorkouts.length} אימונים להיום` : 'האימון הקבוצתי שלך לסטודיו'}
             </p>
           </div>
+        </div>
+
+        {/* Debug banner — visible to user and coach for version/cache diagnosis */}
+        <div className="bg-slate-800 text-slate-300 rounded-xl px-3 py-2 text-xs font-mono flex items-center justify-between gap-2">
+          <span>v{BUILD_TS} · {todayWorkouts.length} אימונים · {todayStr}</span>
+          <button
+            onClick={async () => {
+              if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (const r of regs) await r.unregister();
+              }
+              if ('caches' in window) {
+                const keys = await caches.keys();
+                for (const k of keys) await caches.delete(k);
+              }
+              window.location.reload(true);
+            }}
+            className="text-teal-400 underline shrink-0"
+          >
+            עדכן
+          </button>
         </div>
 
         {/* Exercise Search (only when 1 workout to keep UX simple) */}

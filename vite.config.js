@@ -77,6 +77,12 @@ export default defineConfig({
     }),
   ],
 
+  define: {
+    // Injected at build time — lets the UI display which version is running.
+    // Changes on every deploy, so old/cached bundles show an older timestamp.
+    __BUILD_TS__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
+
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
