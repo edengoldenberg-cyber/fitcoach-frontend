@@ -313,7 +313,12 @@ function DashboardSection({ automations, queueItems, arboxStatus, absenceData, c
             <p className={`text-sm font-bold ${arboxStatus?.connected ? 'text-green-700' : 'text-amber-700'}`}>
               Arbox {arboxStatus?.connected ? 'מחובר ✅' : 'לא מחובר ⚠️'}
             </p>
-            <p className="text-xs text-slate-400">{arboxStatus?.status ?? 'לא נבדק'}</p>
+            <p className="text-xs text-slate-400">{
+              !arboxStatus ? 'בודק חיבור...' :
+              arboxStatus.connected ? (arboxStatus.gym_name || 'מחובר') :
+              arboxStatus.status === 'NOT_CONFIGURED' ? 'מפתח API חסר' :
+              arboxStatus.status === 'ERROR' ? 'שגיאת חיבור' : 'לא מחובר'
+            }</p>
           </div>
         </div>
       </div>
@@ -914,7 +919,7 @@ function ArboxSection({ coachEmail, arboxStatus, onRefresh }) {
         </div>
       </div>
 
-      {!connected && (
+      {!connected && arboxStatus !== undefined && (
         <div className="border border-slate-200 rounded-xl overflow-hidden">
           <div className="bg-slate-800 text-white px-4 py-2.5 text-sm font-bold flex items-center gap-2"><Settings className="w-4 h-4" /> הגדרת חיבור Arbox</div>
           <div className="divide-y divide-slate-100">

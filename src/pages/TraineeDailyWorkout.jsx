@@ -52,7 +52,8 @@ export default function TraineeDailyWorkout() {
   });
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
-  const todayWorkout = dailyWorkouts?.find(w => w?.date === todayStr) || dailyWorkouts?.[0];
+  const todayWorkouts = dailyWorkouts?.filter(w => w?.date === todayStr);
+  const todayWorkout = todayWorkouts?.[0];
 
   // Extract exercises from the workout JSON - with safety
   const rawEx = todayWorkout?.exercises;
@@ -150,7 +151,7 @@ export default function TraineeDailyWorkout() {
     );
   }
 
-  if (!todayWorkout) {
+  if (!todayWorkouts || todayWorkouts.length === 0) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 to-slate-100 p-6 pb-24" dir="rtl">
         <div className="max-w-2xl mx-auto">
@@ -165,7 +166,7 @@ export default function TraineeDailyWorkout() {
               <p className="text-sm text-slate-500">אימון לסטודיו</p>
             </div>
           </div>
-          
+
           <Card className="bg-white border-0 shadow-lg">
             <CardContent className="p-8">
               <div className="empty-state">
@@ -180,7 +181,7 @@ export default function TraineeDailyWorkout() {
     );
   }
 
-  // Filtered exercises based on search
+  // Filtered exercises based on search (applied to the first/primary workout for search UI)
   const filteredExercises = exerciseSearch.trim()
     ? todayExercises.filter(ex =>
         (ex?.exercise_name || '').toLowerCase().includes(exerciseSearch.toLowerCase())
@@ -298,42 +299,14 @@ export default function TraineeDailyWorkout() {
             <h1 className="text-2xl font-bold text-slate-800">
               אימון קבוצתי - {format(new Date(), 'd בMMMM', { locale: he })}
             </h1>
-            <p className="text-sm text-slate-500 mt-1">האימון הקבוצתי שלך לסטודיו</p>
+            <p className="text-sm text-slate-500 mt-1">
+              {todayWorkouts.length > 1 ? `${todayWorkouts.length} אימונים להיום` : 'האימון הקבוצתי שלך לסטודיו'}
+            </p>
           </div>
         </div>
 
-        {/* Workout Info */}
-        {todayWorkout && (
-          <Card className="bg-gradient-to-l from-orange-50 to-orange-100 border-2 border-orange-200">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-orange-700 flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5" />
-                  {todayWorkout.title_he || 'אימון יומי'}
-                </CardTitle>
-                {todayExercises.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCopyDialog(true)}
-                    className="text-orange-600 hover:text-orange-700"
-                  >
-                    <Copy className="w-4 h-4 ml-1" />
-                    העתק
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            {todayWorkout.description_he && (
-              <CardContent>
-                <p className="text-sm text-slate-700">{todayWorkout.description_he}</p>
-              </CardContent>
-            )}
-          </Card>
-        )}
-
-        {/* Exercise Search */}
-        {todayExercises.length > 3 && (
+        {/* Exercise Search (only when 1 workout to keep UX simple) */}
+        {todayWorkouts.length === 1 && todayExercises.length > 3 && (
           <div className="relative">
             <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
@@ -347,10 +320,110 @@ export default function TraineeDailyWorkout() {
           </div>
         )}
 
-        {/* Exercise Cards */}
-        <div className="space-y-4">
-          {renderExercises()}
-        </div>
+        {/* Render ALL today's workouts */}
+        {todayWorkouts.map((workout, workoutIdx) => {
+          const rawExercises = workout?.exercises;
+          const exercises = Array.isArray(rawExercises)
+            ? rawExercises
+            : (typeof rawExercises === 'string' ? (() => { try { return JSON.parse(rawExercises); } catch { return []; } })() : []);
+
+          const displayExercises = (todayWorkouts.length === 1 && exerciseSearch.trim())
+            ? exercises.filter(ex => (ex?.exercise_name || '').toLowerCase().includes(exerciseSearch.toLowerCase()))
+            : exercises;
+
+          return (
+            <div key={workout.id} className="space-y-4">
+              {/* Workout header card */}
+              <Card className="bg-gradient-to-l from-orange-50 to-orange-100 border-2 border-orange-200">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-orange-700 flex items-center gap-2">
+                      <CheckCircle2 className="w-5 h-5" />
+                      {workout.title_he || `אימון ${workoutIdx + 1}`}
+                      {todayWorkouts.length > 1 && (
+                        <span className="text-xs font-normal text-orange-500 bg-orange-100 px-2 py-0.5 rounded-full">
+                          {workoutIdx + 1} / {todayWorkouts.length}
+                        </span>
+                      )}
+                    </CardTitle>
+                    {exercises.length > 0 && workoutIdx === 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCopyDialog(true)}
+                        className="text-orange-600 hover:text-orange-700"
+                      >
+                        <Copy className="w-4 h-4 ml-1" />
+                        העתק
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                {workout.description_he && (
+                  <CardContent>
+                    <p className="text-sm text-slate-700">{workout.description_he}</p>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* Exercise cards for this workout */}
+              <div className="space-y-4">
+                {displayExercises.length === 0 ? (
+                  <Card className="bg-white border-0 shadow-lg">
+                    <CardContent className="p-8 text-center text-slate-500">
+                      אין תרגילים באימון זה
+                    </CardContent>
+                  </Card>
+                ) : (
+                  (() => {
+                    const renderList = buildRenderList(displayExercises);
+                    return renderList.map((item, i) => {
+                      try {
+                        if (item.type === 'group') {
+                          return (
+                            <SupersetGroupCard
+                              key={`${workout.id}_${item.group_id}`}
+                              exercises={item.exercises}
+                              groupMeta={{ group_type: item.group_type, round_count: item.round_count, rest_after_round_seconds: item.rest_after_round_seconds }}
+                              previousWorkouts={previousWorkouts}
+                              onSave={handleSaveExercise}
+                            />
+                          );
+                        }
+                        const ex = item.ex;
+                        const idx = item.idx;
+                        const exerciseKey = ex?.exercise_id || ex?.exercise_name || `exercise_${idx}`;
+                        return (
+                          <ExerciseCard
+                            key={`${workout.id}_${exerciseKey}`}
+                            exercise={{
+                              exercise_name: ex?.exercise_name || 'תרגיל',
+                              exercise_id: ex?.exercise_id || null,
+                              default_sets_count: ex?.sets || 3,
+                              target_reps_min: ex?.reps_min,
+                              target_reps_max: ex?.reps_max,
+                              notes: ex?.notes,
+                              sets: ex?.sets || [],
+                            }}
+                            index={idx}
+                            previousData={previousWorkouts[exerciseKey]}
+                            onSave={handleSaveExercise}
+                          />
+                        );
+                      } catch (err) {
+                        return (
+                          <Card key={`${workout.id}_error_${i}`} className="bg-red-50 border-red-200">
+                            <CardContent className="p-4 text-center text-red-600">שגיאה בטעינת תרגיל</CardContent>
+                          </Card>
+                        );
+                      }
+                    });
+                  })()
+                )}
+              </div>
+            </div>
+          );
+        })}
 
         {/* Back button */}
         <Link to={createPageUrl('WorkoutLog')}>
