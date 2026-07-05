@@ -328,7 +328,7 @@ function DashboardSection({ automations, queueItems, arboxStatus, absenceData, c
           }} />
           <QuickBtn icon={<Database className="w-4 h-4" />} label="סנכרן Arbox" onClick={async () => {
             const r = await base44.functions.invoke('syncArboxMembers', { coachEmail });
-            r?.ok ? toast.success(`סונכרנו ${r.data?.synced} חברים`) : toast.error(r?.error);
+            r?.ok ? toast.success(`סונכרנו ${(r.data?.inserted ?? 0) + (r.data?.updated ?? 0)} חברים`) : toast.error(r?.error);
           }} color="blue" />
         </div>
       </div>
@@ -865,7 +865,7 @@ function ArboxSection({ coachEmail, arboxStatus, onRefresh }) {
     try {
       const r = await base44.functions.invoke('syncArboxMembers', { coachEmail });
       if (r?.ok) {
-        toast.success(`✅ סונכרנו ${r.data?.synced} חברים מ-Arbox`);
+        toast.success(`✅ סונכרנו ${(r.data?.inserted ?? 0) + (r.data?.updated ?? 0)} חברים מ-Arbox (${r.data?.pulled ?? 0} נמשכו)`);
         queryClient.invalidateQueries(['arboxMembers']);
         queryClient.invalidateQueries(['arboxSyncHistory']);
         onRefresh?.();
