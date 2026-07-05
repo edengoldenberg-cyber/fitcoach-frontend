@@ -339,7 +339,7 @@ export default function TraineeDailyWorkout() {
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-orange-700 flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5" />
-                      {workout.title_he || `אימון ${workoutIdx + 1}`}
+                      {workout.title || workout.title_he || `אימון ${workoutIdx + 1}`}
                       {todayWorkouts.length > 1 && (
                         <span className="text-xs font-normal text-orange-500 bg-orange-100 px-2 py-0.5 rounded-full">
                           {workoutIdx + 1} / {todayWorkouts.length}

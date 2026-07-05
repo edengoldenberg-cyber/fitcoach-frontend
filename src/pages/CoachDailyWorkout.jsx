@@ -335,23 +335,9 @@ export default function CoachDailyWorkout() {
 
       if (!workoutId) throw new Error('מזהה אימון חסר - לא ניתן לפרסם');
 
-      // Clean up any duplicate DailyWorkoutTemplate records for today that are NOT the main
-      // workout (the DailyWorkout entity and DailyWorkoutTemplate share the same DB table;
-      // a previous bug caused an extra template record to be created on every publish).
-      try {
-        const allTodayRecords = await base44.entities.DailyWorkoutTemplate.filter({
-          coach_email: user.email,
-          date: todayStr,
-        });
-        // Delete any records that are NOT the main workout ID
-        for (const rec of allTodayRecords) {
-          if (rec.id !== workoutId) {
-            await base44.entities.DailyWorkoutTemplate.delete(rec.id).catch(() => {});
-          }
-        }
-      } catch (cleanupErr) {
-        console.error('Duplicate cleanup failed (non-fatal):', cleanupErr);
-      }
+      // NOTE: The old cleanup block that deleted all other workout records for today has been
+      // removed. Multiple workouts per day are intentional and supported. Each publish
+      // creates or updates only its own record identified by workoutId.
 
       try {
         await base44.entities.DailyWorkout.update(workoutId, {
