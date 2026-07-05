@@ -150,6 +150,7 @@ const NAV_ITEMS = [
   { key: 'logs',         label: 'לוגים',            icon: ScrollText },
   { key: 'failed',       label: 'הודעות שנכשלו',    icon: XCircle },
   { key: 'validation',   label: 'מרכז ולידציה',     icon: Shield },
+  { key: 'duplicates',   label: 'כפילויות מתאמנים', icon: Users },
 ];
 
 // ─── AutomationFormDialog ─────────────────────────────────────────────────────
@@ -1511,6 +1512,149 @@ function LoadingSpinner() {
   return <div className="text-center py-12"><RefreshCw className="w-6 h-6 animate-spin mx-auto text-slate-300" /></div>;
 }
 
+// ─── Section: Duplicate Trainee Risk Report ───────────────────────────────────
+
+const REASON_LABELS = {
+  same_name:          { bg: 'bg-red-50',    border: 'border-red-200',    text: 'text-red-700',    badge: 'bg-red-100 text-red-700',    icon: '⚠️', he: 'שם זהה' },
+  email_prefix_match: { bg: 'bg-amber-50',  border: 'border-amber-200',  text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700',  icon: '📧', he: 'אימייל כמעט זהה' },
+  same_phone:         { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700', icon: '📱', he: 'טלפון זהה' },
+};
+
+function DuplicatesSection({ coachEmail }) {
+  const { data: res, isLoading, refetch } = useQuery({
+    queryKey: ['duplicateTrainees', coachEmail],
+    queryFn:  () => base44.functions.invoke('getDuplicateTraineeReport', { coachEmail }),
+    enabled:  !!coachEmail,
+    staleTime: 60000,
+  });
+
+  const report = res?.data;
+  const groups = report?.duplicate_groups ?? [];
+  const typos  = report?.typo_emails ?? [];
+  const hasIssues = groups.length > 0 || typos.length > 0;
+
+  if (isLoading) return <LoadingSpinner />;
+
+  return (
+    <div className="space-y-5" dir="rtl">
+      <div className="flex items-start justify-between">
+        <SectionHeader
+          title="דוח כפילויות מתאמנים"
+          sub="קריאה בלבד · אין מיזוג אוטומטי · כל שינוי מצריך אישור ידני"
+        />
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-600 hover:bg-slate-50">
+          <RefreshCw className="w-3 h-3" /> רענן
+        </button>
+      </div>
+
+      {/* Read-only warning */}
+      <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+        <div className="text-sm text-amber-800">
+          <p className="font-bold mb-0.5">דוח קריאה בלבד</p>
+          <p className="text-xs leading-relaxed">זה דוח לזיהוי בלבד. לא ניתן למזג, למחוק או לשנות רשומות מכאן. כל שינוי ב-trainee_id מצריך אישור מפורש עם הדפסת מצב לפני ואחרי.</p>
+        </div>
+      </div>
+
+      {/* Summary KPIs */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <p className={`text-2xl font-bold ${groups.length > 0 ? 'text-red-600' : 'text-green-600'}`}>{groups.length}</p>
+          <p className="text-xs text-slate-500 mt-0.5">קבוצות כפולות</p>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <p className={`text-2xl font-bold ${typos.length > 0 ? 'text-amber-600' : 'text-green-600'}`}>{typos.length}</p>
+          <p className="text-xs text-slate-500 mt-0.5">אימיילים עם שגיאת הקלדה</p>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 text-center">
+          <p className="text-2xl font-bold text-slate-700">{report?.total_trainees ?? '—'}</p>
+          <p className="text-xs text-slate-500 mt-0.5">סה״כ מתאמנים</p>
+        </div>
+      </div>
+
+      {!hasIssues && (
+        <div className="text-center py-14 border-2 border-dashed border-green-200 rounded-xl bg-green-50">
+          <CheckCircle2 className="w-10 h-10 text-green-400 mx-auto mb-3" />
+          <p className="text-green-700 font-semibold">לא נמצאו כפילויות</p>
+          <p className="text-green-600 text-sm mt-1">כל רשומות המתאמנים נראות תקינות.</p>
+        </div>
+      )}
+
+      {/* Typo email accounts */}
+      {typos.length > 0 && (
+        <div className="border border-red-200 rounded-xl overflow-hidden bg-white">
+          <div className="bg-red-50 px-4 py-2.5 border-b border-red-200 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-red-600" />
+            <p className="text-sm font-bold text-red-700">אימיילים עם שגיאת הקלדה ידועה ({typos.length})</p>
+          </div>
+          <table className="w-full text-xs">
+            <thead><tr className="bg-slate-50 border-b border-slate-200">
+              <th className="text-right px-4 py-2.5 font-semibold text-slate-700">שם</th>
+              <th className="text-right px-4 py-2.5 font-semibold text-slate-700">אימייל (פגום)</th>
+              <th className="text-right px-4 py-2.5 font-semibold text-slate-700">שגיאה</th>
+              <th className="text-right px-4 py-2.5 font-semibold text-slate-700">Trainee ID</th>
+            </tr></thead>
+            <tbody>
+              {typos.map((t, i) => (
+                <tr key={t.id} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
+                  <td className="px-4 py-2.5 font-semibold text-slate-800">{t.full_name}</td>
+                  <td className="px-4 py-2.5 font-mono text-red-600">{t.email}</td>
+                  <td className="px-4 py-2.5"><span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full font-mono">{t.typo}</span></td>
+                  <td className="px-4 py-2.5 font-mono text-slate-400 text-xs">{t.id.slice(-12)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+            ⚠️ חשבונות אלה לא יוכלו לקבל מיילים. יש לתקן ידנית אחרי בדיקה עם המתאמן.
+          </div>
+        </div>
+      )}
+
+      {/* Duplicate groups */}
+      {groups.map((group, gi) => {
+        const style = REASON_LABELS[group.reason] || REASON_LABELS.same_name;
+        return (
+          <div key={gi} className={`border ${style.border} rounded-xl overflow-hidden bg-white`}>
+            <div className={`${style.bg} px-4 py-2.5 border-b ${style.border} flex items-center gap-2`}>
+              <span>{style.icon}</span>
+              <p className={`text-sm font-bold ${style.text}`}>{group.label}</p>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${style.badge} mr-auto`}>{style.he}</span>
+            </div>
+            <table className="w-full text-xs">
+              <thead><tr className="bg-slate-50 border-b border-slate-200">
+                <th className="text-right px-4 py-2.5 font-semibold text-slate-700">שם</th>
+                <th className="text-right px-4 py-2.5 font-semibold text-slate-700">אימייל</th>
+                <th className="text-right px-4 py-2.5 font-semibold text-slate-700">טלפון</th>
+                <th className="text-right px-4 py-2.5 font-semibold text-slate-700">Trainee ID (סוף)</th>
+                <th className="text-right px-4 py-2.5 font-semibold text-slate-700">נוצר</th>
+              </tr></thead>
+              <tbody>
+                {group.trainees.map((t, ti) => (
+                  <tr key={t.id} className={`border-b border-slate-100 ${ti % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
+                    <td className="px-4 py-2.5 font-semibold text-slate-800">{t.full_name || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-600 text-xs">{t.user_email || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-500">{t.phone_e164 || t.phone || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-400">...{t.id.slice(-12)}</td>
+                    <td className="px-4 py-2.5 text-slate-400">{t.created_at ? new Date(t.created_at).toLocaleDateString('he-IL') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-500">
+              🔒 קריאה בלבד — לא ניתן לבצע שינויים מכאן
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="text-xs text-slate-400 text-center pt-2">
+        בדיקה אחרונה: {report?.checked_at ? new Date(report.checked_at).toLocaleString('he-IL') : '—'}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MissionControl() {
@@ -1593,12 +1737,21 @@ export default function MissionControl() {
       case 'logs':        return <LogsSection coachEmail={coachEmail} />;
       case 'failed':      return <FailedSection queueItems={queueItems} onRefresh={refresh} />;
       case 'validation':  return <ValidationSection automations={automations} coachEmail={coachEmail} onRefresh={refresh} />;
+      case 'duplicates':  return <DuplicatesSection coachEmail={coachEmail} />;
       default:            return null;
     }
   };
 
   const enabledCount  = automations.filter(a=>a.enabled).length;
   const failedCount   = queueItems.filter(q=>q.status==='failed').length;
+
+  const { data: dupRes } = useQuery({
+    queryKey: ['duplicateCount', coachEmail],
+    queryFn:  () => base44.functions.invoke('getDuplicateTraineeReport', { coachEmail }),
+    enabled:  !!coachEmail,
+    staleTime: 300000,
+  });
+  const duplicateCount = (dupRes?.data?.duplicate_groups?.length ?? 0) + (dupRes?.data?.typo_emails?.length ?? 0);
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden" dir="rtl">
@@ -1634,7 +1787,7 @@ export default function MissionControl() {
           {NAV_ITEMS.map(item => {
             const Icon = item.icon;
             const isActive = activeSection === item.key;
-            const badge = item.key === 'failed' && failedCount > 0 ? failedCount : item.key === 'automations' ? enabledCount : null;
+            const badge = item.key === 'failed' && failedCount > 0 ? failedCount : item.key === 'automations' ? enabledCount : item.key === 'duplicates' && duplicateCount > 0 ? duplicateCount : null;
             return (
               <button key={item.key} onClick={() => setActiveSection(item.key)}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -1644,7 +1797,9 @@ export default function MissionControl() {
                 <span className="flex-1 text-right">{item.label}</span>
                 {badge !== null && badge > 0 && (
                   <span className={`text-xs px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
-                    item.key === 'failed' ? 'bg-red-500 text-white' : 'bg-teal-400 text-white'
+                    item.key === 'failed' ? 'bg-red-500 text-white' :
+                    item.key === 'duplicates' ? 'bg-amber-400 text-white' :
+                    'bg-teal-400 text-white'
                   }`}>{badge}</span>
                 )}
               </button>
