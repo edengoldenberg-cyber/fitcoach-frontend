@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FitCoach — עדכון אפליקציה</title>
+  <style>
+    body { font-family: -apple-system, Arial, sans-serif; background: #0f172a; color: #fff;
+           display: flex; flex-direction: column; align-items: center; justify-content: center;
+           min-height: 100vh; margin: 0; padding: 20px; text-align: center; }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    p  { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+    .status { background: #1e293b; border-radius: 12px; padding: 16px 24px;
+              font-size: 13px; color: #64748b; max-width: 320px; margin-bottom: 24px; }
+    .step { color: #22c55e; margin: 4px 0; }
+    .btn  { background: #14b8a6; color: #fff; border: none; padding: 14px 28px;
+            border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer;
+            width: 100%; max-width: 320px; }
+    .btn:disabled { background: #475569; }
+  </style>
+</head>
+<body>
+  <h1>⚡ עדכון אפליקציה</h1>
+  <p>מנקה מטמון ומעדכן לגרסה החדשה</p>
+  <div class="status" id="log">מתחיל...</div>
+  <button class="btn" id="btn" onclick="runClear()">עדכן עכשיו</button>
+
+  <script>
+    const log = document.getElementById('log');
+    const btn = document.getElementById('btn');
+
+    function addLine(text, ok = true) {
+      log.innerHTML += `<div class="step">${ok ? '✅' : '⏳'} ${text}</div>`;
+    }
+
+    async function runClear() {
+      btn.disabled = true;
+      log.innerHTML = '';
+
+      // 1. Unregister service workers
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) { await r.unregister(); }
+        addLine(`הסרת ${regs.length} service worker(s)`);
+      }
+
+      // 2. Clear all caches
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        for (const k of keys) { await caches.delete(k); }
+        addLine(`ניקוי ${keys.length} cache(s)`);
+      }
+
+      // 3. Clear localStorage app cache keys (keep auth token)
+      const keep = [];
+      for (const k of Object.keys(localStorage)) {
+        if (k.includes('token') || k.includes('auth') || k.includes('user')) keep.push(k);
+      }
+      const totalKeys = localStorage.length;
+      for (const k of Object.keys(localStorage)) {
+        if (!keep.includes(k)) localStorage.removeItem(k);
+      }
+      addLine(`ניקוי ${totalKeys - keep.length} פריטי localStorage`);
+
+      addLine('מפנה לאפליקציה...');
+
+      setTimeout(() => {
+        window.location.replace('/?t=' + Date.now());
+      }, 1200);
+    }
+
+    // Auto-run on load
+    window.addEventListener('load', runClear);
+  </script>
+</body>
+</html>
