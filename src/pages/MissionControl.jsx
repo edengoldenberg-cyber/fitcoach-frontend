@@ -151,6 +151,7 @@ const NAV_ITEMS = [
   { key: 'failed',       label: 'הודעות שנכשלו',    icon: XCircle },
   { key: 'validation',   label: 'מרכז ולידציה',     icon: Shield },
   { key: 'duplicates',   label: 'כפילויות מתאמנים', icon: Users },
+  { key: 'reminders',    label: 'מרכז תזכורות',     icon: Bell },
 ];
 
 // ─── AutomationFormDialog ─────────────────────────────────────────────────────
@@ -1655,6 +1656,346 @@ function DuplicatesSection({ coachEmail }) {
   );
 }
 
+// ─── ReminderCenterSection ────────────────────────────────────────────────────
+
+const REMINDER_TYPE_HE = {
+  nutrition_breakfast:      'תזונה — ארוחת בוקר',
+  nutrition_lunch:          'תזונה — צהריים',
+  nutrition_dinner:         'תזונה — ערב',
+  water_midday:             'מים — צהריים',
+  water_afternoon:          'מים — אחה"צ',
+  water_evening:            'מים — ערב',
+  workout_motivation:       'אימון — מוטיבציה',
+  weigh_in_reminder:        'שקילה',
+  inactivity_nudge:         'אי-פעילות',
+  encouragement_weekly:     'עידוד שבועי',
+  feedback_request_30days:  'בקשת משוב',
+  weekly_summary:           'סיכום שבועי',
+};
+const remType = k => REMINDER_TYPE_HE[k] || k || '—';
+
+const QUEUE_STATUS_STYLE = {
+  sent:    { bg: 'bg-green-100',  text: 'text-green-700',  label: 'נשלח'    },
+  queued:  { bg: 'bg-blue-100',   text: 'text-blue-700',   label: 'בתור'    },
+  sending: { bg: 'bg-amber-100',  text: 'text-amber-700',  label: 'שולח'    },
+  failed:  { bg: 'bg-red-100',    text: 'text-red-700',    label: 'נכשל'    },
+};
+const qStatus = s => QUEUE_STATUS_STYLE[s] || { bg: 'bg-slate-100', text: 'text-slate-600', label: s };
+
+function ReminderCenterSection({ coachEmail }) {
+  const [tab, setTab]       = useState('queue');
+  const [search, setSearch] = useState('');
+  const [date, setDate]     = useState(new Date().toISOString().split('T')[0]);
+
+  const { data: res, isLoading, refetch } = useQuery({
+    queryKey: ['reminderCenter', date],
+    queryFn:  () => base44.functions.invoke('getReminderCenterData', { date }),
+    staleTime: 30000,
+  });
+
+  const d = res?.data;
+  const summary      = d?.summary      || {};
+  const queue        = d?.queue        || [];
+  const blockedLog   = d?.blocked_log  || [];
+  const consent      = d?.consent      || [];
+  const reports      = d?.reports      || {};
+
+  const lc = s => (s || '').toLowerCase();
+  const filteredQueue = queue.filter(q =>
+    !search || lc(q.to_name).includes(lc(search)) || lc(q.template_key).includes(lc(search)) || lc(q.status).includes(lc(search)) || lc(q.id_message).includes(lc(search))
+  );
+  const filteredConsent = consent.filter(c =>
+    !search || lc(c.trainee_name).includes(lc(search)) || lc(c.trainee_email).includes(lc(search))
+  );
+  const filteredBlocked = blockedLog.filter(b =>
+    !search || lc(b.trainee_email).includes(lc(search)) || lc(b.automation_type).includes(lc(search)) || lc(b.reason).includes(lc(search))
+  );
+
+  const TABS = [
+    { key: 'queue',   label: 'תור היום'      },
+    { key: 'blocked', label: 'חסומים'        },
+    { key: 'consent', label: 'הסכמות'        },
+    { key: 'reports', label: 'דוחות'         },
+  ];
+
+  const SummaryCard = ({ label, value, color = 'slate', sub }) => (
+    <div className={`rounded-xl p-4 border bg-${color}-50 border-${color}-200`}>
+      <p className={`text-2xl font-bold text-${color}-700`}>{value ?? '—'}</p>
+      <p className={`text-xs font-medium text-${color}-600 mt-0.5`}>{label}</p>
+      {sub && <p className="text-xs text-slate-400 mt-0.5">{sub}</p>}
+    </div>
+  );
+
+  const bool = v => v === true ? <span className="text-green-600 font-bold">✓</span> : v === false ? <span className="text-red-500">✗</span> : <span className="text-slate-300">—</span>;
+
+  return (
+    <div className="space-y-5" dir="rtl">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <Input
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            className="h-8 text-sm w-40"
+          />
+          <Input
+            placeholder="חיפוש..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="h-8 text-sm w-52"
+          />
+        </div>
+        <button onClick={() => refetch()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50">
+          <RefreshCw className="w-3.5 h-3.5" /> רענן
+        </button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <SummaryCard label="נשלחו היום"      value={summary.sent_today}          color="green"  />
+        <SummaryCard label="בתור"             value={summary.queued}              color="blue"   />
+        <SummaryCard label="נכשלו"            value={summary.failed_today}        color="red"    />
+        <SummaryCard label="חסומו היום"       value={summary.blocked_today}       color="amber"  />
+        <SummaryCard label="תזכורות כבויות"  value={summary.disabled_count}      color="orange" sub="master=כבוי" />
+        <SummaryCard label="מעולם לא הפעיל"  value={summary.never_enabled_count} color="slate"  />
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {TABS.map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              tab === t.key ? 'border-teal-500 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            {t.label}
+            {t.key === 'blocked' && blockedLog.length > 0 && (
+              <span className="mr-1.5 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full">{blockedLog.length}</span>
+            )}
+            {t.key === 'reports' && reports.repeated_failures?.length > 0 && (
+              <span className="mr-1.5 text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded-full">{reports.repeated_failures.length}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {isLoading && (
+        <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
+          <RefreshCw className="w-5 h-5 animate-spin" />
+          <span>טוען נתוני תזכורות...</span>
+        </div>
+      )}
+
+      {!isLoading && tab === 'queue' && (
+        <div className="rounded-xl border border-slate-200 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-right">
+                <th className="px-3 py-2.5 font-semibold text-slate-600">מתאמן</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">סוג תזכורת</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">מתוזמן</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">נשלח בפועל</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">סטטוס</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">סיבת כשל</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">idMessage (Green API)</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">Queue ID</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">מאמן</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredQueue.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">אין הודעות בתאריך זה</td></tr>
+              )}
+              {filteredQueue.map((q, i) => {
+                const st = qStatus(q.status);
+                return (
+                  <tr key={q.queue_id} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                    <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">{q.to_name || q.to_phone}</td>
+                    <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{remType(q.template_key)}</td>
+                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{q.scheduled_for ? fmtDate(q.scheduled_for) : '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{q.sent_at ? fmtDate(q.sent_at) : '—'}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-red-600 max-w-[160px] truncate" title={q.error || ''}>{q.error || '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-500 text-[10px] whitespace-nowrap">{q.id_message || '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-400 text-[10px] whitespace-nowrap">...{q.queue_id?.slice(-10)}</td>
+                    <td className="px-3 py-2.5 text-slate-500 text-[10px] whitespace-nowrap">{q.coach_email}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
+            {filteredQueue.length} הודעות
+          </div>
+        </div>
+      )}
+
+      {!isLoading && tab === 'blocked' && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">הודעות שנחסמו היום — כולל סיבה מפורטת</p>
+          <div className="rounded-xl border border-slate-200 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-right">
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">מתאמן</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">סוג אוטומציה</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">סיבה</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">שעה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredBlocked.length === 0 && (
+                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">אין חסימות היום</td></tr>
+                )}
+                {filteredBlocked.map((b, i) => (
+                  <tr key={i} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                    <td className="px-3 py-2.5 font-medium text-slate-800">{b.trainee_email}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{remType(b.automation_type)}</td>
+                    <td className="px-3 py-2.5">
+                      <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full text-[10px] font-medium">{b.reason}</span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-400">{b.ts ? fmtDate(b.ts) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">{filteredBlocked.length} חסימות</div>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && tab === 'consent' && (
+        <div className="space-y-3">
+          <p className="text-xs text-slate-500">מצב הסכמה לכל מתאמן — ✓ = מופעל, ✗ = כבוי, — = אף פעם לא הגדיר</p>
+          <div className="rounded-xl border border-slate-200 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200 text-right">
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">מתאמן</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">טלפון</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">Master</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">תזונה</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">מים</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">אימון</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">שקילה</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600 text-center">אי-פעילות</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">עדכון אחרון</th>
+                  <th className="px-3 py-2.5 font-semibold text-slate-600">מאמן</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredConsent.length === 0 && (
+                  <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">אין מתאמנים</td></tr>
+                )}
+                {filteredConsent.map((c, i) => (
+                  <tr key={c.trainee_id} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'} ${c.never_enabled ? 'bg-slate-50' : ''}`}>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span className="font-medium text-slate-800">{c.trainee_name || '—'}</span>
+                      {c.never_enabled && <span className="mr-1.5 text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">מעולם לא הגדיר</span>}
+                    </td>
+                    <td className="px-3 py-2.5">{c.has_phone ? <span className="text-green-600">✓ יש</span> : <span className="text-red-500">✗ חסר</span>}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.master)}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.nutrition)}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.water)}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.workout)}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.weigh_in)}</td>
+                    <td className="px-3 py-2.5 text-center">{bool(c.inactivity)}</td>
+                    <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{c.last_updated ? fmtShort(c.last_updated) : '—'}</td>
+                    <td className="px-3 py-2.5 text-slate-400 text-[10px]">{c.coach_email || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">{filteredConsent.length} מתאמנים</div>
+          </div>
+        </div>
+      )}
+
+      {!isLoading && tab === 'reports' && (
+        <div className="space-y-4">
+          {/* Disabled */}
+          <div className="rounded-xl border border-orange-200 overflow-hidden">
+            <div className="bg-orange-50 px-4 py-2.5 flex items-center gap-2">
+              <Bell className="w-4 h-4 text-orange-500" />
+              <span className="font-semibold text-orange-700 text-sm">תזכורות כבויות (master=כבוי) — {reports.disabled?.length ?? 0}</span>
+            </div>
+            {(reports.disabled || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).length === 0
+              ? <p className="px-4 py-4 text-xs text-slate-400">אין</p>
+              : (reports.disabled || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).map(r => (
+                  <div key={r.id} className="px-4 py-2 border-t border-orange-100 flex items-center gap-3 text-xs">
+                    <span className="font-medium text-slate-800">{r.name || '—'}</span>
+                    <span className="text-slate-500">{r.email}</span>
+                    <span className="text-slate-400 text-[10px]">{r.coach_email}</span>
+                  </div>
+                ))
+            }
+          </div>
+
+          {/* Never enabled */}
+          <div className="rounded-xl border border-slate-200 overflow-hidden">
+            <div className="bg-slate-50 px-4 py-2.5 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-slate-500" />
+              <span className="font-semibold text-slate-700 text-sm">מעולם לא הגדיר הסכמה — {reports.never_enabled?.length ?? 0}</span>
+            </div>
+            {(reports.never_enabled || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).length === 0
+              ? <p className="px-4 py-4 text-xs text-slate-400">אין</p>
+              : (reports.never_enabled || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).map(r => (
+                  <div key={r.id} className="px-4 py-2 border-t border-slate-100 flex items-center gap-3 text-xs">
+                    <span className="font-medium text-slate-800">{r.name || '—'}</span>
+                    <span className="text-slate-500">{r.email}</span>
+                  </div>
+                ))
+            }
+          </div>
+
+          {/* Missing phone */}
+          <div className="rounded-xl border border-red-200 overflow-hidden">
+            <div className="bg-red-50 px-4 py-2.5 flex items-center gap-2">
+              <Phone className="w-4 h-4 text-red-500" />
+              <span className="font-semibold text-red-700 text-sm">חסר מספר טלפון — {reports.missing_phone?.length ?? 0}</span>
+            </div>
+            {(reports.missing_phone || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).length === 0
+              ? <p className="px-4 py-4 text-xs text-slate-400">אין</p>
+              : (reports.missing_phone || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.email).includes(lc(search))).map(r => (
+                  <div key={r.id} className="px-4 py-2 border-t border-red-100 flex items-center gap-3 text-xs">
+                    <span className="font-medium text-slate-800">{r.name || '—'}</span>
+                    <span className="text-slate-500">{r.email}</span>
+                  </div>
+                ))
+            }
+          </div>
+
+          {/* Repeated failures */}
+          <div className="rounded-xl border border-red-300 overflow-hidden">
+            <div className="bg-red-50 px-4 py-2.5 flex items-center gap-2">
+              <XCircle className="w-4 h-4 text-red-600" />
+              <span className="font-semibold text-red-700 text-sm">כשלים חוזרים (3+ ב-7 ימים) — {reports.repeated_failures?.length ?? 0}</span>
+            </div>
+            {(reports.repeated_failures || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.phone).includes(lc(search))).length === 0
+              ? <p className="px-4 py-4 text-xs text-slate-400">אין</p>
+              : (reports.repeated_failures || []).filter(r => !search || lc(r.name).includes(lc(search)) || lc(r.phone).includes(lc(search))).map(r => (
+                  <div key={r.phone} className="px-4 py-2.5 border-t border-red-100 text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className="font-medium text-slate-800">{r.name || r.phone}</span>
+                      <span className="text-red-600 font-bold">{r.count} כשלים</span>
+                      <span className="text-slate-400">{r.types}</span>
+                    </div>
+                    {r.last_error && <p className="text-slate-500 mt-0.5 truncate">{r.last_error}</p>}
+                  </div>
+                ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MissionControl() {
@@ -1738,6 +2079,7 @@ export default function MissionControl() {
       case 'failed':      return <FailedSection queueItems={queueItems} onRefresh={refresh} />;
       case 'validation':  return <ValidationSection automations={automations} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'duplicates':  return <DuplicatesSection coachEmail={coachEmail} />;
+      case 'reminders':   return <ReminderCenterSection coachEmail={coachEmail} />;
       default:            return null;
     }
   };
