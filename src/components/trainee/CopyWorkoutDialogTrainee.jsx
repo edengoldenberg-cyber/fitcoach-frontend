@@ -43,7 +43,7 @@ export default function CopyWorkoutDialogTrainee({ open, onClose, workout, train
           date: targetDate,
           title: workout.title_he || workout.title || 'אימון מועתק',
           status: 'draft',
-          source_daily_workout_id: workout.id || null,
+          daily_workout_id: workout.id || null,
           exercises: sourceExercises.map(ex => ({
             exercise_id: ex.exercise_id || null,
             name: ex.exercise_name || ex.name,
