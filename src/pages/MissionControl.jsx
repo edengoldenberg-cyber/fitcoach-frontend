@@ -37,7 +37,7 @@ import {
   RefreshCw, Download, Plus, Edit2, Trash2, Play, CheckCircle2,
   ChevronRight, ChevronDown, Search, Phone, Wifi, WifiOff, Eye,
   History, Info, Calendar, Filter, TrendingUp, AlertCircle,
-  Check, X, Settings, Bell, ArrowUpRight, Layers,
+  Check, X, Settings, Bell, ArrowUpRight, Layers, Menu,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -982,7 +982,7 @@ function ArboxSection({ coachEmail, arboxStatus, onRefresh }) {
                     <td className="px-3 py-2 text-slate-600">{m.membership_type||'—'}</td>
                     <td className="px-3 py-2 text-slate-500">{fmtShort(m.membership_end)}</td>
                     <td className="px-3 py-2 text-slate-500">{fmtShort(m.last_check_in)}</td>
-                    <td className="px-3 py-2 text-center font-bold">{m.days_since_visit === 999 ? '—' : m.days_since_visit}</td>
+                    <td className="px-3 py-2 text-center font-bold">{m.days_since_visit == null ? '—' : m.days_since_visit}</td>
                     <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${rc.bg} ${rc.text} ${rc.border}`}><span className={`w-1.5 h-1.5 rounded-full inline-block ml-1 ${rc.dot}`}></span>{risk.label}</span></td>
                     <td className="px-3 py-2"><StatusBadge status={m.status||'—'} /></td>
                   </tr>
@@ -1214,7 +1214,7 @@ function AbsenceSection({ coachEmail }) {
                     <td className="px-3 py-2 font-semibold text-slate-800">{m.first_name} {m.last_name}</td>
                     <td className="px-3 py-2 font-mono">{m.phone_e164||m.phone||'—'}</td>
                     <td className="px-3 py-2 text-slate-500">{fmtShort(m.last_check_in)}</td>
-                    <td className="px-3 py-2 text-center font-bold">{m.days_since_visit === 999 ? '∞' : m.days_since_visit}</td>
+                    <td className="px-3 py-2 text-center font-bold">{m.days_since_visit == null ? '∞' : m.days_since_visit}</td>
                     <td className="px-3 py-2 text-slate-500">{m.membership_type||'—'}</td>
                     <td className="px-3 py-2"><StatusBadge status={m.status||'—'} /></td>
                     <td className="px-3 py-2"><span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${rc.bg} ${rc.text} ${rc.border}`}>{risk.label}</span></td>
@@ -1689,7 +1689,7 @@ function ReminderCenterSection({ coachEmail }) {
 
   const { data: res, isLoading, refetch } = useQuery({
     queryKey: ['reminderCenter', date],
-    queryFn:  () => base44.functions.invoke('getReminderCenterData', { date }),
+    queryFn:  () => base44.functions.invoke('getReminderCenterData', { date, coachEmail }),
     staleTime: 30000,
   });
 
@@ -2000,6 +2000,7 @@ function ReminderCenterSection({ coachEmail }) {
 
 export default function MissionControl() {
   const [activeSection, setActiveSection] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
@@ -2097,8 +2098,38 @@ export default function MissionControl() {
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden" dir="rtl">
-      {/* Sidebar */}
-      <div className="w-56 bg-slate-900 flex flex-col shrink-0 overflow-y-auto">
+
+      {/* ── Mobile backdrop — closes drawer when tapped ── */}
+      {sidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/60"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── Sidebar ──
+          Desktop (md+): static, always visible.
+          Mobile: fixed drawer that slides in from the right (RTL).
+          translate-x-full hides it; translate-x-0 shows it.
+          md:translate-x-0 overrides both so desktop is always visible. */}
+      <div className={`
+        fixed md:static inset-y-0 right-0 z-50
+        w-64 md:w-56 bg-slate-900 flex flex-col shrink-0 overflow-y-auto
+        transition-transform duration-200 ease-in-out
+        ${sidebarOpen ? 'translate-x-0' : 'translate-x-full'}
+        md:translate-x-0
+      `}>
+        {/* Close button — mobile only */}
+        <div className="md:hidden flex justify-start px-3 pt-3 pb-1">
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            aria-label="סגור תפריט"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
         {/* Logo */}
         <div className="px-4 py-4 border-b border-slate-700">
           <div className="flex items-center gap-2">
@@ -2131,10 +2162,13 @@ export default function MissionControl() {
             const isActive = activeSection === item.key;
             const badge = item.key === 'failed' && failedCount > 0 ? failedCount : item.key === 'automations' ? enabledCount : item.key === 'duplicates' && duplicateCount > 0 ? duplicateCount : null;
             return (
-              <button key={item.key} onClick={() => setActiveSection(item.key)}
+              <button
+                key={item.key}
+                onClick={() => { setActiveSection(item.key); setSidebarOpen(false); }}
                 className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isActive ? 'bg-teal-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                }`}>
+                }`}
+              >
                 <Icon className="w-4 h-4 shrink-0" />
                 <span className="flex-1 text-right">{item.label}</span>
                 {badge !== null && badge > 0 && (
@@ -2155,26 +2189,36 @@ export default function MissionControl() {
         </div>
       </div>
 
-      {/* Main content */}
+      {/* Main content — takes full width on mobile (sidebar is out-of-flow when fixed) */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center gap-4 shrink-0">
-          <div>
-            <h1 className="text-base font-bold text-slate-900">{NAV_ITEMS.find(n=>n.key===activeSection)?.label}</h1>
-            <p className="text-xs text-slate-400">{new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <div className="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex items-center gap-3 shrink-0">
+          {/* Hamburger — mobile only */}
+          <button
+            className="md:hidden p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="פתח תפריט"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+
+          <div className="min-w-0">
+            <h1 className="text-base font-bold text-slate-900 truncate">{NAV_ITEMS.find(n=>n.key===activeSection)?.label}</h1>
+            <p className="text-xs text-slate-400 truncate">{new Date().toLocaleDateString('he-IL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
           </div>
-          <div className="mr-auto flex items-center gap-3">
-            <button onClick={refresh} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
-              <RefreshCw className="w-3.5 h-3.5" /> רענן
+          <div className="mr-auto flex items-center gap-2 shrink-0">
+            <button onClick={refresh} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-colors">
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">רענן</span>
             </button>
-            <div className="text-xs text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+            <div className="hidden sm:block text-xs text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
               {coachEmail}
             </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {renderSection()}
         </div>
       </div>
