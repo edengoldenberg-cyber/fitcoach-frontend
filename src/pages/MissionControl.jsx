@@ -1659,6 +1659,7 @@ function DuplicatesSection({ coachEmail }) {
 // ─── ReminderCenterSection ────────────────────────────────────────────────────
 
 const REMINDER_TYPE_HE = {
+  // template_key values (used by queue tab)
   nutrition_breakfast:      'תזונה — ארוחת בוקר',
   nutrition_lunch:          'תזונה — צהריים',
   nutrition_dinner:         'תזונה — ערב',
@@ -1671,14 +1672,27 @@ const REMINDER_TYPE_HE = {
   encouragement_weekly:     'עידוד שבועי',
   feedback_request_30days:  'בקשת משוב',
   weekly_summary:           'סיכום שבועי',
+  // reminder_type values (used by daily summary tab)
+  nutrition_reminder:       'תזונה',
+  water_reminder:           'מים',
+  workout_reminder:         'אימון',
+  inactivity_reminder:      'אי-פעילות',
+  encouragement:            'עידוד',
+  feedback_request:         'בקשת משוב',
+  reminder_pipeline_test:   'בדיקת Pipeline',
 };
 const remType = k => REMINDER_TYPE_HE[k] || k || '—';
 
 const QUEUE_STATUS_STYLE = {
-  sent:    { bg: 'bg-green-100',  text: 'text-green-700',  label: 'נשלח'    },
-  queued:  { bg: 'bg-blue-100',   text: 'text-blue-700',   label: 'בתור'    },
-  sending: { bg: 'bg-amber-100',  text: 'text-amber-700',  label: 'שולח'    },
-  failed:  { bg: 'bg-red-100',    text: 'text-red-700',    label: 'נכשל'    },
+  sent:      { bg: 'bg-green-100',   text: 'text-green-700',   label: 'נשלח'      },
+  queued:    { bg: 'bg-blue-100',    text: 'text-blue-700',    label: 'בתור'      },
+  sending:   { bg: 'bg-amber-100',   text: 'text-amber-700',   label: 'שולח'      },
+  failed:    { bg: 'bg-red-100',     text: 'text-red-700',     label: 'נכשל'      },
+  blocked:   { bg: 'bg-orange-100',  text: 'text-orange-700',  label: 'חסום'      },
+  skipped:   { bg: 'bg-slate-100',   text: 'text-slate-600',   label: 'דולג'      },
+  waiting:   { bg: 'bg-purple-100',  text: 'text-purple-700',  label: 'ממתין'     },
+  duplicate: { bg: 'bg-cyan-100',    text: 'text-cyan-700',    label: 'כפול'      },
+  error:     { bg: 'bg-rose-100',    text: 'text-rose-700',    label: 'שגיאה'     },
 };
 const qStatus = s => QUEUE_STATUS_STYLE[s] || { bg: 'bg-slate-100', text: 'text-slate-600', label: s };
 
@@ -1694,15 +1708,16 @@ function ReminderCenterSection({ coachEmail }) {
   });
 
   const d = res?.data;
-  const summary      = d?.summary      || {};
-  const queue        = d?.queue        || [];
-  const blockedLog   = d?.blocked_log  || [];
-  const consent      = d?.consent      || [];
-  const reports      = d?.reports      || {};
+  const summary      = d?.summary       || {};
+  const queue        = d?.queue         || [];
+  const blockedLog   = d?.blocked_log   || [];
+  const consent      = d?.consent       || [];
+  const reports      = d?.reports       || {};
+  const dailySummary = d?.daily_summary || [];
 
   const lc = s => (s || '').toLowerCase();
   const filteredQueue = queue.filter(q =>
-    !search || lc(q.to_name).includes(lc(search)) || lc(q.template_key).includes(lc(search)) || lc(q.status).includes(lc(search)) || lc(q.id_message).includes(lc(search))
+    !search || lc(q.to_name).includes(lc(search)) || lc(q.template_key).includes(lc(search)) || lc(q.status).includes(lc(search)) || lc(q.id_message).includes(lc(search)) || lc(q.reason_label).includes(lc(search))
   );
   const filteredConsent = consent.filter(c =>
     !search || lc(c.trainee_name).includes(lc(search)) || lc(c.trainee_email).includes(lc(search))
@@ -1712,10 +1727,11 @@ function ReminderCenterSection({ coachEmail }) {
   );
 
   const TABS = [
-    { key: 'queue',   label: 'תור היום'      },
-    { key: 'blocked', label: 'חסומים'        },
-    { key: 'consent', label: 'הסכמות'        },
-    { key: 'reports', label: 'דוחות'         },
+    { key: 'queue',     label: 'ביצוע היום'   },
+    { key: 'blocked',   label: 'חסומים'       },
+    { key: 'execution', label: 'סיכום לפי סוג' },
+    { key: 'consent',   label: 'הסכמות'       },
+    { key: 'reports',   label: 'דוחות'        },
   ];
 
   const SummaryCard = ({ label, value, color = 'slate', sub }) => (
@@ -1751,14 +1767,21 @@ function ReminderCenterSection({ coachEmail }) {
         </button>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        <SummaryCard label="נשלחו היום"      value={summary.sent_today}          color="green"  />
-        <SummaryCard label="בתור"             value={summary.queued}              color="blue"   />
-        <SummaryCard label="נכשלו"            value={summary.failed_today}        color="red"    />
-        <SummaryCard label="חסומו היום"       value={summary.blocked_today}       color="amber"  />
-        <SummaryCard label="תזכורות כבויות"  value={summary.disabled_count}      color="orange" sub="master=כבוי" />
-        <SummaryCard label="מעולם לא הפעיל"  value={summary.never_enabled_count} color="slate"  />
+      {/* Summary Cards — execution status */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <SummaryCard label="נשלחו"     value={summary.sent_today}    color="green"  />
+        <SummaryCard label="בתור"      value={summary.queued}        color="blue"   />
+        <SummaryCard label="חסומים"    value={summary.blocked_today} color="amber"  />
+        <SummaryCard label="דולגים"    value={summary.skipped_today} color="slate"  />
+        <SummaryCard label="ממתינים"   value={summary.waiting}       color="purple" />
+        <SummaryCard label="נכשלו"     value={summary.failed_today}  color="red"    />
+        <SummaryCard label="כפולים"    value={summary.duplicate}     color="cyan"   />
+        <SummaryCard label="שגיאות"    value={summary.error}         color="rose"   />
+      </div>
+      {/* Consent health cards */}
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-3">
+        <SummaryCard label="תזכורות כבויות" value={summary.disabled_count}      color="orange" sub="master=כבוי" />
+        <SummaryCard label="מעולם לא הפעיל" value={summary.never_enabled_count} color="slate"  />
       </div>
 
       {/* Tabs */}
@@ -1796,10 +1819,10 @@ function ReminderCenterSection({ coachEmail }) {
               <tr className="bg-slate-50 border-b border-slate-200 text-right">
                 <th className="px-3 py-2.5 font-semibold text-slate-600">מתאמן</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">סוג תזכורת</th>
-                <th className="px-3 py-2.5 font-semibold text-slate-600">מתוזמן</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">הוכנס לתור</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">נשלח בפועל</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">סטטוס</th>
-                <th className="px-3 py-2.5 font-semibold text-slate-600">סיבת כשל</th>
+                <th className="px-3 py-2.5 font-semibold text-slate-600">סיבה</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">idMessage (Green API)</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">Queue ID</th>
                 <th className="px-3 py-2.5 font-semibold text-slate-600">מאמן</th>
@@ -1807,12 +1830,12 @@ function ReminderCenterSection({ coachEmail }) {
             </thead>
             <tbody>
               {filteredQueue.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">אין הודעות בתאריך זה</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">אין תוצאות ביצוע בתאריך זה</td></tr>
               )}
               {filteredQueue.map((q, i) => {
                 const st = qStatus(q.status);
                 return (
-                  <tr key={q.queue_id} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                  <tr key={q.exec_log_id || q.queue_id || i} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
                     <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">{q.to_name || q.to_phone}</td>
                     <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{remType(q.template_key)}</td>
                     <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{q.scheduled_for ? fmtDate(q.scheduled_for) : '—'}</td>
@@ -1820,9 +1843,16 @@ function ReminderCenterSection({ coachEmail }) {
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${st.bg} ${st.text}`}>{st.label}</span>
                     </td>
-                    <td className="px-3 py-2.5 text-red-600 max-w-[160px] truncate" title={q.error || ''}>{q.error || '—'}</td>
+                    <td className="px-3 py-2.5 max-w-[180px] truncate" title={q.reason_label || q.error || ''}>
+                      {q.reason_label
+                        ? <span className="text-slate-600">{q.reason_label}</span>
+                        : q.error
+                          ? <span className="text-red-600">{q.error}</span>
+                          : <span className="text-slate-300">—</span>
+                      }
+                    </td>
                     <td className="px-3 py-2.5 font-mono text-slate-500 text-[10px] whitespace-nowrap">{q.id_message || '—'}</td>
-                    <td className="px-3 py-2.5 font-mono text-slate-400 text-[10px] whitespace-nowrap">...{q.queue_id?.slice(-10)}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-400 text-[10px] whitespace-nowrap">...{(q.queue_id || q.exec_log_id)?.slice(-10)}</td>
                     <td className="px-3 py-2.5 text-slate-500 text-[10px] whitespace-nowrap">{q.coach_email}</td>
                   </tr>
                 );
@@ -1830,7 +1860,7 @@ function ReminderCenterSection({ coachEmail }) {
             </tbody>
           </table>
           <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
-            {filteredQueue.length} הודעות
+            {filteredQueue.length} תוצאות ביצוע
           </div>
         </div>
       )}
@@ -1866,6 +1896,65 @@ function ReminderCenterSection({ coachEmail }) {
             </table>
             <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">{filteredBlocked.length} חסימות</div>
           </div>
+        </div>
+      )}
+
+      {!isLoading && tab === 'execution' && (
+        <div className="space-y-4">
+          {dailySummary.length === 0 ? (
+            <p className="text-xs text-slate-400 py-8 text-center">אין נתוני סיכום יומי לתאריך זה — הבאץ' טרם רץ.</p>
+          ) : (
+            <div className="rounded-xl border border-slate-200 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-right">
+                    <th className="px-3 py-2.5 font-semibold text-slate-600">סוג תזכורת</th>
+                    <th className="px-3 py-2.5 font-semibold text-green-700  text-center">נשלח</th>
+                    <th className="px-3 py-2.5 font-semibold text-blue-700   text-center">בתור</th>
+                    <th className="px-3 py-2.5 font-semibold text-amber-700  text-center">חסום</th>
+                    <th className="px-3 py-2.5 font-semibold text-slate-600  text-center">דולג</th>
+                    <th className="px-3 py-2.5 font-semibold text-purple-700 text-center">ממתין</th>
+                    <th className="px-3 py-2.5 font-semibold text-red-700    text-center">נכשל</th>
+                    <th className="px-3 py-2.5 font-semibold text-rose-700   text-center">שגיאה</th>
+                    <th className="px-3 py-2.5 font-semibold text-cyan-700   text-center">כפול</th>
+                    <th className="px-3 py-2.5 font-semibold text-slate-600  text-center">סה"כ</th>
+                    <th className="px-3 py-2.5 font-semibold text-slate-600">סיבות עיקריות</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailySummary.map((s, i) => (
+                    <tr key={`${s.reminder_type}-${s.sub_type}`} className={`border-b border-slate-100 ${i % 2 === 0 ? '' : 'bg-slate-50/40'}`}>
+                      <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">
+                        {remType(s.reminder_type)}
+                        {s.sub_type && s.sub_type !== '_none' && <span className="text-slate-400 mr-1">({s.sub_type})</span>}
+                      </td>
+                      <td className="px-3 py-2.5 text-center font-bold text-green-700">{s.count_sent || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-blue-600">{s.count_queued || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-amber-600">{(s.count_blocked_consent || 0) + (s.count_blocked_data || 0)}</td>
+                      <td className="px-3 py-2.5 text-center text-slate-500">{s.count_skipped || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-purple-600">{s.count_waiting || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-red-600">{(s.count_failed || 0) + (s.count_terminal_failed || 0)}</td>
+                      <td className="px-3 py-2.5 text-center text-rose-600">{s.count_error || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-cyan-600">{s.count_duplicate || 0}</td>
+                      <td className="px-3 py-2.5 text-center text-slate-700 font-medium">{s.total_evaluated || 0}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap gap-1">
+                          {(s.top_reasons || []).slice(0, 3).map(r => (
+                            <span key={r.reason_code} className="bg-slate-100 text-slate-600 text-[10px] px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                              {r.label} ({r.count})
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-xs text-slate-400">
+                {dailySummary.length} סוגי תזכורות — נוצר ע"י ReminderDailySummary
+              </div>
+            </div>
+          )}
         </div>
       )}
 
