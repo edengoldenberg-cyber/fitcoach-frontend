@@ -13,13 +13,46 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
     setLoading(true);
     setResult(null);
     try {
+      // PHASE 7: Log exact request being sent
+      console.log('[MFC:7_REQUEST]', JSON.stringify({
+        planId,
+        dayIndex: dayIndex || 0,
+        feedback_exact: text.trim(),
+        feedback_len: text.trim().length,
+      }));
+
       const res = await base44.functions.invoke('mealPlanFeedback', {
         plan_id:   planId,
         feedback:  text.trim(),
         day_index: dayIndex || 0,
       });
 
+      // PHASE 7: Prove what base44.functions.invoke returned
+      console.log('[MFC:7_RAW_RES]', JSON.stringify({
+        res_type:     typeof res,
+        res_keys:     res ? Object.keys(res) : null,
+        res_ok:       res?.ok,
+        has_data_key: res && 'data' in res,
+        res_data_keys: res?.data ? Object.keys(res.data) : null,
+        traceId:      res?.data?.traceId || res?.traceId || null,
+      }));
+
       const data = res.data || res;
+
+      console.log('[MFC:7_RESOLVED]', JSON.stringify({
+        traceId:       data?.traceId,
+        data_changed:  data?.changed,
+        data_changed_bool: !!data?.changed,
+        before_keys:   data?.before ? Object.keys(data.before) : null,
+        before_calories: data?.before?.calories,
+        before_total_cal: data?.before?.total_calories,
+        after_keys:    data?.after ? Object.keys(data.after) : null,
+        after_calories: data?.after?.calories,
+        after_total_cal: data?.after?.total_calories,
+        afterDbHash:   data?.after?.afterDbHash,
+        ai_response:   data?.ai_response,
+      }));
+
       setResult({
         changed:      !!data.changed,
         ai_response:  data.ai_response || (data.changed ? 'התפריט עודכן!' : 'לא בוצע שינוי.'),
@@ -29,10 +62,15 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated }) {
 
       if (data.changed) {
         setText('');
-        if (onPlanUpdated) onPlanUpdated();
+        // PHASE 8: Await the refresh and log its result
+        if (onPlanUpdated) {
+          console.log('[MFC:8_REFRESH_START]', JSON.stringify({ traceId: data?.traceId, planId }));
+          await onPlanUpdated();
+          console.log('[MFC:8_REFRESH_DONE]', JSON.stringify({ traceId: data?.traceId }));
+        }
       }
     } catch (err) {
-      console.error('mealPlanFeedback failed:', err.message);
+      console.error('[MFC:ERROR]', err.message);
       setResult({ changed: false, ai_response: 'שגיאה זמנית — נסה שוב.' });
     } finally {
       setLoading(false);

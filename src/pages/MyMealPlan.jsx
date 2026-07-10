@@ -165,9 +165,46 @@ export default function MyMealPlan() {
     enabled: !!trainee?.id,
   });
 
+  // Simple deterministic hash for frontend logging (no crypto needed)
+  const _fHash = (obj) => {
+    try {
+      const str = JSON.stringify(obj);
+      let h = 0;
+      for (let i = 0; i < str.length; i++) { h = (Math.imul(31, h) + str.charCodeAt(i)) | 0; }
+      return Math.abs(h).toString(36);
+    } catch { return 'hash-err'; }
+  };
+
   const handleRefresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
-    await refetch();
+    const beforePlanId    = plan?.id;
+    const beforeUpdatedAt = plan?.updated_at;
+    const beforeWdLen     = plan?.weekly_days?.length;
+    const queryKey        = ['activeMealPlan', trainee?.id];
+
+    console.log('[MMP:8_REFRESH_START]', JSON.stringify({
+      traineeId:      trainee?.id,
+      planId:         beforePlanId,
+      updatedAt:      beforeUpdatedAt,
+      weeklyDaysLen:  beforeWdLen,
+      queryKey,
+    }));
+
+    await queryClient.invalidateQueries({ queryKey });
+    const result = await refetch();
+
+    const afterPlan = result?.data;
+    console.log('[MMP:8_REFRESH_DONE]', JSON.stringify({
+      refetchStatus:      result?.status,
+      sameId:             afterPlan?.id === beforePlanId,
+      afterPlanId:        afterPlan?.id,
+      afterUpdatedAt:     afterPlan?.updated_at,
+      changedUpdatedAt:   afterPlan?.updated_at !== beforeUpdatedAt,
+      afterWeeklyDaysLen: afterPlan?.weekly_days?.length,
+      afterMealsLen:      afterPlan?.meals?.length,
+      afterContentHash:   afterPlan?.is_weekly
+        ? _fHash(afterPlan?.weekly_days)
+        : _fHash(afterPlan?.meals),
+    }));
   };
 
   // Bug 4 fix: When the active plan loads, sync its calorie/protein/carbs/fat totals
@@ -197,6 +234,32 @@ export default function MyMealPlan() {
       }).catch(() => {});
     }
   }, [plan?.id, trainee?.id]);
+
+  // PHASE 10: Log render state whenever plan or selectedDay changes
+  useEffect(() => {
+    if (!plan) return;
+    const _isWeekly = plan.is_weekly && plan.weekly_days?.length > 0;
+    const _curDay   = _isWeekly ? plan.weekly_days[selectedDay] : null;
+    const _fHashLocal = (obj) => {
+      try {
+        const str = JSON.stringify(obj);
+        let h = 0;
+        for (let i = 0; i < str.length; i++) { h = (Math.imul(31, h) + str.charCodeAt(i)) | 0; }
+        return Math.abs(h).toString(36);
+      } catch { return 'err'; }
+    };
+    console.log('[MMP:10_RENDER]', JSON.stringify({
+      planId:         plan.id,
+      updatedAt:      plan.updated_at,
+      isWeekly:       _isWeekly,
+      selectedDay,
+      planMealsCount: plan.meals?.length ?? null,
+      weeklyDaysCount: plan.weekly_days?.length ?? null,
+      currentDayMealCount: _curDay?.meals?.length ?? null,
+      currentDayMealNames: (_curDay?.meals || []).map(m => m.meal_name || m.type || '?'),
+      contentHash:    _isWeekly ? _fHashLocal(plan.weekly_days) : _fHashLocal(plan.meals),
+    }));
+  }, [plan?.id, plan?.updated_at, selectedDay]);
 
   const generateWeekly = async () => {
     if (!trainee) return;
