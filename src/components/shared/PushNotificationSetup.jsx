@@ -21,8 +21,16 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 export default function PushNotificationSetup() {
-  const [showPrompt, setShowPrompt] = useState(false);
+  const [showPrompt, setShowPrompt]       = useState(false);
+  const [editingActive, setEditingActive] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState('default');
+
+  // Hide while mealPlanFeedback is in-flight or showing result.
+  useEffect(() => {
+    const handler = (e) => setEditingActive(e.detail?.active ?? false);
+    window.addEventListener('fitcoach:meal-editing', handler);
+    return () => window.removeEventListener('fitcoach:meal-editing', handler);
+  }, []);
   const [isSupported, setIsSupported] = useState(false);
   const [serviceWorkerStatus, setServiceWorkerStatus] = useState('unknown');
   const [subscriptionExists, setSubscriptionExists] = useState(false);
@@ -236,8 +244,8 @@ export default function PushNotificationSetup() {
   // If coach disabled notifications prompt for this trainee — hide everything
   if (traineeRecord && traineeRecord.notifications_prompt_enabled === false) return null;
 
-  // Only show debug panel if explicitly requested by user
-  if (showDebug) {
+  // Only show debug panel if explicitly requested by user (never during editing)
+  if (showDebug && !editingActive) {
     return (
       <>
         {/* Backdrop - clicking dismisses */}
@@ -373,7 +381,7 @@ export default function PushNotificationSetup() {
   }
 
   // Show regular prompt
-  if (!showPrompt || existingSubscriptions.length > 0 || notificationPermission === 'denied') {
+  if (!showPrompt || editingActive || existingSubscriptions.length > 0 || notificationPermission === 'denied') {
     return null;
   }
 

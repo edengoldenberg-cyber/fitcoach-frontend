@@ -4,8 +4,16 @@ import { Button } from '@/components/ui/button';
 import { X, Smartphone } from 'lucide-react';
 
 export default function PWAInstallPrompt() {
-  const [showPrompt, setShowPrompt] = useState(false);
+  const [showPrompt, setShowPrompt]         = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [editingActive, setEditingActive]   = useState(false);
+
+  // Hide while mealPlanFeedback is in-flight or showing result.
+  useEffect(() => {
+    const handler = (e) => setEditingActive(e.detail?.active ?? false);
+    window.addEventListener('fitcoach:meal-editing', handler);
+    return () => window.removeEventListener('fitcoach:meal-editing', handler);
+  }, []);
 
   useEffect(() => {
     // Check if already installed or dismissed
@@ -54,7 +62,7 @@ export default function PWAInstallPrompt() {
     setShowPrompt(false);
   };
 
-  if (!showPrompt) return null;
+  if (!showPrompt || editingActive) return null;
 
   return (
     <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 z-50 w-11/12 max-w-md" dir="rtl">
