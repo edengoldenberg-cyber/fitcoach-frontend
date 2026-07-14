@@ -13,7 +13,7 @@ export default function NutritionQuestionnaireDialog({ open, onOpenChange, train
   const [formData, setFormData] = useState({
     weight_kg: trainee?.weight_kg || '',
     height_cm: trainee?.height_cm || '',
-    birth_date: trainee?.birth_date || '',
+    birth_date: trainee?.birth_year ? `${trainee.birth_year}-01-01` : '',
     gender: trainee?.gender || '',
     activity_routine: trainee?.activity_level || 'moderate_activity',
     training_days_per_week: 3,

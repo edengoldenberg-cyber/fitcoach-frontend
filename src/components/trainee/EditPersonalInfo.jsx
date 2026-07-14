@@ -136,6 +136,8 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
       gender: formData.gender,
       activity_level: formData.activity_level,
       goal: formData.goal,
+      goal_timeline_weeks: formData.goal_timeline_weeks ? parseInt(formData.goal_timeline_weeks) : null,
+      goal_weight_change_kg: formData.goal_weight_change_kg ? parseFloat(formData.goal_weight_change_kg) : null,
       ...targets,
     });
   };

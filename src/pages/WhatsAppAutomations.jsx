@@ -17,7 +17,7 @@ import {
   Users, History, AlertCircle, RefreshCw, Download, FileText,
   Search, ChevronDown, ChevronRight, Shield, Eye, Phone,
   Wifi, WifiOff, BarChart3, AlertTriangle, Info, Check,
-  MessageSquare, Calendar, Link, Database, Settings,
+  MessageSquare, Calendar, Link, Database, Settings, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -55,11 +55,27 @@ const DAYS_SHORT = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 const DAYS_FULL  = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
 const VARIABLE_HINTS = [
-  { var: '{{trainee_name}}', desc: 'שם המתאמן' },
-  { var: '{{coach_name}}',   desc: 'שם המאמן' },
-  { var: '{{app_link}}',     desc: 'קישור לאפליקציה' },
-  { var: '{{date}}',         desc: 'תאריך היום' },
+  { var: '{{trainee_name}}',        desc: 'שם המתאמן' },
+  { var: '{{coach_name}}',          desc: 'שם המאמן' },
+  { var: '{{trainer_name}}',        desc: 'שם המדריך' },
+  { var: '{{class_name}}',          desc: 'שם האימון/השיעור' },
+  { var: '{{class_date}}',          desc: 'תאריך האימון' },
+  { var: '{{class_time}}',          desc: 'שעת האימון' },
+  { var: '{{branch_name}}',         desc: 'שם הסניף' },
+  { var: '{{remaining_sessions}}',  desc: 'כניסות שנותרו' },
+  { var: '{{package_expiry_date}}', desc: 'תאריך פקיעת המנוי' },
+  { var: '{{absence_count}}',       desc: 'מספר היעדרויות' },
+  { var: '{{last_visit_date}}',     desc: 'תאריך ביקור אחרון' },
+  { var: '{{app_link}}',            desc: 'קישור לאפליקציה' },
+  { var: '{{date}}',                desc: 'תאריך היום' },
 ];
+
+const SUPPORTED_VARS = new Set([
+  'trainee_name', 'coach_name', 'trainer_name',
+  'class_name', 'class_date', 'class_time',
+  'branch_name', 'remaining_sessions', 'package_expiry_date',
+  'absence_count', 'last_visit_date', 'app_link', 'date',
+]);
 
 const EMPTY_FORM = {
   name:             '',
@@ -85,11 +101,27 @@ function parseSchedule(raw) {
 }
 
 function renderPreview(template) {
+  const today = new Date().toLocaleDateString('he-IL');
+  const soon  = new Date(Date.now() + 30 * 86400000).toLocaleDateString('he-IL');
   return template
-    .replace(/\{\{trainee_name\}\}/g, 'ישראל ישראלי')
-    .replace(/\{\{coach_name\}\}/g,   'המאמן שלך')
-    .replace(/\{\{app_link\}\}/g,     'https://fitcoach-frontend-omega.vercel.app')
-    .replace(/\{\{date\}\}/g,         new Date().toLocaleDateString('he-IL'));
+    .replace(/\{\{trainee_name\}\}/g,        'ישראל ישראלי')
+    .replace(/\{\{coach_name\}\}/g,           'המאמן שלך')
+    .replace(/\{\{trainer_name\}\}/g,         'המדריך')
+    .replace(/\{\{class_name\}\}/g,           'אימון כוח')
+    .replace(/\{\{class_date\}\}/g,           today)
+    .replace(/\{\{class_time\}\}/g,           '09:00')
+    .replace(/\{\{branch_name\}\}/g,          'סניף ראשי')
+    .replace(/\{\{remaining_sessions\}\}/g,   '5')
+    .replace(/\{\{package_expiry_date\}\}/g,  soon)
+    .replace(/\{\{absence_count\}\}/g,        '2')
+    .replace(/\{\{last_visit_date\}\}/g,      new Date(Date.now() - 7 * 86400000).toLocaleDateString('he-IL'))
+    .replace(/\{\{app_link\}\}/g,             'https://fitcoach-frontend-omega.vercel.app')
+    .replace(/\{\{date\}\}/g,                 today);
+}
+
+function findUnknownVars(template) {
+  const found = [...(template.matchAll(/\{\{(\w+)\}\}/g) || [])].map(m => m[1]);
+  return found.filter(v => !SUPPORTED_VARS.has(v));
 }
 
 function normalizePhone(raw) {
@@ -141,8 +173,13 @@ function AutomationFormDialog({ open, onClose, editing, coachEmail, onSaved }) {
   );
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  const unknownVars = findUnknownVars(form.message_template);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (unknownVars.length > 0) {
+        throw new Error(`משתנים לא מוכרים: ${unknownVars.map(v => `{{${v}}}`).join(', ')}`);
+      }
       const data = {
         ...form,
         coach_email:    coachEmail,
@@ -242,6 +279,12 @@ function AutomationFormDialog({ open, onClose, editing, coachEmail, onSaved }) {
                   </button>
                 ))}
               </div>
+              {unknownVars.length > 0 && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 flex items-start gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>משתנים לא מוכרים: {unknownVars.map(v => <strong key={v} className="font-mono mx-0.5">{`{{${v}}}`}</strong>)}. הסר אותם לפני שמירה.</span>
+                </div>
+              )}
             </div>
 
             <div className="bg-green-50 border border-green-200 rounded-lg p-3">
@@ -563,7 +606,7 @@ function StatusChip({ enabled }) {
 
 function AutomationsTable({
   automations, queueStatsMap, onEdit, onDelete, onToggle,
-  onValidate, onHistory, coachEmail,
+  onValidate, onHistory, onDuplicate, coachEmail,
 }) {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const toggleRow = (id) => setExpandedRows(prev => {
@@ -718,6 +761,10 @@ function AutomationsTable({
                       <button onClick={() => onEdit(a)} title="עריכה"
                         className="p-1.5 rounded hover:bg-teal-100 text-teal-600 transition-colors">
                         <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => onDuplicate(a)} title="שכפול"
+                        className="p-1.5 rounded hover:bg-purple-100 text-purple-500 transition-colors">
+                        <Copy className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => onDelete(a.id)} title="מחיקה"
                         className="p-1.5 rounded hover:bg-red-100 text-red-500 transition-colors">
@@ -1181,6 +1228,26 @@ export default function WhatsAppAutomations() {
     onSuccess:  () => queryClient.invalidateQueries({ queryKey: ['whatsappAutomations'] }),
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: (a) => base44.entities.WhatsAppAutomation.create({
+      coach_email:      a.coach_email,
+      name:             a.name + ' (עותק)',
+      trigger_type:     a.trigger_type,
+      message_template: a.message_template,
+      target_type:      a.target_type,
+      target_phone:     a.target_phone || null,
+      schedule_config:  a.schedule_config || null,
+      consent_category: a.consent_category,
+      enabled:          false,
+      cooldown_hours:   a.cooldown_hours ?? 24,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsappAutomations'] });
+      toast.success('אוטומציה שוכפלה — כבויה כברירת מחדל');
+    },
+    onError: (e) => toast.error('שגיאה בשכפול: ' + e.message),
+  });
+
   // Guard
   if (user && user.role !== 'admin' && user.role !== 'coach') {
     return (
@@ -1317,11 +1384,12 @@ export default function WhatsAppAutomations() {
                   automations={filtered}
                   queueStatsMap={queueStatsMap}
                   coachEmail={user?.email}
-                  onEdit={(a)    => { setEditing(a);    setShowForm(true);   }}
-                  onDelete={(id) => { if (confirm('למחוק את האוטומציה?')) deleteMutation.mutate(id); }}
-                  onToggle={(a)  => toggleMutation.mutate({ id: a.id, enabled: a.enabled })}
-                  onValidate={(a) => setValidating(a)}
-                  onHistory={(a)  => setHistoryAuto(a)}
+                  onEdit={(a)       => { setEditing(a); setShowForm(true); }}
+                  onDelete={(id)    => { if (confirm('למחוק את האוטומציה?')) deleteMutation.mutate(id); }}
+                  onToggle={(a)     => toggleMutation.mutate({ id: a.id, enabled: a.enabled })}
+                  onValidate={(a)   => setValidating(a)}
+                  onHistory={(a)    => setHistoryAuto(a)}
+                  onDuplicate={(a)  => duplicateMutation.mutate(a)}
                 />
               </div>
             )}

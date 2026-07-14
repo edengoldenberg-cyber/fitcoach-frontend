@@ -1127,6 +1127,9 @@ function MiniStat({ label, value, color = 'text-slate-700' }) {
 // ─── Section: Absence Center ──────────────────────────────────────────────────
 
 function AbsenceSection({ coachEmail }) {
+  const queryClient = useQueryClient();
+  const [syncing, setSyncing] = useState(false);
+
   const { data: res, isLoading } = useQuery({
     queryKey: ['arboxAbsence', coachEmail],
     queryFn:  () => base44.functions.invoke('getArboxAbsenceReport', { coachEmail }),
@@ -1135,6 +1138,21 @@ function AbsenceSection({ coachEmail }) {
   });
   const tiers = res?.data?.tiers ?? {};
   const total = res?.data?.total ?? 0;
+  const lastSync = res?.data?.last_bookings_sync;
+
+  const handleRefresh = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await base44.functions.invoke('syncArboxBookings', { coachEmail, fullSync: false });
+      await queryClient.invalidateQueries({ queryKey: ['arboxAbsence'] });
+      await queryClient.invalidateQueries({ queryKey: ['arboxMembers'] });
+    } catch (e) {
+      console.error('[AbsenceSection] refresh error:', e.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const TIERS = [
     { key: 'today',   label: 'היום',       days: '0',    color: 'green',  risk: 'green'  },
@@ -1171,7 +1189,24 @@ function AbsenceSection({ coachEmail }) {
 
   return (
     <div className="space-y-4">
-      <SectionHeader title="מרכז היעדרות" sub={`${total} לקוחות פעילים · מציג לקוחות פעילים בלבד`} />
+      <div className="flex items-center justify-between">
+        <SectionHeader title="מרכז היעדרות" sub={`${total} לקוחות פעילים · מציג לקוחות פעילים בלבד`} />
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={handleRefresh}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-50 border border-teal-200 text-teal-700 hover:bg-teal-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${syncing ? 'animate-spin' : ''}`} />
+            {syncing ? 'מסנכרן...' : 'רענן נתונים עכשיו'}
+          </button>
+          {lastSync && (
+            <span className="text-xs text-slate-400">
+              עודכן לאחרונה: {new Date(lastSync).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+      </div>
 
       <div className="grid grid-cols-3 gap-3">
         {TIERS.map(t => {

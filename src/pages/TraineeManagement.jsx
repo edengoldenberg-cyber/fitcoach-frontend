@@ -261,7 +261,7 @@ export default function TraineeManagement() {
                       </div>
                       <div className="text-left text-sm text-slate-500 space-y-1">
                         <div>📞 {selectedTrainee.phone || 'אין'}</div>
-                        <div>🎂 {selectedTrainee.birth_date ? format(new Date(selectedTrainee.birth_date), 'dd/MM/yyyy') : 'אין'}</div>
+                        <div>🎂 {selectedTrainee.birth_year ? selectedTrainee.birth_year : 'אין'}</div>
                         <button
                           onClick={() => toggleNotificationsMutation.mutate(!(selectedTrainee.notifications_prompt_enabled !== false))}
                           disabled={toggleNotificationsMutation.isPending}
