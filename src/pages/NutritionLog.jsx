@@ -245,7 +245,13 @@ export default function NutritionLog() {
             per100_kcal: result?.per100_kcal,
             per100_in_result: !!(result?.per100_kcal),
           });
-          // Gram edits are not new meal events — do not update TraineeNutritionProfile here.
+          // Propagate corrected values to UserRecentFoods so future AI analyses use
+          // the learned values rather than re-hallucinating the original estimate.
+          if (result?.food_name && trainee) {
+            recordQuickFoodUse({ trainee, meal: result, sourceFood: previousMeal || {} }).catch(err =>
+              console.warn('[NON-FATAL] recordQuickFoodUse on edit failed:', err?.message)
+            );
+          }
           return result;
         }
         
@@ -273,15 +279,7 @@ export default function NutritionLog() {
         });
         
         const result = await base44.entities.MealEntry.create(finalData);
-        if (debugLogId) {
-          await base44.entities.NutritionAnalysisDebugLog.update(debugLogId, {
-            status: 'SAVED_TO_DIARY',
-            currentStep: 'saved_to_diary',
-            updatedAt: new Date().toISOString(),
-            debugNotes: { diarySave: { saved: true, recordIds: [result?.id], food_name: result?.food_name } }
-          });
-        }
-        // Bug #1: batch all ingredient creates from one meal event into a single profile write.
+        // Flush no-ops (TraineeNutritionProfile removed from architecture).
         _scheduleNutritionFlush(trainee, result);
         // Bug #2: skip recordQuickFoodUse for 'correction' saves — saveAIFoodCorrection
         // (called from saveEditedIngredientsToMemory) already wrote UserRecentFoods for those.
@@ -311,15 +309,6 @@ export default function NutritionLog() {
           response: err?.response?.data,
           stack: safeString(err?.stack).split('\n').slice(0, 3)
         });
-        if (data?.debugLogId) {
-          await base44.entities.NutritionAnalysisDebugLog.update(data.debugLogId, {
-            status: 'SAVE_FAILED',
-            currentStep: 'diary_save_failed',
-            updatedAt: new Date().toISOString(),
-            errorMessage: err?.message || 'Diary save failed',
-            errorStack: err?.stack || ''
-          });
-        }
         throw err;
       }
     },

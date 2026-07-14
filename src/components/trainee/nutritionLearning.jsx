@@ -1,10 +1,10 @@
 import { base44 } from '@/api/base44Client';
 
 // Fields that exist in the production UserFoodItem Prisma schema.
-// All other fields (normalized_name, usage_count, per100_*, etc.) do not exist.
 const _UFI_FIELDS = new Set([
-  'trainee_id', 'coach_email', 'name', 'calories', 'protein', 'carbs',
-  'fat', 'amount', 'unit', 'visibility', 'active', 'source', 'barcode',
+  'trainee_id', 'coach_email', 'name', 'normalized_name',
+  'calories', 'protein', 'carbs', 'fat',
+  'amount', 'unit', 'visibility', 'active', 'source', 'barcode',
 ]);
 function _pickUFI(data) {
   return Object.fromEntries(Object.entries(data || {}).filter(([k]) => _UFI_FIELDS.has(k)));
@@ -91,6 +91,7 @@ export async function upsertPersonalFoodItem({ user, trainee, manualFood, per100
     const payload = _pickUFI({
       trainee_id: trainee.id,
       name: manualFood.name.trim(),
+      normalized_name: normalized,
       calories: Number(per100.calories) || 0,
       protein: Number(per100.protein) || 0,
       carbs: Number(per100.carbs) || 0,
@@ -181,10 +182,10 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
   });
   console.log(`[SAVE-AFC] UserFoodItem.filter result: ${existingByName?.length ?? 0} existing records`);
 
-  // Only send fields that exist in the production UserFoodItem schema.
   const payload = _pickUFI({
     trainee_id: trainee.id,
     name: correctedName,
+    normalized_name: normalizedCorrected,
     calories: correctedMacros.calories,
     protein: correctedMacros.protein,
     carbs: correctedMacros.carbs,
@@ -230,7 +231,7 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
     console.log(`[SAVE-AFC] UserFoodItem.CREATE result id=${savedFood?.id ?? 'FAILED (null)'}`);
   }
 
-  console.log(`[SAVE-AFC] writing UserRecentFoods + UserNutritionMemory for "${correctedName}"`);
+  console.log(`[SAVE-AFC] writing UserRecentFoods for "${correctedName}"`);
   // Filter by normalized_name (new deduplication key); fall back to food_name for pre-fix records.
   // Including normalized_name in every update/create migrates legacy records automatically.
   let recentExisting = await base44.entities.UserRecentFoods.filter({ trainee_id: trainee.id, normalized_name: normalizedCorrected });
@@ -272,26 +273,11 @@ export async function saveAIFoodCorrection({ user, trainee, originalItem = {}, c
   if (recentExisting?.[0]) {
     await base44.entities.UserRecentFoods.update(recentExisting[0].id, {
       ...recentPayload,
-      usage_count: (recentExisting[0].usage_count || 0) + 1
+      usage_count: (recentExisting[0].usage_count || 0) + 1,
+      favorite: recentExisting[0].favorite ?? false,
     });
   } else {
-    await base44.entities.UserRecentFoods.create(recentPayload);
-  }
-
-  console.log(`[SAVE-AFC] writing UserRecentFoods + UserNutritionMemory for "${correctedName}"`);
-  let memoryExisting = await base44.entities.UserNutritionMemory.filter({ trainee_id: trainee.id, normalized_name: normalizedCorrected });
-  if (!memoryExisting?.[0]) {
-    memoryExisting = await base44.entities.UserNutritionMemory.filter({ trainee_id: trainee.id, food_name: correctedName });
-  }
-  if (memoryExisting?.[0]) {
-    await base44.entities.UserNutritionMemory.update(memoryExisting[0].id, {
-      ...recentPayload,
-      usage_count: (memoryExisting[0].usage_count || 0) + 1,
-      correction_count: (memoryExisting[0].correction_count || 0) + 1,
-      last_corrected_at: now
-    });
-  } else {
-    await base44.entities.UserNutritionMemory.create(recentPayload);
+    await base44.entities.UserRecentFoods.create({ ...recentPayload, favorite: false });
   }
 
   console.log(`[SAVE-AFC] COMPLETE food="${correctedName}" savedFood.id=${savedFood?.id ?? 'null'}`);
@@ -418,9 +404,8 @@ export function applyPersonalCorrectionMatch(items = [], personalFoods = []) {
 }
 
 export async function updateNutritionMemoryFromMeal({ trainee, meal, previousMeal = null }) {
-  if (!trainee?.user_email || !meal?.food_name) return;
-
-  const existing = await base44.entities.TraineeNutritionProfile.filter({ trainee_email: trainee.user_email });
+  // TraineeNutritionProfile removed from production architecture — no-op.
+  return;
   const profile = existing?.[0] || null;
   const favoriteFoods = [...(profile?.favorite_foods || [])];
   const foodKey = meal.food_name.trim();
@@ -490,75 +475,12 @@ export async function updateNutritionMemoryFromMeal({ trainee, meal, previousMea
 // Reads TraineeNutritionProfile ONCE, applies all ingredient updates in-memory,
 // counts the whole set as ONE meal, then writes ONCE — eliminating concurrent corruption.
 export async function batchUpdateNutritionMemory({ trainee, meals }) {
-  if (!trainee?.user_email || !meals?.length) return;
-  return _withProfileLock(trainee.user_email, async () => {
-    const existing = await base44.entities.TraineeNutritionProfile.filter({ trainee_email: trainee.user_email });
-    const profile = existing?.[0] || null;
-
-    const favoriteFoods        = [...(profile?.favorite_foods        || [])];
-    const mealTimingHabits     = { ...(profile?.meal_timing_habits   || {}) };
-    const preferredPortionSizes = { ...(profile?.preferred_portion_sizes || {}) };
-
-    const mealType = meals[0]?.meal_type || 'snack';
-    // Sum calories of all ingredients = total for this one meal event
-    const totalCalories = meals.reduce((sum, m) => sum + (Number(m.calories) || 0), 0);
-
-    // Apply every ingredient's food data to in-memory structures before the single write
-    for (const meal of meals) {
-      const foodKey = (meal.food_name || '').trim();
-      if (!foodKey) continue;
-
-      const idx = favoriteFoods.findIndex(item => normalizeFoodName(item.food_name) === normalizeFoodName(foodKey));
-      if (idx >= 0) {
-        favoriteFoods[idx] = { ...favoriteFoods[idx], count: (favoriteFoods[idx].count || 0) + 1, last_used_at: nowIso() };
-      } else {
-        favoriteFoods.push({ food_name: foodKey, count: 1, last_used_at: nowIso() });
-      }
-
-      preferredPortionSizes[normalizeFoodName(foodKey)] = {
-        quantity: meal.quantity || meal.amount || meal.grams_equivalent || 1,
-        unit: meal.unit || meal.unit_name || 'gram',
-        grams: meal.grams_equivalent || meal.grams_final || null,
-        last_used_at: nowIso()
-      };
-    }
-
-    // Count the entire batch as exactly ONE meal event
-    mealTimingHabits[mealType] = (mealTimingHabits[mealType] || 0) + 1;
-    const sortedFavorites = favoriteFoods.sort((a, b) => (b.count || 0) - (a.count || 0)).slice(0, 25);
-    const totalMeals = (profile?.total_meals_logged || 0) + 1;
-    const prevAvg    = profile?.average_calories_per_meal || 0;
-    const averageCalories = Math.round(((prevAvg * (totalMeals - 1)) + totalCalories) / totalMeals);
-
-    const patternField   = `${mealType}_patterns`;
-    const existingPats   = profile?.[patternField] || [];
-    const newPatterns    = Array.from(new Set([...meals.map(m => m.food_name).filter(Boolean), ...existingPats])).slice(0, 12);
-
-    const payload = {
-      trainee_id:               trainee.id,
-      trainee_email:            trainee.user_email,
-      favorite_foods:           sortedFavorites,
-      commonly_repeated_meals:  sortedFavorites.filter(item => (item.count || 0) >= 2).map(item => item.food_name).slice(0, 15),
-      average_calories_per_meal: averageCalories,
-      meal_timing_habits:       mealTimingHabits,
-      preferred_portion_sizes:  preferredPortionSizes,
-      ai_mistakes_corrected:    profile?.ai_mistakes_corrected || [],
-      [patternField]:           newPatterns,
-      total_meals_logged:       totalMeals,
-      updated_at:               nowIso()
-    };
-
-    if (profile) {
-      await base44.entities.TraineeNutritionProfile.update(profile.id, payload);
-    } else {
-      await base44.entities.TraineeNutritionProfile.create(payload);
-    }
-  });
+  // TraineeNutritionProfile removed from production architecture — no-op.
 }
 
 export async function recordDeletedFoodInMemory({ trainee, meal }) {
-  if (!trainee?.user_email || !meal?.food_name) return;
-  const existing = await base44.entities.TraineeNutritionProfile.filter({ trainee_email: trainee.user_email });
+  // TraineeNutritionProfile removed from production architecture — no-op.
+  return;
   const profile = existing?.[0];
   if (!profile) return;
   const foodsDeletedOften = Array.from(new Set([meal.food_name, ...(profile.foods_deleted_often || [])])).slice(0, 25);
@@ -609,7 +531,6 @@ export async function recordQuickFoodUse({ trainee, meal, sourceFood = {}, timeO
     const payload = {
       trainee_id: trainee.id,
       trainee_email: trainee.user_email,
-      food_id: meal.food_item_id || sourceFood.food_id,
       user_food_item_id: meal.user_food_item_id || sourceFood.user_food_item_id,
       food_name: meal.food_name,
       normalized_name: normalized,
@@ -623,51 +544,44 @@ export async function recordQuickFoodUse({ trainee, meal, sourceFood = {}, timeO
     };
 
     if (existing?.[0]) {
-      // Preserve the favorite flag — only toggleFavoriteFood owns that field.
+      // Preserve the favorite flag — toggleFavoriteFood is the sole owner of that field.
       await base44.entities.UserRecentFoods.update(existing[0].id, { ...payload, usage_count: (existing[0].usage_count || 0) + 1, favorite: existing[0].favorite ?? false });
     } else {
-      await base44.entities.UserRecentFoods.create({ ...payload, usage_count: 1 });
-    }
-
-    let memoryRows = await base44.entities.UserNutritionMemory.filter({ trainee_id: trainee.id, normalized_name: normalized });
-    if (!memoryRows?.[0]) {
-      memoryRows = await base44.entities.UserNutritionMemory.filter({ trainee_id: trainee.id, food_name: meal.food_name });
-    }
-    if (memoryRows?.[0]) {
-      // Preserve the favorite flag — only toggleFavoriteFood owns that field.
-      await base44.entities.UserNutritionMemory.update(memoryRows[0].id, { ...payload, usage_count: (memoryRows[0].usage_count || 0) + 1, favorite: memoryRows[0].favorite ?? false });
-    } else {
-      await base44.entities.UserNutritionMemory.create({ ...payload, usage_count: 1 });
+      await base44.entities.UserRecentFoods.create({ ...payload, usage_count: 1, favorite: false });
     }
   });
 }
 
 export async function toggleFavoriteFood({ trainee, food, favorite, timeOfDayBucket = bucketNow() }) {
   if (!trainee?.user_email || !food?.food_name) return;
-  const existing = await base44.entities.UserFavoriteFoods.filter({ trainee_id: trainee.id, food_name: food.food_name });
-  const payload = {
-    trainee_id: trainee.id,
-    trainee_email: trainee.user_email,
-    food_id: food.food_id,
-    user_food_item_id: food.user_food_item_id,
-    food_name: food.food_name,
-    calories_per_100g: food.calories_per_100g || 0,
-    protein_per_100g: food.protein_per_100g || 0,
-    carbs_per_100g: food.carbs_per_100g || 0,
-    fat_per_100g: food.fat_per_100g || 0,
-    last_used_at: nowIso(),
-    usage_count: food.usage_count || 0,
-    favorite,
-    default_quantity: food.default_quantity || food.serving_size || 100,
-    default_unit: food.default_unit || food.unit || 'gram',
-    meal_type: food.meal_type || 'snack',
-    time_of_day_bucket: timeOfDayBucket
-  };
+  const normalized = normalizeFoodName(food.food_name);
+  // Favorites live in UserRecentFoods.favorite — no separate entity.
+  let existing = await base44.entities.UserRecentFoods.filter({ trainee_id: trainee.id, normalized_name: normalized });
+  if (!existing?.[0]) {
+    existing = await base44.entities.UserRecentFoods.filter({ trainee_id: trainee.id, food_name: food.food_name });
+  }
 
   if (existing?.[0]) {
-    if (favorite) await base44.entities.UserFavoriteFoods.update(existing[0].id, payload);
-    else await base44.entities.UserFavoriteFoods.delete(existing[0].id);
+    await base44.entities.UserRecentFoods.update(existing[0].id, { favorite });
   } else if (favorite) {
-    await base44.entities.UserFavoriteFoods.create(payload);
+    // Food not yet in recent history — create a stub entry so it appears in favorites.
+    await base44.entities.UserRecentFoods.create({
+      trainee_id: trainee.id,
+      trainee_email: trainee.user_email,
+      user_food_item_id: food.user_food_item_id,
+      food_name: food.food_name,
+      normalized_name: normalized,
+      calories_per_100g: food.calories_per_100g || 0,
+      protein_per_100g: food.protein_per_100g || 0,
+      carbs_per_100g: food.carbs_per_100g || 0,
+      fat_per_100g: food.fat_per_100g || 0,
+      last_used_at: nowIso(),
+      default_quantity: food.default_quantity || food.serving_size || 100,
+      default_unit: food.default_unit || food.unit || 'gram',
+      meal_type: food.meal_type || 'snack',
+      time_of_day_bucket: timeOfDayBucket,
+      usage_count: food.usage_count || 0,
+      favorite: true,
+    });
   }
 }
