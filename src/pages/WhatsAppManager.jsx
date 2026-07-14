@@ -18,12 +18,14 @@ export default function WhatsAppManager() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: config } = useQuery({
+  // WhatsAppProviderConfig entity no longer exists — use live connection check instead
+  const { data: waStatusRes } = useQuery({
     queryKey: ['whatsappConfig', user?.email],
-    queryFn: () => base44.entities.WhatsAppProviderConfig.filter({ coach_email: user?.email }),
+    queryFn: () => base44.functions.invoke('testWhatsAppConnection', { coachEmail: user?.email }),
     enabled: !!user?.email,
-    select: (data) => data[0],
+    staleTime: 60000,
   });
+  const config = waStatusRes?.data?.connected ? { phone_number_e164: '' } : null;
 
   if (!user) {
     return <div className="p-8 text-center text-slate-500">טוען...</div>;
