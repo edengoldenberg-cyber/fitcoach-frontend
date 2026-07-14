@@ -1144,11 +1144,14 @@ function AbsenceSection({ coachEmail }) {
     if (syncing) return;
     setSyncing(true);
     try {
-      await base44.functions.invoke('syncArboxBookings', { coachEmail, fullSync: false });
-      await queryClient.invalidateQueries({ queryKey: ['arboxAbsence'] });
-      await queryClient.invalidateQueries({ queryKey: ['arboxMembers'] });
+      const r = await base44.functions.invoke('syncArboxBookings', { coachEmail, fullSync: false });
+      if (!r?.ok) throw new Error(r?.error || 'שגיאה בסנכרון');
+      await queryClient.invalidateQueries({ queryKey: ['arboxAbsence', coachEmail] });
+      await queryClient.invalidateQueries({ queryKey: ['arboxMembers', coachEmail] });
+      toast.success(`✅ הנתונים עודכנו בהצלחה (${r.data?.inserted ?? 0} חדשים, ${r.data?.updated ?? 0} עודכנו)`);
     } catch (e) {
       console.error('[AbsenceSection] refresh error:', e.message);
+      toast.error(`❌ ${e.message || 'שגיאה בסנכרון נתוני Arbox'}`);
     } finally {
       setSyncing(false);
     }
