@@ -19,6 +19,7 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
     diet_type: 'balanced',
     goal_weight_change_kg: '',
     goal_timeline_weeks: '',
+    target_weight_kg: '',
   });
 
   const [customCalories, setCustomCalories] = useState('');
@@ -38,13 +39,14 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
       setFormData({
         weight_kg: trainee.weight_kg || '',
         height_cm: trainee.height_cm || '',
-        birth_date: trainee.birth_year ? `${trainee.birth_year}-01-01` : '',
+        birth_date: trainee.birth_date || '',
         gender: trainee.gender || 'male',
         activity_level: trainee.activity_level || 'moderate',
         goal: trainee.goal || 'maintain',
         diet_type: trainee.diet_type || 'balanced',
         goal_weight_change_kg: trainee.goal_weight_change_kg || '',
         goal_timeline_weeks: trainee.goal_timeline_weeks || '',
+        target_weight_kg: trainee.target_weight_kg || '',
       });
       setManualTargets({
         target_calories: trainee.target_calories || '',
@@ -130,14 +132,16 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
     }
 
     updateMutation.mutate({
-      weight_kg: parseFloat(formData.weight_kg),
-      height_cm: parseFloat(formData.height_cm),
-      birth_year: formData.birth_date ? parseInt(formData.birth_date.split('-')[0]) : null,
-      gender: formData.gender,
-      activity_level: formData.activity_level,
-      goal: formData.goal,
-      goal_timeline_weeks: formData.goal_timeline_weeks ? parseInt(formData.goal_timeline_weeks) : null,
-      goal_weight_change_kg: formData.goal_weight_change_kg ? parseFloat(formData.goal_weight_change_kg) : null,
+      weight_kg:            parseFloat(formData.weight_kg),
+      height_cm:            parseFloat(formData.height_cm),
+      birth_date:           formData.birth_date || null,
+      gender:               formData.gender,
+      activity_level:       formData.activity_level,
+      goal:                 formData.goal,
+      diet_type:            formData.diet_type || null,
+      goal_timeline_weeks:  formData.goal_timeline_weeks ? parseInt(formData.goal_timeline_weeks) : null,
+      goal_weight_change_kg:formData.goal_weight_change_kg ? parseFloat(formData.goal_weight_change_kg) : null,
+      target_weight_kg:     formData.target_weight_kg ? parseFloat(formData.target_weight_kg) : null,
       ...targets,
     });
   };
@@ -242,6 +246,13 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
                     onChange={(e) => setFormData({ ...formData, goal_timeline_weeks: e.target.value })}
                     placeholder="12" className="h-8" />
                 </div>
+              </div>
+              <div>
+                <Label className="text-xs">משקל יעד (ק"ג)</Label>
+                <Input type="number" step="0.5" min="0"
+                  value={formData.target_weight_kg}
+                  onChange={(e) => setFormData({ ...formData, target_weight_kg: e.target.value })}
+                  placeholder="70" className="h-8" />
               </div>
               {formData.goal_weight_change_kg && formData.goal_timeline_weeks && (
                 <p className="text-xs text-teal-700 bg-teal-50 rounded px-2 py-1">

@@ -89,9 +89,11 @@ export default function MealPlanWizard() {
   });
   const trainee = traineeList?.[0];
 
-  const age = trainee?.birth_year
-    ? new Date().getFullYear() - trainee.birth_year
-    : 30;
+  const age = trainee?.birth_date
+    ? Math.floor((Date.now() - new Date(trainee.birth_date).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
+    : trainee?.birth_year
+      ? new Date().getFullYear() - trainee.birth_year
+      : 30;
 
   const [prefs, setPrefs] = useState({
     weight_kg: '',

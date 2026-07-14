@@ -39,7 +39,7 @@ export default function TraineePersonalDetailsDialog({ open, onClose, trainee, o
         full_name: trainee.full_name || '',
         user_email: trainee.user_email || '',
         phone: trainee.phone || '',
-        birth_date: trainee.birth_year ? `${trainee.birth_year}-01-01` : '',
+        birth_date: trainee.birth_date || '',
         gender: trainee.gender || '',
         status: trainee.status || 'active',
         coach_email: trainee.coach_email || '',
@@ -132,13 +132,13 @@ export default function TraineePersonalDetailsDialog({ open, onClose, trainee, o
     setSaving(true);
     try {
       const updates = {
-        full_name: form.full_name.trim(),
+        full_name:  form.full_name.trim(),
         user_email: (form.user_email || '').toLowerCase().trim(),
-        phone: form.phone,
-        birth_year: form.birth_date ? parseInt(form.birth_date.split('-')[0]) : null,
-        gender: form.gender || null,
-        status: form.status,
-        coach_email: form.coach_email.trim(),
+        phone:      form.phone,
+        birth_date: form.birth_date || null,
+        gender:     form.gender || null,
+        status:     form.status,
+        coach_email:form.coach_email.trim(),
       };
 
       await base44.entities.Trainee.update(trainee.id, updates);
