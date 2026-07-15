@@ -260,6 +260,12 @@ export default function MyMealPlan() {
   const queryClient  = useQueryClient();
   const [selectedDay, setSelectedDay]     = useState(0);
   const [generatingWeekly, setGeneratingWeekly] = useState(false);
+  const [weeklyJobId,      setWeeklyJobId]      = useState(null);
+  const [weeklyProgress,   setWeeklyProgress]   = useState(0);
+  const [weeklyStage,      setWeeklyStage]       = useState('');
+  const [weeklyError,      setWeeklyError]       = useState(null);
+  const [weeklyStartTime,  setWeeklyStartTime]   = useState(null);
+  const weeklyPollRef     = useRef(null);
   const [editBanner, setEditBanner]       = useState(null);
   const [highlightedMeals, setHighlightedMeals] = useState(null);
   const bannerDismissTimer = useRef(null);
@@ -304,6 +310,108 @@ export default function MyMealPlan() {
     await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
     await refetch();
   };
+
+  // ── Weekly generation — real backend progress ──────────────────────────────
+  const WEEKLY_JOB_KEY = trainee?.id ? `weeklyMealGenJob_${trainee.id}` : null;
+
+  const WEEKLY_STAGE_LABELS = {
+    REQUEST_ACCEPTED:       'בקשה התקבלה',
+    INPUTS_LOADED:          'נתונים נטענו',
+    AI_GENERATION_STARTED:  'ה-AI מייצר תפריט שבועי',
+    AI_RESPONSE_RECEIVED:   'תגובת AI התקבלה',
+    WEEKLY_DAYS_PARSED:     'מעבד 7 ימים',
+    NORMALIZATION_COMPLETED:'נרמול ערכים',
+    REPAIR_STARTED:         'בודק דיוק תזונתי',
+    REPAIR_COMPLETED:       'תיקון הושלם',
+    VALIDATION_COMPLETED:   'ולידציה עברה',
+    TRANSACTION_STARTED:    'שומר תפריט',
+    PLAN_SAVED:             'תפריט נשמר',
+    ACTIVE_PLAN_CONFIRMED:  'הושלם!',
+    FAILED:                 'נכשל',
+  };
+  const getWeeklyStageLabel = (stage) => WEEKLY_STAGE_LABELS[stage] || stage || 'מעבד...';
+
+  const stopWeeklyPoll = () => {
+    if (weeklyPollRef.current) { clearInterval(weeklyPollRef.current); weeklyPollRef.current = null; }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => () => stopWeeklyPoll(), []);
+
+  // On mount: reconnect to any in-progress weekly job saved in localStorage
+  useEffect(() => {
+    if (!WEEKLY_JOB_KEY || generatingWeekly) return;
+    const savedId = localStorage.getItem(WEEKLY_JOB_KEY);
+    if (!savedId) return;
+    base44.functions.invoke('getMealJobStatus', { job_id: savedId })
+      .then(res => {
+        const job = res?.data;
+        if (!job) { localStorage.removeItem(WEEKLY_JOB_KEY); return; }
+        if (job.status === 'queued' || job.status === 'running') {
+          setWeeklyJobId(savedId);
+          setGeneratingWeekly(true);
+          setWeeklyProgress(job.progress || 5);
+          setWeeklyStage(getWeeklyStageLabel(job.stage));
+          setWeeklyStartTime(Date.now() - 60000);
+        } else {
+          localStorage.removeItem(WEEKLY_JOB_KEY);
+        }
+      })
+      .catch(() => localStorage.removeItem(WEEKLY_JOB_KEY));
+  }, [WEEKLY_JOB_KEY]);
+
+  // Polling interval — fires every 5 s while a job is active
+  useEffect(() => {
+    if (!generatingWeekly || !weeklyJobId) return;
+    stopWeeklyPoll();
+    weeklyPollRef.current = setInterval(async () => {
+      try {
+        const res = await base44.functions.invoke('getMealJobStatus', { job_id: weeklyJobId });
+        const job = res?.data;
+        if (!job) return;
+        // Never fake 100% — only set it on ACTIVE_PLAN_CONFIRMED
+        if (job.stage !== 'ACTIVE_PLAN_CONFIRMED') {
+          setWeeklyProgress(Math.min(job.progress || 0, 99));
+        }
+        setWeeklyStage(getWeeklyStageLabel(job.stage));
+
+        if (job.status === 'completed' && job.active_plan_id) {
+          stopWeeklyPoll();
+          setWeeklyProgress(100);
+          setWeeklyStage('הושלם!');
+          if (WEEKLY_JOB_KEY) localStorage.removeItem(WEEKLY_JOB_KEY);
+          await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
+          await refetch();
+          setSelectedDay(0);
+          setTimeout(() => {
+            setGeneratingWeekly(false);
+            setWeeklyJobId(null);
+            setWeeklyProgress(0);
+            setWeeklyStage('');
+          }, 1200);
+        } else if (job.status === 'failed') {
+          stopWeeklyPoll();
+          if (WEEKLY_JOB_KEY) localStorage.removeItem(WEEKLY_JOB_KEY);
+          setWeeklyError({
+            job_id:           job.id,
+            trace_id:         job.trace_id,
+            traineeId:        job.trainee_id,
+            stage:            job.stage,
+            safe_error:       job.safe_error,
+            validation_codes: job.validation_codes,
+            started_at:       job.started_at,
+            failed_at:        job.completed_at,
+            ts:               new Date().toISOString(),
+          });
+          setGeneratingWeekly(false);
+          setWeeklyProgress(0);
+          setWeeklyStage('');
+          setWeeklyJobId(null);
+        }
+      } catch { /* ignore transient poll errors */ }
+    }, 5000);
+    return stopWeeklyPoll;
+  }, [generatingWeekly, weeklyJobId]);
 
   // Sync plan totals → trainee targets so nutrition dashboard rings match.
   useEffect(() => {
@@ -362,30 +470,28 @@ export default function MyMealPlan() {
 
   const generateWeekly = async () => {
     if (!trainee) return;
+    setWeeklyError(null);
     setGeneratingWeekly(true);
+    setWeeklyProgress(5);
+    setWeeklyStage('מתחיל יצירה');
+    setWeeklyStartTime(Date.now());
     try {
-      const res = await Promise.race([
-        base44.functions.invoke('generateWeeklyMealPlan', {
-          trainee_id:    trainee.id,
-          trainee_email: trainee.user_email,
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('תהליך ארוך מדי — נסה שוב מאוחר יותר')), 90000)
-        ),
-      ]);
-      if (!res?.ok || !res?.data?.plan) {
-        const errMsg = res?.error || 'לא הצלחנו ליצור תפריט שבועי. נסה שוב.';
-        toast.error(errMsg);
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
-      await refetch();
-      setSelectedDay(0);
-      toast.success('תפריט שבועי נוצר בהצלחה!');
+      const startRes = await base44.functions.invoke('startMealGenerationJob', {
+        trainee_id: trainee.id,
+        mode:       'weekly',
+      });
+      const jobId = startRes?.data?.job_id;
+      if (!jobId) throw new Error('לא הצלחנו להתחיל יצירת תפריט שבועי');
+      if (WEEKLY_JOB_KEY) localStorage.setItem(WEEKLY_JOB_KEY, jobId);
+      setWeeklyJobId(jobId);
+      setWeeklyProgress(startRes?.data?.existing ? 20 : 8);
+      setWeeklyStage(startRes?.data?.existing ? 'ממשיך יצירה קיימת' : 'בקשה התקבלה');
+      // Polling effect takes over — see useEffect above
     } catch (err) {
-      toast.error(err.message || 'שגיאה ביצירת תפריט שבועי. נסה שוב.');
-    } finally {
       setGeneratingWeekly(false);
+      setWeeklyProgress(0);
+      setWeeklyStage('');
+      toast.error(err.message || 'שגיאה ביצירת תפריט שבועי. נסה שוב.');
     }
   };
 
@@ -464,9 +570,79 @@ export default function MyMealPlan() {
               }}
             >
               {generatingWeekly ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
-              {generatingWeekly ? 'מכין תפריט שבועי...' : isWeekly ? 'תפריט שבועי ✓' : 'צור תפריט שבועי'}
+              {generatingWeekly
+                ? `${weeklyProgress}% — ${weeklyStage || 'מכין...'}`
+                : isWeekly ? 'תפריט שבועי ✓' : 'צור תפריט שבועי'}
             </button>
           </div>
+
+          {/* Real backend progress panel — shown only during generation */}
+          {generatingWeekly && (
+            <div className="bg-white rounded-2xl border border-teal-100 p-4 space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-slate-700">{weeklyStage || 'מתחיל...'}</span>
+                <span className="text-slate-400 font-mono">{weeklyProgress}%</span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{ width: `${weeklyProgress}%`, background: 'linear-gradient(90deg, #79DBD6, #3b82f6)' }}
+                />
+              </div>
+              {weeklyProgress < 40 && (
+                <p className="text-xs text-slate-400 text-center">
+                  ה-AI בונה תפריט שבועי מלא — בדרך כלל 3–5 דקות
+                </p>
+              )}
+              {weeklyProgress >= 40 && weeklyProgress < 90 && (
+                <p className="text-xs text-slate-400 text-center">
+                  כמעט שם — בודק דיוק תזונתי ושומר...
+                </p>
+              )}
+              {weeklyStartTime && (Date.now() - weeklyStartTime) > 180000 && weeklyProgress < 90 && (
+                <p className="text-xs text-amber-600 text-center">
+                  זמן ממוצע: 3–5 דקות. ממשיך לעבוד ברקע — אפשר לסגור ולחזור.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Failure panel — copyable error report, old plan preserved */}
+          {weeklyError && !generatingWeekly && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-bold text-red-800">לא הצלחנו ליצור תפריט שבועי.</p>
+              <p className="text-xs text-red-700">התפריט הקודם שלך נשמר ולא בוצע שום שינוי.</p>
+              <button
+                className="w-full py-2 rounded-xl border border-red-300 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors"
+                onClick={() => {
+                  const report = [
+                    '=== FitCoach Weekly Meal Plan Error Report ===',
+                    `job_id: ${weeklyError.job_id || 'N/A'}`,
+                    `trace_id: ${weeklyError.trace_id || 'N/A'}`,
+                    `trainee_id: ${weeklyError.traineeId || 'N/A'}`,
+                    `stage: ${weeklyError.stage || 'N/A'}`,
+                    `safe_error: ${weeklyError.safe_error || 'N/A'}`,
+                    `validation_codes: ${JSON.stringify(weeklyError.validation_codes || [])}`,
+                    `started_at: ${weeklyError.started_at || 'N/A'}`,
+                    `failed_at: ${weeklyError.failed_at || 'N/A'}`,
+                    `frontend_ts: ${weeklyError.ts || 'N/A'}`,
+                    `old_plan_preserved: true`,
+                    `new_plan_created: false`,
+                  ].join('\n');
+                  navigator.clipboard.writeText(report).catch(() => {});
+                  alert('דוח שגיאה הועתק ללוח!');
+                }}
+              >
+                העתק דוח תקלה
+              </button>
+              <button
+                className="w-full py-2 rounded-xl text-slate-500 text-xs hover:bg-slate-50 transition-colors"
+                onClick={() => setWeeklyError(null)}
+              >
+                סגור
+              </button>
+            </div>
+          )}
 
           {/* Weekly day tabs */}
           {isWeekly && (
