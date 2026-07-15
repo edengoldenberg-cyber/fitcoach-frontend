@@ -364,10 +364,15 @@ export default function MyMealPlan() {
     if (!trainee) return;
     setGeneratingWeekly(true);
     try {
-      const res = await base44.functions.invoke('generateWeeklyMealPlan', {
-        trainee_id:    trainee.id,
-        trainee_email: trainee.user_email,
-      });
+      const res = await Promise.race([
+        base44.functions.invoke('generateWeeklyMealPlan', {
+          trainee_id:    trainee.id,
+          trainee_email: trainee.user_email,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('תהליך ארוך מדי — נסה שוב מאוחר יותר')), 90000)
+        ),
+      ]);
       if (!res?.ok || !res?.data?.plan) {
         const errMsg = res?.error || 'לא הצלחנו ליצור תפריט שבועי. נסה שוב.';
         toast.error(errMsg);
@@ -378,7 +383,7 @@ export default function MyMealPlan() {
       setSelectedDay(0);
       toast.success('תפריט שבועי נוצר בהצלחה!');
     } catch (err) {
-      toast.error('שגיאה ביצירת תפריט שבועי. נסה שוב.');
+      toast.error(err.message || 'שגיאה ביצירת תפריט שבועי. נסה שוב.');
     } finally {
       setGeneratingWeekly(false);
     }
