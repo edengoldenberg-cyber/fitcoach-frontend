@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { ArrowLeftRight, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { ArrowLeftRight, Trash2, Sparkles, Loader2, Check } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
 export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, planId, onMealUpdated }) {
-  const [showAlt, setShowAlt] = useState(false);
+  const [showAlt, setShowAlt]       = useState(false);
   const [aiAlternatives, setAiAlternatives] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [removing, setRemoving]     = useState(false);
+  const [applyingAlt, setApplyingAlt] = useState(null); // index of alt being applied
 
   const fetchAIAlternatives = async () => {
     if (aiAlternatives) { setShowAlt(v => !v); return; }
@@ -14,11 +15,11 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
     setShowAlt(true);
     try {
       const res = await base44.functions.invoke('replaceItemInMeal', {
-        plan_id: planId,
+        plan_id:    planId,
         meal_index: mealIndex,
         item_index: itemIndex,
-        day_index: dayIndex ?? 0,
-        action: 'replace'
+        day_index:  dayIndex ?? 0,
+        action:     'replace',
       });
       setAiAlternatives(res.data?.alternatives || []);
     } catch (err) {
@@ -29,16 +30,42 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
     }
   };
 
+  const applyAlternative = async (alt, altIdx) => {
+    setApplyingAlt(altIdx);
+    try {
+      const res = await base44.functions.invoke('replaceItemInMeal', {
+        plan_id:     planId,
+        meal_index:  mealIndex,
+        item_index:  itemIndex,
+        day_index:   dayIndex ?? 0,
+        action:      'apply',
+        replacement: alt,
+      });
+      if (res.data?.updated) {
+        setShowAlt(false);
+        setAiAlternatives(null);
+        if (onMealUpdated) onMealUpdated();
+      }
+    } catch (err) {
+      console.error('applyAlternative failed:', err.message);
+    } finally {
+      setApplyingAlt(null);
+    }
+  };
+
   const removeItem = async () => {
     setRemoving(true);
     try {
       const res = await base44.functions.invoke('replaceItemInMeal', {
-        plan_id: planId,
+        plan_id:    planId,
         meal_index: mealIndex,
         item_index: itemIndex,
-        action: 'remove'
+        day_index:  dayIndex ?? 0,
+        action:     'remove',
       });
-      if (res.data?.updatedMeal) onMealUpdated(mealIndex, res.data.updatedMeal);
+      if (res.data?.updated) {
+        if (onMealUpdated) onMealUpdated();
+      }
     } catch (err) {
       console.error('removeItem failed:', err.message);
     } finally {
@@ -87,7 +114,7 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
         <div className="bg-slate-50 rounded-xl p-3 space-y-2 border border-slate-100">
           <div className="flex items-center gap-1 mb-2">
             <Sparkles className="w-3 h-3 text-teal-500" />
-            <p className="text-xs font-medium text-teal-700">חלופות AI (לחץ להחלפה):</p>
+            <p className="text-xs font-medium text-teal-700">חלופות AI — לחץ להחלפה:</p>
           </div>
           {loading && (
             <div className="flex items-center justify-center py-3">
@@ -99,8 +126,15 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
             <p className="text-xs text-slate-400 text-center py-2">לא נמצאו חלופות מתאימות, נסה שוב</p>
           )}
           {aiAlternatives?.map((alt, ai) => (
-            <div key={ai} className="flex items-center gap-2 text-sm">
-              <div className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
+            <button
+              key={ai}
+              onClick={() => applyAlternative(alt, ai)}
+              disabled={applyingAlt !== null}
+              className="w-full flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 hover:bg-teal-50 transition-colors text-right disabled:opacity-60"
+            >
+              {applyingAlt === ai
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500 flex-shrink-0" />
+                : <div className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />}
               <div className="flex-1 text-right">
                 <span className="text-slate-700 font-medium">{alt.food_item}</span>
                 <span className="text-slate-400 text-xs mr-1">{alt.quantity_description || `${alt.quantity_grams}ג`}</span>
@@ -111,7 +145,10 @@ export default function MealItemRow({ item, itemIndex, mealIndex, dayIndex, plan
                   {alt.protein && <div className="text-blue-400">ח:{Math.round(alt.protein)}ג</div>}
                 </div>
               )}
-            </div>
+              {applyingAlt === null && (
+                <Check className="w-3.5 h-3.5 text-teal-400 opacity-0 group-hover:opacity-100 flex-shrink-0" />
+              )}
+            </button>
           ))}
         </div>
       )}

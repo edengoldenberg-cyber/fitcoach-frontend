@@ -265,7 +265,7 @@ function Field({ label, children }) {
 
 // ─── Section: Dashboard ───────────────────────────────────────────────────────
 
-function DashboardSection({ automations, queueItems, arboxStatus, absenceData, coachEmail }) {
+function DashboardSection({ automations, queueItems, arboxStatus, absenceData, coachEmail, onRefresh }) {
   const enabledAutomations = automations.filter(a => a.enabled).length;
   const queueSent    = queueItems.filter(q => q.status === 'sent').length;
   const queueFailed  = queueItems.filter(q => q.status === 'failed').length;
@@ -332,10 +332,12 @@ function DashboardSection({ automations, queueItems, arboxStatus, absenceData, c
           <QuickBtn icon={<RefreshCw className="w-4 h-4" />} label="הרץ Worker" onClick={async () => {
             const r = await base44.functions.invoke('whatsAppQueueWorker', {});
             toast.success(`Worker: processed=${r?.data?.processed}, failed=${r?.data?.failed}`);
+            onRefresh?.();
           }} />
           <QuickBtn icon={<Database className="w-4 h-4" />} label="סנכרן Arbox" onClick={async () => {
             const r = await base44.functions.invoke('syncArboxMembers', { coachEmail });
             r?.ok ? toast.success(`סונכרנו ${(r.data?.inserted ?? 0) + (r.data?.updated ?? 0)} חברים`) : toast.error(r?.error);
+            onRefresh?.();
           }} color="blue" />
         </div>
       </div>
@@ -2195,7 +2197,7 @@ export default function MissionControl() {
 
   const renderSection = () => {
     switch (activeSection) {
-      case 'dashboard':   return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} />;
+      case 'dashboard':   return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'automations': return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'queue':       return <QueueSection queueItems={queueItems} onRefresh={refresh} />;
       case 'live':        return <LiveSection queueItems={queueItems} />;

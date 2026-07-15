@@ -45,7 +45,7 @@ const AUTOMATIONS = [
     color: 'text-orange-500',
     bg: 'bg-orange-50',
     border: 'border-orange-200',
-    times: ['09:00', '13:30', '20:00'],
+    times: ['10:00', '14:00', '19:00'],
     statusFn: async (trainee, todayStr) => {
       const meals = await base44.entities.MealEntry.filter({ trainee_email: trainee.user_email, date: todayStr });
       return { ok: meals.length >= 2, label: meals.length === 0 ? 'לא רשם כלום' : `${meals.length} ארוחות` };
@@ -59,7 +59,7 @@ const AUTOMATIONS = [
     color: 'text-blue-500',
     bg: 'bg-blue-50',
     border: 'border-blue-200',
-    times: ['12:30', '19:00'],
+    times: ['11:30', '15:30', '19:30'],
     statusFn: async (trainee, todayStr) => {
       const entries = await base44.entities.WaterEntry.filter({ trainee_email: trainee.user_email, date: todayStr });
       const total = entries.reduce((s, e) => s + (e.amount_ml || 0), 0);
@@ -117,7 +117,7 @@ const AUTOMATIONS = [
     color: 'text-pink-500',
     bg: 'bg-pink-50',
     border: 'border-pink-200',
-    times: ['10:00'],
+    times: ['08:00'],
     statusFn: async (trainee, todayStr) => {
       const meals = await base44.entities.MealEntry.filter({ trainee_email: trainee.user_email });
       const water = await base44.entities.WaterEntry.filter({ trainee_email: trainee.user_email });
@@ -143,7 +143,7 @@ const AUTOMATIONS = [
     color: 'text-teal-500',
     bg: 'bg-teal-50',
     border: 'border-teal-200',
-    times: ['12:00'],
+    times: ['08:00'],
     statusFn: async (trainee, todayStr) => {
       if (!trainee.first_login_at) return { ok: false, label: 'לא התחיל עדיין' };
       const firstLogin = new Date(trainee.first_login_at);
@@ -585,13 +585,12 @@ export default function ReminderAutomations() {
   };
 
   const handleToggle = useCallback((automationId) => {
-    setActiveStates(prev => {
-      const next = { ...prev, [automationId]: !prev[automationId] };
-      ls_set(ACTIVE_KEY, next);
-      toast.success(next[automationId] ? '✅ אוטומציה הופעלה' : '⏸ אוטומציה הושהתה');
-      return next;
-    });
-  }, []);
+    const next = { ...activeStates, [automationId]: !activeStates[automationId] };
+    setActiveStates(next);
+    ls_set(ACTIVE_KEY, next);
+    toast.success(next[automationId] ? '✅ אוטומציה הופעלה' : '⏸ אוטומציה הושהתה');
+    syncToDb(globalEnabled, next, user?.email);
+  }, [activeStates, globalEnabled, syncToDb, user?.email]);
 
   const handleTargetsChange = useCallback((automationId, val) => {
     setTargets(prev => {

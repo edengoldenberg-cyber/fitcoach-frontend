@@ -14,6 +14,47 @@
     <link rel="apple-touch-icon" href="https://base44.com/logo_v2.svg" />
 
     <title>FitCoach Pro</title>
+
+    <!--
+      iOS Service Worker Guard
+      iOS WebKit freezes cross-origin fetch() calls when any SW is controlling the page —
+      even when the SW has no matching route and never calls respondWith().
+      Fix: on iOS, unregister all existing SWs + clear Workbox caches + reload once.
+      After the reload no SW controls the page and all API fetches go directly to the network.
+      On non-iOS the SW is registered normally (same behaviour as the old registerSW.js).
+    -->
+    <script>
+      (function () {
+        if (!('serviceWorker' in navigator)) return;
+
+        // Covers: iPhone, iPod, iPad (iOS ≤ 12), iPad (iOS 13+ reports MacIntel + touch)
+        var isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        if (isIOS) {
+          // Unregister + clear caches + reload once.
+          // Only reloads if registrations exist — prevents an infinite reload loop.
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            if (!regs.length) return;   // Already clean — nothing to do, no reload.
+            Promise.all(regs.map(function (r) { return r.unregister(); }))
+              .then(function () {
+                return ('caches' in window)
+                  ? caches.keys().then(function (keys) {
+                      return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                    })
+                  : Promise.resolve();
+              })
+              .then(function () { window.location.reload(); });
+          });
+          return; // Never register a new SW on iOS.
+        }
+
+        // Non-iOS: register the SW normally.
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        });
+      }());
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import BackButton from '../components/shared/BackButton';
 
 export default function AddTrainee() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     full_name: '',
     user_email: '',
@@ -116,6 +117,7 @@ export default function AddTrainee() {
       setMagicLinkSent(false);
       setPersonalAccessLink(result.personalAccessLink);
       setSuccess(true);
+      queryClient.invalidateQueries({ queryKey: ['coachTrainees'] });
       if (result.whatsappSent) {
         toast.success('המתאמן נוצר והזמנה נשלחה בוואטסאפ 💬');
       } else {

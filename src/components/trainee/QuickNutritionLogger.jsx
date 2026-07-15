@@ -80,7 +80,7 @@ export default function QuickNutritionLogger({ trainee, dateStr, defaultMealType
 
   const { data: favorites = [] } = useQuery({
     queryKey: ['quickFavoriteFoods', trainee?.id],
-    queryFn: () => base44.entities.UserFavoriteFoods.filter({ trainee_id: trainee?.id }),
+    queryFn: () => base44.entities.UserRecentFoods.filter({ trainee_id: trainee?.id, favorite: true }),
     enabled: !!trainee?.id
   });
 

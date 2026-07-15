@@ -58,6 +58,7 @@ import GoogleLoginScreen from './components/shared/GoogleLoginScreen';
 import StartupTraceOverlay, { startupTrace } from './components/shared/StartupTraceOverlay';
 import AdminRoute from './components/auth/AdminRoute';
 import CoachRoute from './components/auth/CoachRoute';
+import StartupDebugOverlay from '@/components/shared/StartupDebugOverlay';
 
 const LoginRedirect = () => {
   useEffect(() => {
@@ -89,7 +90,7 @@ const LayoutWrapper = ({ children, currentPageName }) => Layout ?
  */
 const AuthenticatedApp = () => {
   const location = useLocation();
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, startupTimedOut } = useAuth();
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
     queryFn: async () => {
@@ -185,21 +186,11 @@ const AuthenticatedApp = () => {
     autoLinked: false
   });
 
-  // STARTUP TIMEOUT: If still loading after 6 seconds, break out of infinite spinner
-  const [startupTimedOut, setStartupTimedOut] = useState(false);
+  // TEMP INSTRUMENTATION — log every combined state change
+  const _appTs = () => new Date().toISOString();
   React.useEffect(() => {
-    if (!isLoadingAuth && !isLoadingPublicSettings) {
-      setStartupTimedOut(false);
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      console.warn('[STARTUP_TIMEOUT] Auth still loading after 6s — forcing resolve');
-      setStartupTimedOut(true);
-    }, 6000);
-
-    return () => clearTimeout(timer);
-  }, [isLoadingAuth, isLoadingPublicSettings]);
+    console.log(`[STARTUP_DIAG ${_appTs()}] APP_STATE isLoadingAuth=${isLoadingAuth} isLoadingPublicSettings=${isLoadingPublicSettings} startupTimedOut=${startupTimedOut}`);
+  }, [isLoadingAuth, isLoadingPublicSettings, startupTimedOut]);
 
   useEffect(() => {
     if (user && traineeByEmail && !traineeByUserId && !autoLinkPerformed) {
@@ -615,7 +606,10 @@ function App() {
     <AuthProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
-          <AuthenticatedApp />
+          <>
+            {import.meta.env.DEV && <StartupDebugOverlay />}
+            <AuthenticatedApp />
+          </>
         </Router>
         <Toaster />
       </QueryClientProvider>

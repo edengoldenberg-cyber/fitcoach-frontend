@@ -78,8 +78,8 @@ function normalizeEnrichedMealResult(data) {
   const ingredients = data.items.map(item => ({
     name: item.name || item.name_he || item.food_name || 'מרכיב לא מזוהה',
     food_name: item.name || item.name_he || item.food_name || 'מרכיב לא מזוהה',
-    quantity_grams: Number(item.grams || item.quantity_grams || 100),
-    quantity_display: item.quantity_display || `${Number(item.grams || item.quantity_grams || 100)} גרם`,
+    quantity_grams: Number(item.grams || item.quantity_grams || item.amount || 100),
+    quantity_display: item.quantity_display || `${Number(item.grams || item.quantity_grams || item.amount || 100)} גרם`,
     calories: Number(item.calories || 0),
     protein: Number(item.protein || 0),
     carbs: Number(item.carbs || 0),
@@ -449,6 +449,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   const [reanalyzingIngredientIndex, setReanalyzingIngredientIndex] = useState(null);
   const [ingredientCorrectionKey, setIngredientCorrectionKey] = useState(null);
   const [ingredientCorrectionText, setIngredientCorrectionText] = useState('');
+  const [hadAICorrection, setHadAICorrection] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -650,10 +651,29 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         grams: Number(ingredient.quantity_grams || ingredient.estimated_grams || 100) || 100,
         correction_note: note
       });
-      const updatedIngredient = res?.data?.response ?? res?.data;
+      const updatedRaw = res?.data?.item ?? res?.data?.response ?? res?.data;
+      const corrGrams = Number(updatedRaw?.quantity_grams || updatedRaw?.amount || ingredient.quantity_grams || 100) || 100;
+      const corrCal   = Number(updatedRaw?.calories || 0);
+      const corrProt  = Number(updatedRaw?.protein  || 0);
+      const corrCarbs = Number(updatedRaw?.carbs    || 0);
+      const corrFat   = Number(updatedRaw?.fat      || 0);
+      const updatedIngredient = {
+        ...updatedRaw,
+        quantity_grams:   corrGrams,
+        quantity_display: `${corrGrams} גרם`,
+        calories: corrCal,
+        protein:  corrProt,
+        carbs:    corrCarbs,
+        fat:      corrFat,
+        per100_kcal:    corrGrams > 0 ? Math.round((corrCal  / corrGrams) * 100)       : 0,
+        per100_protein: corrGrams > 0 ? Math.round((corrProt / corrGrams) * 1000) / 10 : 0,
+        per100_carbs:   corrGrams > 0 ? Math.round((corrCarbs/ corrGrams) * 1000) / 10 : 0,
+        per100_fat:     corrGrams > 0 ? Math.round((corrFat  / corrGrams) * 1000) / 10 : 0,
+      };
       updateResultIngredients((result?.ingredients || []).map((item, itemIndex) => itemIndex === index ? { ...item, ...updatedIngredient } : item));
       setIngredientCorrectionKey(null);
       setIngredientCorrectionText('');
+      setHadAICorrection(true);
       toast.success('המרכיב תוקן עם AI');
     } finally {
       setReanalyzingIngredientIndex(null);
@@ -677,10 +697,29 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         grams: Number(ingredient.quantity_grams || ingredient.estimated_grams || 100) || 100,
         correction_note: note
       });
-      const updatedIngredient = res?.data?.response ?? res?.data;
+      const updatedRaw = res?.data?.item ?? res?.data?.response ?? res?.data;
+      const corrGrams = Number(updatedRaw?.quantity_grams || updatedRaw?.amount || ingredient.quantity_grams || 100) || 100;
+      const corrCal   = Number(updatedRaw?.calories || 0);
+      const corrProt  = Number(updatedRaw?.protein  || 0);
+      const corrCarbs = Number(updatedRaw?.carbs    || 0);
+      const corrFat   = Number(updatedRaw?.fat      || 0);
+      const updatedIngredient = {
+        ...updatedRaw,
+        quantity_grams:   corrGrams,
+        quantity_display: `${corrGrams} גרם`,
+        calories: corrCal,
+        protein:  corrProt,
+        carbs:    corrCarbs,
+        fat:      corrFat,
+        per100_kcal:    corrGrams > 0 ? Math.round((corrCal  / corrGrams) * 100)       : 0,
+        per100_protein: corrGrams > 0 ? Math.round((corrProt / corrGrams) * 1000) / 10 : 0,
+        per100_carbs:   corrGrams > 0 ? Math.round((corrCarbs/ corrGrams) * 1000) / 10 : 0,
+        per100_fat:     corrGrams > 0 ? Math.round((corrFat  / corrGrams) * 1000) / 10 : 0,
+      };
       setEditIngredients(prev => prev.map((item, itemIndex) => itemIndex === index ? { ...item, ...updatedIngredient } : item));
       setIngredientCorrectionKey(null);
       setIngredientCorrectionText('');
+      setHadAICorrection(true);
       setLearningSaved(false);
       toast.success('הפריט נותח מחדש');
     } finally {
@@ -708,7 +747,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       const original = result?.ingredients?.[i] || ing;
       // step==='edit' means the user manually changed values → allowed to update canonical.
       // step==='result' means the user accepted the AI result → canonical must be preserved.
-      const isManualCorrection = step === 'edit';
+      const isManualCorrection = step === 'edit' || hadAICorrection;
       const savedLearningRecord = await saveAIFoodCorrection({
         user,
         trainee,
@@ -742,14 +781,6 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       learningUpdates.push({ ingredient: ing.name || ing.food_name, recordId: savedLearningRecord?.id, saved: true });
     }
     console.log('[LEARN-TRACE] all iterations completed', learningUpdates);
-    if (result?.debugLogId) {
-      await base44.entities.NutritionAnalysisDebugLog.update(result.debugLogId, {
-        status: 'LEARNING_SAVED',
-        currentStep: 'learning_saved_from_ingredient_correction',
-        updatedAt: new Date().toISOString(),
-        learningUpdates
-      });
-    }
     setLearningSaved(true);
     toast.success('נשמר ללמידה ✅');
     } catch (err) {
@@ -759,15 +790,6 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         completed_so_far: learningUpdates,
         remaining_ingredients: editIngredients.slice(learningUpdates.length).map(i => i.name || i.food_name),
       });
-      if (result?.debugLogId) {
-        await base44.entities.NutritionAnalysisDebugLog.update(result.debugLogId, {
-          status: 'LEARNING_FAILED',
-          currentStep: 'learning_save_failed',
-          updatedAt: new Date().toISOString(),
-          errorMessage: err?.message || 'Learning save failed',
-          errorStack: err?.stack || ''
-        });
-      }
       throw err;
     }
   };
@@ -901,6 +923,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     setReanalyzingIngredientIndex(null);
     setIngredientCorrectionKey(null);
     setIngredientCorrectionText('');
+    setHadAICorrection(false);
     onClose();
   };
 

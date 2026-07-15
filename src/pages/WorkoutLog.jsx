@@ -141,6 +141,18 @@ export default function WorkoutLog() {
     ? todayTemplatesRaw.filter(t => t.id !== todayDailyWorkout.id)
     : todayTemplatesRaw;
 
+  // All published workouts for today: primary first, then additional templates.
+  // Deduplicated by id in case DailyWorkout and DailyWorkoutTemplate overlap.
+  const seenIds = new Set();
+  const allDailyWorkoutsToday = [
+    ...(todayDailyWorkout ? [todayDailyWorkout] : []),
+    ...todayTemplates,
+  ].filter(w => {
+    if (seenIds.has(w.id)) return false;
+    seenIds.add(w.id);
+    return true;
+  });
+
   const { data: allTraineeExercises = [] } = useQuery({
     queryKey: ['allTraineeExercises', traineeWorkouts.map(w => w.id)],
     queryFn: async () => {
@@ -394,10 +406,10 @@ export default function WorkoutLog() {
         </div>
 
         {/* Multi-Workout Templates Section */}
-        {todayTemplates.length > 0 && !selectedTemplate && (
+        {allDailyWorkoutsToday.length > 1 && !selectedTemplate && (
           <div className="mb-4">
             <DailyWorkoutSelector
-              workouts={todayTemplates}
+              workouts={allDailyWorkoutsToday}
               onSelect={(tmpl) => {
                 setSelectedTemplate(tmpl);
                 setExtraExercises([]);

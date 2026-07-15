@@ -1,41 +1,42 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
 import {
   Plus, Edit2, Trash2, Play, CheckCircle2, XCircle, Clock, Zap,
   Users, History, AlertCircle, RefreshCw, Download, FileText,
   Search, ChevronDown, ChevronRight, Shield, Eye, Phone,
-  Wifi, WifiOff, BarChart3, AlertTriangle, Info, Check,
-  MessageSquare, Calendar, Link, Database, Settings, Copy,
+  Wifi, WifiOff, BarChart3, AlertTriangle, Info, Calendar, Database, Copy,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// auto = evaluated by runWhatsAppAutomationsBatch every 5 min
 const TRIGGER_TYPES = [
+  // ── Automatically executed (Arbox-based) ─────────────────────────────────
+  { value: 'no_attendance',        label: 'ימים ללא ביקור',              category: 'auto',      auto: true },
+  { value: 'consecutive_absences', label: 'היעדרויות רצופות',            category: 'auto',      auto: true },
+  { value: 'birthday',             label: 'יום הולדת',                   category: 'auto',      auto: true },
+  { value: 'package_expiry',       label: 'פקיעת מנוי בקרוב',            category: 'auto',      auto: true },
+  { value: 'remaining_sessions',   label: 'כניסות שנותרו מועטות',         category: 'auto',      auto: true },
+  { value: 'class_reminder',       label: 'תזכורת לפני שיעור',            category: 'auto',      auto: true },
+  { value: 'exact_date',           label: 'תאריך מדויק',                  category: 'auto',      auto: true },
+  { value: 'weekday_time',         label: 'יום ושעה קבועים',              category: 'auto',      auto: true },
+  // ── Manual / legacy ──────────────────────────────────────────────────────
   { value: 'manual_test',            label: 'בדיקה ידנית',              category: 'test' },
-  { value: 'new_trainee_created',    label: 'מתאמן חדש נוצר',            category: 'onboarding' },
-  { value: 'first_login',            label: 'כניסה ראשונה',              category: 'onboarding' },
-  { value: 'daily_workout_reminder', label: 'תזכורת אימון יומית',         category: 'reminder' },
-  { value: 'meal_log_reminder',      label: 'תזכורת רישום ארוחות',       category: 'reminder' },
-  { value: 'water_reminder',         label: 'תזכורת מים',                category: 'reminder' },
-  { value: 'inactive_trainee',       label: 'מתאמן לא פעיל',             category: 'engagement' },
-  { value: 'weekly_summary',         label: 'סיכום שבועי',               category: 'engagement' },
-  { value: 'custom_scheduled',       label: 'שליחה מתוזמנת מותאמת',      category: 'custom' },
+  { value: 'custom_scheduled',       label: 'שליחה מתוזמנת (לגסי)',      category: 'custom' },
 ];
 
 const TRIGGER_BADGE_CLASSES = {
+  auto:       'bg-green-50 text-green-700 border-green-200',
   test:       'bg-slate-100 text-slate-600 border-slate-200',
   onboarding: 'bg-blue-50 text-blue-700 border-blue-200',
   reminder:   'bg-amber-50 text-amber-700 border-amber-200',
@@ -79,15 +80,53 @@ const SUPPORTED_VARS = new Set([
 
 const EMPTY_FORM = {
   name:             '',
-  trigger_type:     'daily_workout_reminder',
+  trigger_type:     'no_attendance',
   message_template: 'שלום {{trainee_name}},\n\nהודעה מ-FitCoach 💪',
   target_type:      'all',
   target_phone:     '',
+  trigger_config:   '',
   schedule_config:  '',
   consent_category: 'whatsapp_reminder',
   enabled:          false,
   cooldown_hours:   24,
 };
+
+// Fields per auto trigger type
+const TRIGGER_CONFIG_DEFAULTS = {
+  no_attendance:        { threshold_days: 7 },
+  consecutive_absences: { absence_count: 3 },
+  birthday:             {},
+  package_expiry:       { days_before_expiry: 7 },
+  remaining_sessions:   { remaining_sessions: 3 },
+  class_reminder:       { class_offset_minutes: 120 },
+  exact_date:           { exact_date: '' },
+  weekday_time:         { weekdays: [0,1,2,3,4], time: '09:00' },
+};
+
+const AUTO_TRIGGER_TYPES = new Set(TRIGGER_TYPES.filter(t => t.auto).map(t => t.value));
+
+function parseTriggerConfig(raw) {
+  if (!raw) return {};
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return {}; }
+}
+
+function nextRunLabel(triggerType, tc) {
+  switch (triggerType) {
+    case 'birthday': return 'מדי יום — נבדק בזמן אמת';
+    case 'no_attendance': return `מדי יום — מתאמנים שלא ביקרו ${tc.threshold_days || 7}+ ימים`;
+    case 'consecutive_absences': return `מדי יום — ${tc.absence_count || 3}+ היעדרויות רצופות`;
+    case 'package_expiry': return `מדי יום — ${tc.days_before_expiry || 7} ימים לפני פקיעה`;
+    case 'remaining_sessions': return `מדי יום — ${tc.remaining_sessions || 3} כניסות ומטה`;
+    case 'class_reminder': return `כל 5 דק׳ — ${tc.class_offset_minutes || 60} דק׳ לפני שיעור`;
+    case 'exact_date': return tc.exact_date ? `פעם אחת ב-${tc.exact_date}` : 'לא הוגדר תאריך';
+    case 'weekday_time': {
+      const days = ['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'];
+      const dayLabels = (tc.weekdays || []).map(d => days[d] || d).join(', ');
+      return `בימים ${dayLabels} בשעה ${tc.time || '—'}`;
+    }
+    default: return 'ידני בלבד';
+  }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,30 +197,49 @@ function toCSV(rows) {
 // ─── AutomationFormDialog ─────────────────────────────────────────────────────
 
 function AutomationFormDialog({ open, onClose, editing, coachEmail, onSaved }) {
-  const [form, setForm] = useState(() =>
-    editing ? {
-      name:             editing.name,
-      trigger_type:     editing.trigger_type,
-      message_template: editing.message_template,
-      target_type:      editing.target_type      || 'all',
-      target_phone:     editing.target_phone      || '',
-      schedule_config:  editing.schedule_config   || '',
-      consent_category: editing.consent_category  || 'whatsapp_reminder',
-      enabled:          editing.enabled            || false,
-      cooldown_hours:   editing.cooldown_hours     ?? 24,
-    } : { ...EMPTY_FORM }
-  );
+  const [form, setForm] = useState(() => {
+    if (editing) {
+      return {
+        name:             editing.name,
+        trigger_type:     editing.trigger_type,
+        message_template: editing.message_template,
+        target_type:      editing.target_type      || 'all',
+        target_phone:     editing.target_phone      || '',
+        trigger_config:   editing.trigger_config    || '',
+        schedule_config:  editing.schedule_config   || '',
+        consent_category: editing.consent_category  || 'whatsapp_reminder',
+        enabled:          editing.enabled            || false,
+        cooldown_hours:   editing.cooldown_hours     ?? 24,
+      };
+    }
+    return { ...EMPTY_FORM };
+  });
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
+  // Parsed trigger_config for field editing
+  const tc = parseTriggerConfig(form.trigger_config);
+  const setTc = (key, val) => {
+    const next = { ...tc, [key]: val };
+    set('trigger_config', JSON.stringify(next));
+  };
+
   const unknownVars = findUnknownVars(form.message_template);
+  const isAuto = AUTO_TRIGGER_TYPES.has(form.trigger_type);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (unknownVars.length > 0) {
         throw new Error(`משתנים לא מוכרים: ${unknownVars.map(v => `{{${v}}}`).join(', ')}`);
       }
+      // Apply defaults for auto triggers if trigger_config is empty
+      let triggerConfig = form.trigger_config;
+      if (isAuto && !triggerConfig) {
+        const defaults = TRIGGER_CONFIG_DEFAULTS[form.trigger_type] || {};
+        triggerConfig = JSON.stringify(defaults);
+      }
       const data = {
         ...form,
+        trigger_config: triggerConfig || null,
         coach_email:    coachEmail,
         cooldown_hours: Number(form.cooldown_hours) || 24,
         target_phone:   form.target_type === 'one' ? form.target_phone : null,
@@ -216,13 +274,132 @@ function AutomationFormDialog({ open, onClose, editing, coachEmail, onSaved }) {
 
             <div>
               <Label className="text-xs font-semibold text-slate-600">סוג טריגר</Label>
-              <Select value={form.trigger_type} onValueChange={v => set('trigger_type', v)}>
+              <Select value={form.trigger_type} onValueChange={v => {
+                set('trigger_type', v);
+                // Reset trigger_config to defaults when trigger changes
+                const defaults = TRIGGER_CONFIG_DEFAULTS[v];
+                set('trigger_config', defaults ? JSON.stringify(defaults) : '');
+              }}>
                 <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {TRIGGER_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                  <SelectItem value="" disabled className="text-xs text-slate-400 font-semibold">— אוטומטי (Arbox) —</SelectItem>
+                  {TRIGGER_TYPES.filter(t => t.auto).map(t => (
+                    <SelectItem key={t.value} value={t.value}>
+                      ✅ {t.label}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="" disabled className="text-xs text-slate-400 font-semibold">— ידני —</SelectItem>
+                  {TRIGGER_TYPES.filter(t => !t.auto).map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              {isAuto && (
+                <p className="text-xs text-green-700 mt-1 flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                  מופעל אוטומטית — {nextRunLabel(form.trigger_type, tc)}
+                </p>
+              )}
             </div>
+
+            {/* Trigger-specific config fields */}
+            {isAuto && (
+              <div className="border border-teal-200 rounded-lg p-3 bg-teal-50 space-y-2">
+                <p className="text-xs font-bold text-teal-700">הגדרות טריגר</p>
+
+                {form.trigger_type === 'no_attendance' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">ימים ללא ביקור (מינימום)</Label>
+                    <Input type="number" min={1} value={tc.threshold_days ?? 7}
+                      onChange={e => setTc('threshold_days', Number(e.target.value))}
+                      className="mt-1 w-24" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'consecutive_absences' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">מספר היעדרויות רצופות (מינימום)</Label>
+                    <Input type="number" min={1} value={tc.absence_count ?? 3}
+                      onChange={e => setTc('absence_count', Number(e.target.value))}
+                      className="mt-1 w-24" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'package_expiry' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">ימים לפני פקיעה</Label>
+                    <Input type="number" min={1} value={tc.days_before_expiry ?? 7}
+                      onChange={e => setTc('days_before_expiry', Number(e.target.value))}
+                      className="mt-1 w-24" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'remaining_sessions' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">כניסות שנותרו (מקסימום לשליחה)</Label>
+                    <Input type="number" min={1} value={tc.remaining_sessions ?? 3}
+                      onChange={e => setTc('remaining_sessions', Number(e.target.value))}
+                      className="mt-1 w-24" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'class_reminder' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">דקות לפני שיעור לשלוח</Label>
+                    <Input type="number" min={5} value={tc.class_offset_minutes ?? 120}
+                      onChange={e => setTc('class_offset_minutes', Number(e.target.value))}
+                      className="mt-1 w-24" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'exact_date' && (
+                  <div>
+                    <Label className="text-xs text-slate-600">תאריך שליחה (YYYY-MM-DD)</Label>
+                    <Input type="date" value={tc.exact_date || ''}
+                      onChange={e => setTc('exact_date', e.target.value)}
+                      className="mt-1" dir="ltr" />
+                  </div>
+                )}
+                {form.trigger_type === 'weekday_time' && (<>
+                  <div>
+                    <Label className="text-xs text-slate-600">ימים בשבוע</Label>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {['א׳','ב׳','ג׳','ד׳','ה׳','ו׳','ש׳'].map((d, i) => {
+                        const sel = (tc.weekdays || []).includes(i);
+                        return (
+                          <button key={i} type="button"
+                            onClick={() => {
+                              const days = tc.weekdays || [];
+                              setTc('weekdays', sel ? days.filter(x => x !== i) : [...days, i]);
+                            }}
+                            className={`text-xs px-2 py-1 rounded border font-medium ${sel ? 'bg-teal-500 text-white border-teal-500' : 'bg-white text-slate-600 border-slate-300'}`}>
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-600">שעה (שעון ישראל)</Label>
+                    <Input type="time" value={tc.time || '09:00'}
+                      onChange={e => setTc('time', e.target.value)}
+                      className="mt-1 w-28" dir="ltr" />
+                  </div>
+                </>)}
+
+                {/* Optional filters for all auto triggers */}
+                <div className="border-t border-teal-200 pt-2 space-y-2">
+                  <p className="text-xs text-teal-600 font-medium">סינון (אופציונלי)</p>
+                  <div>
+                    <Label className="text-xs text-slate-600">סנן לפי מדריך (שם חלקי)</Label>
+                    <Input value={tc.instructor_name || ''}
+                      onChange={e => setTc('instructor_name', e.target.value || undefined)}
+                      placeholder="למשל: יוסי" className="mt-1 text-xs" />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-slate-600">סנן לפי סוג שיעור (שם חלקי)</Label>
+                    <Input value={tc.class_type || ''}
+                      onChange={e => setTc('class_type', e.target.value || undefined)}
+                      placeholder="למשל: יוגה" className="mt-1 text-xs" />
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div>
               <Label className="text-xs font-semibold text-slate-600">יעד שליחה</Label>
@@ -335,7 +512,7 @@ function ValidationPanel({ open, onClose, automation, onTestSend }) {
   const links     = extractLinks(automation.message_template);
   const normPhone = automation.target_type === 'one'
     ? normalizePhone(automation.target_phone)
-    : normPhone;
+    : null;
 
   const minute         = new Date().toISOString().slice(0, 16);
   const idempKey       = `automation:${automation.id}:test:${minute}`;
@@ -606,7 +783,7 @@ function StatusChip({ enabled }) {
 
 function AutomationsTable({
   automations, queueStatsMap, onEdit, onDelete, onToggle,
-  onValidate, onHistory, onDuplicate, coachEmail,
+  onValidate, onHistory, onDuplicate, coachEmail, waConnected,
 }) {
   const [expandedRows, setExpandedRows] = useState(new Set());
   const toggleRow = (id) => setExpandedRows(prev => {
@@ -661,10 +838,12 @@ function AutomationsTable({
           {automations.map((a, idx) => {
             const meta     = getTriggerMeta(a.trigger_type);
             const schedule = parseSchedule(a.schedule_config);
+            const tc       = parseTriggerConfig(a.trigger_config);
             const stats    = queueStatsMap[a.id] || { sent: 0, failed: 0, queued: 0 };
             const links    = extractLinks(a.message_template);
             const expanded = expandedRows.has(a.id);
             const isEven   = idx % 2 === 0;
+            const isAuto   = AUTO_TRIGGER_TYPES.has(a.trigger_type);
 
             return (
               <React.Fragment key={a.id}>
@@ -682,9 +861,16 @@ function AutomationsTable({
                   {/* Name */}
                   <td className="px-3 py-2.5">
                     <p className="font-semibold text-slate-800 truncate">{a.name}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {a.target_type === 'all' ? 'כל המתאמנים' : (a.target_phone || 'ספציפי')}
-                    </p>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {isAuto && a.enabled && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${waConnected ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {waConnected ? 'אוטומטי ✅' : 'אוטומטי ⚠️'}
+                        </span>
+                      )}
+                      <span className="text-xs text-slate-400">
+                        {a.target_type === 'all' ? 'כל המתאמנים' : (a.target_phone || 'ספציפי')}
+                      </span>
+                    </div>
                   </td>
 
                   {/* Trigger */}
@@ -692,23 +878,32 @@ function AutomationsTable({
                     <span className={`inline-block px-2 py-0.5 rounded-md text-xs font-medium border ${TRIGGER_BADGE_CLASSES[meta.category]}`}>
                       {meta.label}
                     </span>
+                    {isAuto && (
+                      <p className="text-xs text-slate-400 mt-0.5 truncate">{nextRunLabel(a.trigger_type, tc)}</p>
+                    )}
                   </td>
 
-                  {/* Time */}
+                  {/* Time / Trigger info */}
                   <td className="px-3 py-2.5 text-xs text-slate-600 font-mono">
-                    {schedule.time || '—'}
+                    {isAuto ? (tc.time || tc.exact_date || '—') : (schedule.time || '—')}
                   </td>
 
                   {/* Days */}
                   <td className="px-3 py-2.5">
-                    {(schedule.days?.length > 0) ? (
+                    {isAuto && tc.weekdays?.length > 0 ? (
+                      <div className="flex flex-wrap gap-0.5">
+                        {tc.weekdays.map(d => (
+                          <span key={d} className="text-xs bg-green-100 text-green-700 rounded px-1">{DAYS_SHORT[d]}</span>
+                        ))}
+                      </div>
+                    ) : (schedule.days?.length > 0) ? (
                       <div className="flex flex-wrap gap-0.5">
                         {schedule.days.map(d => (
                           <span key={d} className="text-xs bg-slate-200 text-slate-600 rounded px-1">{DAYS_SHORT[d]}</span>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-xs text-slate-400">כל יום</span>
+                      <span className="text-xs text-slate-400">{isAuto ? 'בזמן אמת' : 'כל יום'}</span>
                     )}
                   </td>
 
@@ -789,23 +984,36 @@ function AutomationsTable({
                           <p className="text-xs font-bold text-slate-600 mb-1">פרטי קונפיגורציה</p>
                           <div className="space-y-1.5">
                             <ConfigLine label="ID" value={a.id.slice(-12)} />
-                            <ConfigLine label="הסכמה" value={a.consent_category} />
                             <ConfigLine label="Cooldown" value={`${a.cooldown_hours} שעות`} />
                             <ConfigLine label="יעד" value={a.target_type === 'all' ? 'כל המתאמנים' : a.target_phone} />
-                            {a.schedule_config && <ConfigLine label="Schedule JSON" value={a.schedule_config} />}
+                            {isAuto && a.trigger_config && (
+                              <ConfigLine label="Trigger JSON" value={a.trigger_config.slice(0, 80)} />
+                            )}
+                            {isAuto && (
+                              <ConfigLine label="תזמון הבא" value={nextRunLabel(a.trigger_type, tc)} />
+                            )}
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-slate-600 mb-1">סטטיסטיקות מהתור</p>
+                          <p className="text-xs font-bold text-slate-600 mb-1">ביצוע וסטטיסטיקה</p>
                           <div className="grid grid-cols-3 gap-2">
                             <StatCell label="נשלחו" value={stats.sent} color="text-green-700" bg="bg-green-50" />
                             <StatCell label="נכשלו" value={stats.failed} color="text-red-600" bg="bg-red-50" />
                             <StatCell label="בתור" value={stats.queued} color="text-blue-600" bg="bg-blue-50" />
                           </div>
                           <div className="mt-2 space-y-1">
+                            <ConfigLine label="ריצה אחרונה" value={a.last_run_at ? fmtDate(a.last_run_at) : 'טרם הופעל'} />
                             <ConfigLine label="נוצר" value={fmtDate(a.created_at)} />
                             <ConfigLine label="עודכן" value={fmtDate(a.updated_at)} />
                           </div>
+                          {isAuto && !a.enabled && (
+                            <p className="text-xs text-amber-600 mt-2">⚠️ כבוי — הפעל כדי להתחיל ביצוע אוטומטי</p>
+                          )}
+                          {isAuto && a.enabled && (
+                            <p className={`text-xs mt-2 ${waConnected ? 'text-green-600' : 'text-amber-600'}`}>
+                              {waConnected ? '✅ פעיל ומופעל אוטומטית כל 5 דק׳' : '⚠️ פעיל — ממתין לחיבור WhatsApp לשליחה'}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -1050,106 +1258,6 @@ function ExportCard({ icon, title, desc, onClick, btnLabel, color = 'slate' }) {
   );
 }
 
-// ─── AirboxTab ────────────────────────────────────────────────────────────────
-
-function AirboxTab() {
-  return (
-    <div className="space-y-5 py-2">
-      {/* Status */}
-      <div className="flex items-center gap-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
-        <WifiOff className="w-8 h-8 text-amber-500 flex-shrink-0" />
-        <div>
-          <p className="font-bold text-amber-800 text-sm">Airbox — לא מחובר</p>
-          <p className="text-xs text-amber-700 mt-0.5">
-            לא הוגדרו פרטי API לחיבור למערכת Airbox. ראה דרישות להלן.
-          </p>
-        </div>
-        <div className="mr-auto">
-          <span className="px-3 py-1 bg-amber-100 border border-amber-300 text-amber-700 text-xs font-semibold rounded-full">
-            NOT CONFIGURED
-          </span>
-        </div>
-      </div>
-
-      {/* Required credentials */}
-      <div className="border border-slate-200 rounded-xl overflow-hidden">
-        <div className="bg-slate-800 text-white px-4 py-2.5 text-sm font-bold flex items-center gap-2">
-          <Settings className="w-4 h-4" /> פרטי API נדרשים לחיבור Airbox
-        </div>
-        <div className="divide-y divide-slate-100">
-          {[
-            { key: 'AIRBOX_API_URL',    label: 'כתובת API',      example: 'https://api.airboxapp.com/v1', desc: 'כתובת הבסיס של Airbox API' },
-            { key: 'AIRBOX_API_KEY',    label: 'מפתח API',       example: 'ab_live_xxxxxxxxxxxx',         desc: 'מפתח API מחשבון Airbox שלך' },
-            { key: 'AIRBOX_GYM_ID',     label: 'מזהה מכון',      example: '12345',                        desc: 'מזהה המכון/עסק ב-Airbox' },
-            { key: 'AIRBOX_WEBHOOK_SECRET', label: 'Webhook Secret', example: 'whsec_xxxxxxxxxxxx',        desc: 'לאימות Webhook מ-Airbox (אופציונלי)' },
-          ].map(cred => (
-            <div key={cred.key} className="px-4 py-3 flex items-start gap-4">
-              <code className="text-xs bg-slate-100 text-slate-700 px-2 py-1 rounded font-mono shrink-0 w-52">{cred.key}</code>
-              <div className="flex-1">
-                <p className="text-xs font-semibold text-slate-700">{cred.label}</p>
-                <p className="text-xs text-slate-400 mt-0.5">{cred.desc}</p>
-                <p className="text-xs text-slate-300 font-mono mt-0.5">דוגמה: {cred.example}</p>
-              </div>
-              <span className="text-xs px-2 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded font-medium shrink-0">חסר</span>
-            </div>
-          ))}
-        </div>
-        <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 text-xs text-slate-500">
-          הוסף את הפרטים הנ״ל לקובץ <code className="bg-slate-200 px-1 rounded">.env</code> בשרת ו-deploy מחדש כדי להפעיל את חיבור Airbox.
-        </div>
-      </div>
-
-      {/* Placeholder action buttons */}
-      <div>
-        <h3 className="text-sm font-bold text-slate-700 mb-3">פעולות Airbox (יופעלו לאחר חיבור)</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: 'ייבא דוחות מ-Airbox',  icon: <Download className="w-4 h-4" />,  desc: 'ייבוא נתוני מתאמנים ודוחות מ-Airbox' },
-            { label: 'הורד דוח',              icon: <FileText className="w-4 h-4" />,  desc: 'הורדת דוח עדכני מ-Airbox' },
-            { label: 'סנכרן עכשיו',           icon: <RefreshCw className="w-4 h-4" />, desc: 'סנכרון מיידי של נתונים מ-Airbox' },
-            { label: 'הגדרות Airbox',         icon: <Settings className="w-4 h-4" />,  desc: 'ניהול הגדרות חיבור Airbox' },
-          ].map(action => (
-            <div key={action.label} className="border border-slate-200 rounded-xl p-4 bg-white opacity-60">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400">
-                  {action.icon}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-slate-700">{action.label}</p>
-                  <p className="text-xs text-slate-400">{action.desc}</p>
-                </div>
-              </div>
-              <button disabled
-                className="w-full text-xs font-medium px-3 py-2 rounded-lg bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200 flex items-center justify-center gap-1.5">
-                {action.icon}
-                {action.label}
-                <span className="mr-auto text-xs bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded">מחובר בקרוב</span>
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Last sync placeholder */}
-      <div className="border border-slate-200 rounded-xl p-4 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-slate-700">סנכרון אחרון</p>
-            <p className="text-xs text-slate-400 mt-0.5">לא בוצע סנכרון — Airbox לא מחובר</p>
-          </div>
-          <span className="text-xs text-slate-300">—</span>
-        </div>
-        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <p className="text-xs text-blue-700 flex items-start gap-1.5">
-            <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-            לאחר חיבור Airbox, ניתן לייבא רשימות מתאמנים, דוחות נוכחות, וסטטיסטיקות ישירות לפאנל האוטומציות.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function WhatsAppAutomations() {
@@ -1311,10 +1419,6 @@ export default function WhatsAppAutomations() {
               <TabsTrigger value="reports" className="gap-1.5 text-sm">
                 <BarChart3 className="w-4 h-4" /> דוחות
               </TabsTrigger>
-              <TabsTrigger value="airbox" className="gap-1.5 text-sm">
-                <Database className="w-4 h-4" /> Airbox
-                <span className="mr-1 px-1.5 py-0.5 bg-amber-100 text-amber-700 text-xs rounded-full font-bold">!</span>
-              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -1364,12 +1468,13 @@ export default function WhatsAppAutomations() {
               </div>
             </div>
 
-            {/* Queue info bar */}
-            <div className="flex items-center gap-2 px-4 py-2.5 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
-              <Info className="w-4 h-4 flex-shrink-0" />
+            {/* Execution model notice */}
+            <div className="flex items-start gap-2 px-4 py-2.5 mb-3 bg-teal-50 border border-teal-200 rounded-xl text-xs text-teal-800">
+              <Info className="w-4 h-4 flex-shrink-0 mt-0.5" />
               <span>
-                כל שליחה עוברת: <strong>Queue</strong> → <strong>Worker</strong> → <strong>Green API</strong>.
-                כפיל נחסם ע״י Idempotency key. הסכמת מתאמן נבדקת לפני כל שליחה.
+                אוטומציות מסוג <strong>אוטומטי</strong> מופעלות ע״י ה-cron כל 5 דקות (מנוע: <strong>runWhatsAppAutomationsBatch</strong>).
+                {' '}כל שליחה עוברת: <strong>Queue</strong> → <strong>Worker</strong> → <strong>Green API</strong>. כפיל נחסם ע״י Idempotency key.
+                {' '}לשליחת טסט ידנית: לחץ <strong>ולידציה → שלח טסט</strong>.
               </span>
             </div>
 
@@ -1384,6 +1489,7 @@ export default function WhatsAppAutomations() {
                   automations={filtered}
                   queueStatsMap={queueStatsMap}
                   coachEmail={user?.email}
+                  waConnected={waConnected}
                   onEdit={(a)       => { setEditing(a); setShowForm(true); }}
                   onDelete={(id)    => { if (confirm('למחוק את האוטומציה?')) deleteMutation.mutate(id); }}
                   onToggle={(a)     => toggleMutation.mutate({ id: a.id, enabled: a.enabled })}
@@ -1406,12 +1512,6 @@ export default function WhatsAppAutomations() {
             </div>
           </TabsContent>
 
-          {/* ── Airbox Tab ────────────────────────────────── */}
-          <TabsContent value="airbox">
-            <div className="bg-white border border-slate-200 rounded-xl px-6 py-5 shadow-sm">
-              <AirboxTab />
-            </div>
-          </TabsContent>
         </Tabs>
       </div>
 

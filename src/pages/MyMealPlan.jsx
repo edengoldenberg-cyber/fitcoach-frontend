@@ -1,17 +1,139 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import MacroWheels from '@/components/mealplan/MacroWheels';
 import MealItemRow from '@/components/mealplan/MealItemRow';
 import MealFeedbackChat from '@/components/mealplan/MealFeedbackChat';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, ChevronDown, ChevronUp, RefreshCw, Sparkles, Loader2, Calendar, Sun, MapPin } from 'lucide-react';
+import {
+  ChevronRight, ChevronDown, ChevronUp, RefreshCw,
+  Sparkles, Loader2, Calendar, Sun, MapPin, CheckCircle2, X,
+  ArrowLeft, Plus, Minus,
+} from 'lucide-react';
 
-const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+const DAY_NAMES_FALLBACK = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
-function MealCard({ meal, mealIndex, planId, onMealUpdated, dayIndex }) {
+// ── EditSuccessBanner ──────────────────────────────────────────────────────────
+
+function ItemLine({ item, removed }) {
+  const name = typeof item === 'string' ? item : (item?.food_item || '');
+  const cal  = typeof item === 'object' ? item?.calories : null;
+  const qty  = typeof item === 'object' ? (item?.quantity_description || (item?.quantity_grams ? `${item.quantity_grams}ג` : null)) : null;
+  return (
+    <div className={`flex justify-between items-baseline text-xs gap-1 ${removed ? 'text-slate-400 line-through' : 'text-green-700'}`}>
+      <span>{name}{qty ? ` — ${qty}` : ''}</span>
+      {cal != null && <span className="shrink-0">{Math.round(cal)} קק"ל</span>}
+    </div>
+  );
+}
+
+function MacroDelta({ label, before, after, unit = 'ג', colorClass = 'text-slate-600' }) {
+  if (before == null && after == null) return null;
+  const same = Math.abs((after || 0) - (before || 0)) <= 2;
+  return (
+    <span className="text-[11px] text-slate-500">
+      {label}:{' '}
+      {same
+        ? <span className={colorClass}>{after}{unit}</span>
+        : <><span className="line-through text-slate-400">{before}{unit}</span>{' → '}<span className={`font-medium ${colorClass}`}>{after}{unit}</span></>}
+    </span>
+  );
+}
+
+function ChangedMealCard({ mealDiff }) {
+  const calSame = Math.abs((mealDiff.after_calories || 0) - (mealDiff.before_calories || 0)) <= (mealDiff.before_calories || 0) * 0.05 && mealDiff.before_calories > 0;
+
+  return (
+    <div className="bg-white rounded-xl border border-green-100 p-3 space-y-2 text-right">
+      <p className="font-semibold text-slate-700 text-sm">{mealDiff.after_name || mealDiff.before_name}</p>
+
+      {mealDiff.removed_items?.length > 0 && (
+        <div className="space-y-0.5">
+          {mealDiff.removed_items.map((it, i) => <ItemLine key={i} item={it} removed />)}
+        </div>
+      )}
+      {mealDiff.removed_items?.length > 0 && mealDiff.added_items?.length > 0 && (
+        <div className="flex justify-center text-green-400 text-sm">↓</div>
+      )}
+      {mealDiff.added_items?.length > 0 && (
+        <div className="space-y-0.5">
+          {mealDiff.added_items.map((it, i) => <ItemLine key={i} item={it} removed={false} />)}
+        </div>
+      )}
+
+      <div className="border-t border-green-100 pt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {calSame ? (
+          <span className="text-[11px] text-slate-500">
+            קלוריות: <span className="text-slate-700">{mealDiff.after_calories}</span>{' '}
+            <span className="text-slate-400 italic">(נשמר)</span>
+          </span>
+        ) : (
+          <MacroDelta label="קלוריות" before={mealDiff.before_calories} after={mealDiff.after_calories} unit=" קק&quot;ל" colorClass="text-teal-700" />
+        )}
+        <MacroDelta label="חלבון"   before={mealDiff.before_protein} after={mealDiff.after_protein} colorClass="text-blue-600" />
+        <MacroDelta label="פחמימות" before={mealDiff.before_carbs}   after={mealDiff.after_carbs}   colorClass="text-amber-600" />
+        <MacroDelta label="שומן"    before={mealDiff.before_fat}     after={mealDiff.after_fat}     colorClass="text-green-600" />
+      </div>
+    </div>
+  );
+}
+
+function EditSuccessBanner({ banner, onDismiss }) {
+  if (!banner) return null;
+  const { change_summary } = banner;
+  const hasSummary = change_summary?.length > 0;
+
+  return (
+    <div className="mx-4 mb-2 bg-green-50 border border-green-200 rounded-2xl p-4 space-y-3" dir="rtl">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+          <p className="text-green-800 font-semibold text-sm">התפריט עודכן בהצלחה</p>
+        </div>
+        <button onClick={onDismiss} className="text-green-400 hover:text-green-600 p-1 rounded-full hover:bg-green-100 transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {hasSummary ? (
+        change_summary.map((day, di) => (
+          <div key={di} className="space-y-2">
+            <p className="text-xs font-bold text-green-800">יום {day.day_name}</p>
+            {day.changed_meals?.length > 0
+              ? day.changed_meals.map((mealDiff, mi) => (
+                  <ChangedMealCard key={mi} mealDiff={mealDiff} />
+                ))
+              : (
+                <div className="text-xs text-slate-500 flex flex-wrap gap-3">
+                  {Math.abs((day.after.calories || 0) - (day.before.calories || 0)) > 10 && (
+                    <MacroDelta label="קלוריות" before={day.before.calories} after={day.after.calories} unit=" קק&quot;ל" colorClass="text-teal-700" />
+                  )}
+                  <MacroDelta label="חלבון" before={day.before.protein} after={day.after.protein} colorClass="text-blue-600" />
+                </div>
+              )}
+          </div>
+        ))
+      ) : (
+        <p className="text-xs text-slate-500 text-right">{banner.ai_response}</p>
+      )}
+    </div>
+  );
+}
+
+// ── MealCard ───────────────────────────────────────────────────────────────────
+
+function MealCard({ meal, mealIndex, planId, onMealUpdated, dayIndex, isRecentlyChanged }) {
   const [expanded, setExpanded] = useState(true);
+  const [highlight, setHighlight] = useState(isRecentlyChanged);
+
+  useEffect(() => {
+    if (!isRecentlyChanged) return;
+    setHighlight(true);
+    const t = setTimeout(() => setHighlight(false), 3000);
+    return () => clearTimeout(t);
+  }, [isRecentlyChanged]);
 
   const mealName = meal.meal_name || '';
   const emoji = mealName.includes('בוקר') ? '🌅' :
@@ -20,7 +142,16 @@ function MealCard({ meal, mealIndex, planId, onMealUpdated, dayIndex }) {
     mealName.includes('אמצע') ? '🍎' : '🍽️';
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <div
+      data-meal-key={`${dayIndex}-${mealIndex}`}
+      className="rounded-2xl border border-slate-100 shadow-sm overflow-hidden"
+      style={{
+        backgroundColor: highlight ? '#d1fae5' : 'white',
+        transition: 'background-color 1s ease-out',
+        outline: highlight ? '2px solid #6ee7b7' : 'none',
+        outlineOffset: '0px',
+      }}
+    >
       <button onClick={() => setExpanded(e => !e)} className="w-full flex items-center justify-between p-4">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl" style={{ backgroundColor: '#f0fdfb' }}>
@@ -71,12 +202,12 @@ function MealCard({ meal, mealIndex, planId, onMealUpdated, dayIndex }) {
   );
 }
 
-const DAY_NAMES_FALLBACK = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
+// ── DayView ────────────────────────────────────────────────────────────────────
 
-function DayView({ day, dayIndex, planId, onRefresh, onDayChanged }) {
+function DayView({ day, dayIndex, planId, onRefresh, onDayChanged, onEditSuccess, highlightedMeals }) {
   const dayName = day.day_name && day.day_name !== 'null' ? day.day_name : DAY_NAMES_FALLBACK[dayIndex] || `יום ${dayIndex + 1}`;
 
-  const meals = Array.isArray(day.meals) ? day.meals : [];
+  const meals   = Array.isArray(day.meals) ? day.meals : [];
   const dayCals  = day.daily_calories || meals.reduce((s, m) => s + (m.meal_calories || 0), 0);
   const dayPro   = day.daily_protein  || meals.reduce((s, m) => s + (m.meal_protein  || 0), 0);
   const dayCarbs = day.daily_carbs    || meals.reduce((s, m) => s + (m.meal_carbs    || 0), 0);
@@ -97,7 +228,7 @@ function DayView({ day, dayIndex, planId, onRefresh, onDayChanged }) {
           <p className="text-sm text-orange-700 text-right">יום אכילה בחוץ — כולל המלצות למסעדה</p>
         </div>
       )}
-      {day.meals?.map((meal, idx) => (
+      {meals.map((meal, idx) => (
         <MealCard
           key={idx}
           meal={meal}
@@ -105,6 +236,10 @@ function DayView({ day, dayIndex, planId, onRefresh, onDayChanged }) {
           dayIndex={dayIndex}
           planId={planId}
           onMealUpdated={onRefresh}
+          isRecentlyChanged={
+            highlightedMeals?.dayIndex === dayIndex &&
+            (highlightedMeals?.mealIndexes?.includes(idx) ?? false)
+          }
         />
       ))}
       <MealFeedbackChat
@@ -112,28 +247,32 @@ function DayView({ day, dayIndex, planId, onRefresh, onDayChanged }) {
         dayIndex={dayIndex}
         onPlanUpdated={onRefresh}
         onDayChanged={onDayChanged}
+        onEditSuccess={onEditSuccess}
       />
     </div>
   );
 }
 
+// ── MyMealPlan (page) ─────────────────────────────────────────────────────────
+
 export default function MyMealPlan() {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const [selectedDay, setSelectedDay] = useState(0);
+  const navigate     = useNavigate();
+  const queryClient  = useQueryClient();
+  const [selectedDay, setSelectedDay]     = useState(0);
   const [generatingWeekly, setGeneratingWeekly] = useState(false);
+  const [editBanner, setEditBanner]       = useState(null);
+  const [highlightedMeals, setHighlightedMeals] = useState(null);
+  const bannerDismissTimer = useRef(null);
 
   const { data: user } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
   const { data: traineeList } = useQuery({
     queryKey: ['wizard_trainee', user?.id, user?.email],
     queryFn: async () => {
       if (!user) return [];
-      // Primary: lookup by user_id (works once invite link has been consumed)
       try {
         const byId = await base44.entities.Trainee.filter({ user_id: user.id });
         if (byId?.length) return byId;
       } catch { /* ignore */ }
-      // Fallback: lookup by email (works for trainees whose user_id isn't linked yet)
       try {
         const byEmail = await base44.entities.Trainee.filter({ user_email: user.email });
         if (byEmail?.length) return byEmail;
@@ -145,13 +284,6 @@ export default function MyMealPlan() {
   });
   const trainee = traineeList?.[0];
 
-  const { data: prefsList } = useQuery({
-    queryKey: ['mealPrefs', trainee?.id],
-    queryFn: () => base44.entities.MealPlanPreferences.filter({ trainee_id: trainee?.id }),
-    enabled: !!trainee?.id,
-  });
-  const prefs = prefsList?.[0];
-
   const { data: plan, isLoading, refetch } = useQuery({
     queryKey: ['activeMealPlan', trainee?.id],
     queryFn: async () => {
@@ -159,7 +291,6 @@ export default function MyMealPlan() {
       const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
       const raw = plans[0];
       if (!raw) return null;
-      // meals and weekly_days are stored as JSON strings in the DB — parse them here.
       return {
         ...raw,
         meals:       typeof raw.meals       === 'string' ? JSON.parse(raw.meals)       : (raw.meals       || []),
@@ -174,16 +305,14 @@ export default function MyMealPlan() {
     await refetch();
   };
 
-  // Bug 4 fix: When the active plan loads, sync its calorie/protein/carbs/fat totals
-  // back to the trainee's target_* fields so the nutrition dashboard circles match.
+  // Sync plan totals → trainee targets so nutrition dashboard rings match.
   useEffect(() => {
     if (!plan || !trainee?.id) return;
     const planCal  = plan.total_calories || 0;
     const planPro  = plan.total_protein  || 0;
     const planCarb = plan.total_carbs    || 0;
     const planFat  = plan.total_fat      || 0;
-    if (!planCal && !planPro) return; // no meaningful values yet
-    // Only sync if the trainee targets diverge from the plan values
+    if (!planCal && !planPro) return;
     if (
       trainee.target_calories !== planCal ||
       trainee.target_protein  !== planPro ||
@@ -191,10 +320,8 @@ export default function MyMealPlan() {
       trainee.target_fat      !== planFat
     ) {
       base44.entities.Trainee.update(trainee.id, {
-        target_calories: planCal,
-        target_protein:  planPro,
-        target_carbs:    planCarb,
-        target_fat:      planFat,
+        target_calories: planCal, target_protein: planPro,
+        target_carbs: planCarb,  target_fat:     planFat,
       }).then(() => {
         queryClient.invalidateQueries({ queryKey: ['trainee'] });
         queryClient.invalidateQueries({ queryKey: ['wizard_trainee'] });
@@ -202,44 +329,59 @@ export default function MyMealPlan() {
     }
   }, [plan?.id, trainee?.id]);
 
+  // Scroll to first changed meal after selectedDay navigation settles.
+  useEffect(() => {
+    if (!highlightedMeals || highlightedMeals.dayIndex !== selectedDay) return;
+    const firstMealIdx = highlightedMeals.mealIndexes?.[0];
+    if (firstMealIdx == null) return;
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-meal-key="${selectedDay}-${firstMealIdx}"]`);
+      el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
+    return () => clearTimeout(t);
+  }, [selectedDay, highlightedMeals]);
+
+  // Auto-dismiss banner after 20 s.
+  useEffect(() => {
+    if (!editBanner) return;
+    clearTimeout(bannerDismissTimer.current);
+    bannerDismissTimer.current = setTimeout(() => setEditBanner(null), 20000);
+    return () => clearTimeout(bannerDismissTimer.current);
+  }, [editBanner]);
+
+  const handleEditSuccess = (data) => {
+    setEditBanner(data);
+    // Mark which meals to highlight
+    const firstChangedDay = data.changed_indexes?.[0];
+    const summary = data.change_summary?.find(d => d.day_index === firstChangedDay);
+    const mealIndexes = summary?.changed_meals?.map(m => m.meal_index) ?? [];
+    setHighlightedMeals({ dayIndex: firstChangedDay ?? 0, mealIndexes });
+    // Clear highlight after animation completes
+    setTimeout(() => setHighlightedMeals(null), 4000);
+  };
+
   const generateWeekly = async () => {
     if (!trainee) return;
     setGeneratingWeekly(true);
-
-    // Fire-and-forget — server generates the plan asynchronously
-    base44.functions.invoke('generateWeeklyMealPlan', {
-      trainee_id: trainee.id,
-      trainee_email: trainee.user_email,
-    }).catch(() => {});
-
-    // Poll every 4s for up to 90s (increased from 60s to allow for longer AI calls)
-    let attempts = 0;
-    const maxAttempts = 22; // 22 × 4s = 88s
-    const poll = setInterval(async () => {
-      attempts++;
-      try {
-        const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
-        const weeklyPlan = plans.find(p => {
-          const days = typeof p.weekly_days === 'string' ? (() => { try { return JSON.parse(p.weekly_days || '[]'); } catch { return []; } })() : (p.weekly_days || []);
-          return p.is_weekly && Array.isArray(days) && days.length >= 7;
-        });
-        if (weeklyPlan || attempts >= maxAttempts) {
-          clearInterval(poll);
-          try {
-            await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
-            await refetch();
-            setSelectedDay(0);
-          } catch { /* ignore refresh errors */ } finally {
-            setGeneratingWeekly(false);
-          }
-        }
-      } catch {
-        if (attempts >= maxAttempts) {
-          clearInterval(poll);
-          setGeneratingWeekly(false);
-        }
+    try {
+      const res = await base44.functions.invoke('generateWeeklyMealPlan', {
+        trainee_id:    trainee.id,
+        trainee_email: trainee.user_email,
+      });
+      if (!res?.ok || !res?.data?.plan) {
+        const errMsg = res?.error || 'לא הצלחנו ליצור תפריט שבועי. נסה שוב.';
+        toast.error(errMsg);
+        return;
       }
-    }, 3000);
+      await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
+      await refetch();
+      setSelectedDay(0);
+      toast.success('תפריט שבועי נוצר בהצלחה!');
+    } catch (err) {
+      toast.error('שגיאה ביצירת תפריט שבועי. נסה שוב.');
+    } finally {
+      setGeneratingWeekly(false);
+    }
   };
 
   if (isLoading) {
@@ -257,9 +399,11 @@ export default function MyMealPlan() {
         <div className="text-6xl">🍽️</div>
         <h2 className="text-xl font-bold text-slate-800 text-center">עוד אין לך תפריט אישי</h2>
         <p className="text-slate-500 text-center text-sm">בנה תפריט אישי מותאם לך עם עזרת AI</p>
-        <Button onClick={() => navigate('/MealPlanWizard')}
+        <Button
+          onClick={() => navigate('/MealPlanWizard')}
           className="gap-2 text-white font-bold px-8"
-          style={{ backgroundColor: '#79DBD6' }}>
+          style={{ backgroundColor: '#79DBD6' }}
+        >
           <Sparkles className="w-5 h-5" />
           בנה תפריט אישי
         </Button>
@@ -267,9 +411,9 @@ export default function MyMealPlan() {
     );
   }
 
-  const isWeekly = plan.is_weekly && plan.weekly_days?.length > 0;
-  const currentDay = isWeekly ? plan.weekly_days[selectedDay] : null;
-  const todayDayOfWeek = new Date().getDay(); // 0=Sun
+  const isWeekly    = plan.is_weekly && plan.weekly_days?.length > 0;
+  const currentDay  = isWeekly ? plan.weekly_days[selectedDay] : null;
+  const todayDayOfWeek = new Date().getDay();
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24" dir="rtl">
@@ -283,125 +427,140 @@ export default function MyMealPlan() {
             <h1 className="text-lg font-bold text-slate-800">התפריט שלי</h1>
             <p className="text-xs text-slate-500">{plan.plan_name || 'תפריט אישי'}</p>
           </div>
-          <button onClick={() => navigate('/MealPlanWizard')}
-            className="p-2 rounded-full hover:bg-slate-100" title="הגדרות תפריט">
+          <button onClick={() => navigate('/MealPlanWizard')} className="p-2 rounded-full hover:bg-slate-100" title="הגדרות תפריט">
             <RefreshCw className="w-4 h-4 text-slate-500" />
           </button>
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-4 space-y-4">
+      <div className="max-w-lg mx-auto py-4 space-y-4">
 
-        {/* Weekly / Daily toggle */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate('/MealPlanWizard')}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            <Sun className="w-3.5 h-3.5" />
-            תפריט יומי
-          </button>
-          <button
-            onClick={generateWeekly}
-            disabled={generatingWeekly}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all disabled:opacity-60"
-            style={{
-              backgroundColor: isWeekly ? '#79DBD6' : 'white',
-              color: isWeekly ? 'white' : '#79DBD6',
-              borderColor: '#79DBD6'
-            }}
-          >
-            {generatingWeekly ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
-            {generatingWeekly ? 'מכין תפריט שבועי...' : isWeekly ? 'תפריט שבועי ✓' : 'צור תפריט שבועי'}
-          </button>
-        </div>
+        {/* Success banner — rendered at page level, survives day navigation */}
+        <EditSuccessBanner banner={editBanner} onDismiss={() => setEditBanner(null)} />
 
-        {/* Weekly day tabs */}
-        {isWeekly && (
-          <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
-            {plan.weekly_days.map((day, idx) => {
-              const isToday = idx === todayDayOfWeek;
-              const isSelected = idx === selectedDay;
-              const tabDayName = day.day_name && day.day_name !== 'null' ? day.day_name : DAY_NAMES_FALLBACK[idx] || `יום ${idx + 1}`;
-              return (
-                <button
-                  key={idx}
-                  onClick={() => setSelectedDay(idx)}
-                  className="flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl text-xs font-medium transition-all"
-                  style={{
-                    backgroundColor: isSelected ? '#79DBD6' : isToday ? '#f0fdfb' : 'white',
-                    color: isSelected ? 'white' : isToday ? '#079688' : '#64748b',
-                    border: `1.5px solid ${isSelected ? '#79DBD6' : isToday ? '#b2f5ea' : '#e2e8f0'}`
-                  }}
-                >
-                  <span>{tabDayName}</span>
-                  {day.is_eating_out_day && <span className="mt-0.5">🍴</span>}
-                  {isToday && !isSelected && <span className="mt-0.5 text-[9px] text-teal-500">היום</span>}
-                </button>
-              );
-            })}
+        <div className="px-4 space-y-4">
+          {/* Weekly / Daily toggle */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate('/MealPlanWizard')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              <Sun className="w-3.5 h-3.5" />
+              תפריט יומי
+            </button>
+            <button
+              onClick={generateWeekly}
+              disabled={generatingWeekly}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-all disabled:opacity-60"
+              style={{
+                backgroundColor: isWeekly ? '#79DBD6' : 'white',
+                color: isWeekly ? 'white' : '#79DBD6',
+                borderColor: '#79DBD6',
+              }}
+            >
+              {generatingWeekly ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Calendar className="w-3.5 h-3.5" />}
+              {generatingWeekly ? 'מכין תפריט שבועי...' : isWeekly ? 'תפריט שבועי ✓' : 'צור תפריט שבועי'}
+            </button>
           </div>
-        )}
 
-        {/* Content */}
-        {isWeekly && currentDay ? (
-          <DayView
-            day={currentDay}
-            dayIndex={selectedDay}
-            planId={plan.id}
-            onRefresh={handleRefresh}
-            onDayChanged={(idx) => {
-              const maxIdx = (plan.weekly_days?.length || 1) - 1;
-              setSelectedDay(Math.min(Math.max(0, idx), maxIdx));
-            }}
-          />
-        ) : (
-          <>
-            {/* Single day view */}
-            <MacroWheels
-              calories={plan.total_calories || 0}
-              protein={plan.total_protein || 0}
-              carbs={plan.total_carbs || 0}
-              fat={plan.total_fat || 0}
-              title="ערכים תזונתיים יומיים"
+          {/* Weekly day tabs */}
+          {isWeekly && (
+            <div className="flex gap-1 overflow-x-auto pb-1 -mx-1 px-1">
+              {plan.weekly_days.map((day, idx) => {
+                const isToday    = idx === todayDayOfWeek;
+                const isSelected = idx === selectedDay;
+                const tabDayName = day.day_name && day.day_name !== 'null' ? day.day_name : DAY_NAMES_FALLBACK[idx] || `יום ${idx + 1}`;
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedDay(idx)}
+                    className="flex-shrink-0 flex flex-col items-center px-3 py-2 rounded-xl text-xs font-medium transition-all"
+                    style={{
+                      backgroundColor: isSelected ? '#79DBD6' : isToday ? '#f0fdfb' : 'white',
+                      color: isSelected ? 'white' : isToday ? '#079688' : '#64748b',
+                      border: `1.5px solid ${isSelected ? '#79DBD6' : isToday ? '#b2f5ea' : '#e2e8f0'}`,
+                    }}
+                  >
+                    <span>{tabDayName}</span>
+                    {day.is_eating_out_day && <span className="mt-0.5">🍴</span>}
+                    {isToday && !isSelected && <span className="mt-0.5 text-[9px] text-teal-500">היום</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Content */}
+          {isWeekly && currentDay ? (
+            <DayView
+              day={currentDay}
+              dayIndex={selectedDay}
+              planId={plan.id}
+              onRefresh={handleRefresh}
+              onDayChanged={(idx) => {
+                const maxIdx = (plan.weekly_days?.length || 1) - 1;
+                setSelectedDay(Math.min(Math.max(0, idx), maxIdx));
+              }}
+              onEditSuccess={handleEditSuccess}
+              highlightedMeals={highlightedMeals}
             />
+          ) : (
+            <>
+              <MacroWheels
+                calories={plan.total_calories || 0}
+                protein={plan.total_protein || 0}
+                carbs={plan.total_carbs || 0}
+                fat={plan.total_fat || 0}
+                title="ערכים תזונתיים יומיים"
+              />
 
-            {plan.ai_notes && (
-              <div className="bg-gradient-to-r from-teal-50 to-blue-50 rounded-2xl p-4 border border-teal-100">
-                <div className="flex items-start gap-2">
-                  <span className="text-xl">🤖</span>
-                  <div>
-                    <p className="text-xs font-bold text-teal-700 mb-1">המלצות מה-AI</p>
-                    <p className="text-sm text-slate-700 leading-relaxed">{plan.ai_notes}</p>
+              {plan.ai_notes && (
+                <div className="bg-gradient-to-r from-teal-50 to-blue-50 rounded-2xl p-4 border border-teal-100">
+                  <div className="flex items-start gap-2">
+                    <span className="text-xl">🤖</span>
+                    <div>
+                      <p className="text-xs font-bold text-teal-700 mb-1">המלצות מה-AI</p>
+                      <p className="text-sm text-slate-700 leading-relaxed">{plan.ai_notes}</p>
+                    </div>
                   </div>
                 </div>
+              )}
+
+              <div className="space-y-3">
+                {plan.meals?.map((meal, idx) => (
+                  <MealCard
+                    key={idx}
+                    meal={meal}
+                    mealIndex={idx}
+                    planId={plan.id}
+                    onMealUpdated={handleRefresh}
+                    isRecentlyChanged={
+                      highlightedMeals?.dayIndex === 0 &&
+                      (highlightedMeals?.mealIndexes?.includes(idx) ?? false)
+                    }
+                  />
+                ))}
               </div>
-            )}
 
-            <div className="space-y-3">
-              {plan.meals?.map((meal, idx) => (
-                <MealCard
-                  key={idx}
-                  meal={meal}
-                  mealIndex={idx}
-                  planId={plan.id}
-                  onMealUpdated={handleRefresh}
-                />
-              ))}
-            </div>
+              <MealFeedbackChat
+                planId={plan.id}
+                dayIndex={0}
+                onPlanUpdated={handleRefresh}
+                onDayChanged={null}
+                onEditSuccess={handleEditSuccess}
+              />
+            </>
+          )}
 
-            <MealFeedbackChat planId={plan.id} dayIndex={0} onPlanUpdated={handleRefresh} onDayChanged={null} />
-          </>
-        )}
-
-        {/* Rebuild button */}
-        <button
-          onClick={() => navigate('/MealPlanWizard')}
-          className="w-full py-3.5 rounded-2xl border-2 border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-teal-50 transition-all"
-        >
-          <RefreshCw className="w-4 h-4" />
-          בנה תפריט חדש
-        </button>
+          {/* Rebuild button */}
+          <button
+            onClick={() => navigate('/MealPlanWizard')}
+            className="w-full py-3.5 rounded-2xl border-2 border-teal-300 text-teal-600 font-semibold text-sm flex items-center justify-center gap-2 hover:bg-teal-50 transition-all"
+          >
+            <RefreshCw className="w-4 h-4" />
+            בנה תפריט חדש
+          </button>
+        </div>
       </div>
     </div>
   );

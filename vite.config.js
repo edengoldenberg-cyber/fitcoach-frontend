@@ -14,41 +14,25 @@ export default defineConfig({
       // No user prompt, no manual reload required — behaves like WhatsApp.
       registerType: 'autoUpdate',
 
-      // Inject the SW registration shim into index.html automatically
-      injectRegister: 'auto',
+      // Registration is handled by the inline iOS guard in index.html.
+      // 'null' stops vite-plugin-pwa from injecting its own registerSW.js,
+      // so iOS never registers the SW and non-iOS registers manually.
+      injectRegister: null,
 
-      workbox: {
-        // Take control of all clients immediately on activation
-        skipWaiting: true,
-        clientsClaim: true,
+      // injectManifest: use our custom src/sw.js so we can synchronously bypass
+      // the Railway API before Workbox route-matching runs.
+      // (generateSW cannot add arbitrary fetch event listeners.)
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.js',
 
+      injectManifest: {
         // The main bundle is ~3.5 MB; raise the limit so it gets precached
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MB
 
-        // Cache static assets (JS, CSS, fonts, images) with CacheFirst
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
-            // API calls: NetworkFirst — always try network, fall back to cache
-            urlPattern: /\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 10,
-              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 60 },
-            },
-          },
-        ],
-
-        // Glob patterns for precaching all built assets
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // JS excluded — runtime-cached in src/sw.js (CacheFirst, content-addressed).
+        // Precache only small static assets so SW updates are near-instant.
+        globPatterns: ['**/*.{css,html,ico,png,svg,woff2}'],
       },
 
       manifest: {
