@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -73,10 +73,55 @@ function calculateMacros(prefs) {
   };
 }
 
+// Hebrew labels for real backend stages
+const STAGE_LABELS = {
+  REQUEST_ACCEPTED:       'מתחיל יצירה',
+  INPUTS_LOADED:          'טוען נתוני מתאמן',
+  AI_GENERATION_STARTED:  'ה-AI מייצר תפריט שבועי',
+  AI_RESPONSE_RECEIVED:   'תגובת AI התקבלה',
+  WEEKLY_DAYS_PARSED:     'מעבד 7 ימים',
+  NORMALIZATION_COMPLETED:'נרמול ערכים',
+  REPAIR_STARTED:         'בודק דיוק תזונתי',
+  REPAIR_COMPLETED:       'תיקון הושלם',
+  VALIDATION_COMPLETED:   'ולידציה עברה',
+  TRANSACTION_STARTED:    'שומר תפריט',
+  PLAN_SAVED:             'תפריט נשמר',
+  ACTIVE_PLAN_CONFIRMED:  'הושלם',
+  FAILED:                 'נכשל',
+};
+
+function getStageLabel(stage) {
+  return STAGE_LABELS[stage] || stage || 'מעבד...';
+}
+
+const STAGE_STEPS = {
+  REQUEST_ACCEPTED:        1,
+  INPUTS_LOADED:           2,
+  AI_GENERATION_STARTED:   3,
+  AI_RESPONSE_RECEIVED:    4,
+  WEEKLY_DAYS_PARSED:      5,
+  NORMALIZATION_COMPLETED: 6,
+  REPAIR_STARTED:          7,
+  REPAIR_COMPLETED:        8,
+  VALIDATION_COMPLETED:    9,
+  TRANSACTION_STARTED:     9,
+  PLAN_SAVED:              10,
+  ACTIVE_PLAN_CONFIRMED:   10,
+};
+const STAGE_TOTAL = 10;
+
 export default function MealPlanWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
+  const [genProgress, setGenProgress] = useState(0);
+  const [genStage, setGenStage] = useState('');
+  const [genStep, setGenStep] = useState(null);
+  const [genStartTime, setGenStartTime] = useState(null);
+  const [genError, setGenError] = useState(null);
+  const [activeJobId, setActiveJobId] = useState(null);
+  const pollIntervalRef = useRef(null);
+  const progressPanelRef = useRef(null);
   const [foodInput, setFoodInput] = useState('');
   const [dislikedInput, setDislikedInput] = useState('');
 
@@ -155,14 +200,115 @@ export default function MealPlanWizard() {
     setInput('');
   };
 
+  const JOB_KEY = trainee?.id ? `mealGenJob_${trainee.id}` : null;
+
+  // Stop polling and clear state
+  const stopPolling = () => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), []);
+
+  // On mount: reconnect to any active job stored in localStorage
+  useEffect(() => {
+    if (!JOB_KEY || generating) return;
+    const savedJobId = localStorage.getItem(JOB_KEY);
+    if (!savedJobId) return;
+    // Silently check if job is still active (no UI change if already done)
+    base44.functions.invoke('getMealJobStatus', { job_id: savedJobId })
+      .then(res => {
+        const job = res?.data;
+        if (!job) { localStorage.removeItem(JOB_KEY); return; }
+        if (job.status === 'queued' || job.status === 'running') {
+          // Resume showing progress
+          setActiveJobId(savedJobId);
+          setGenerating(true);
+          setGenProgress(job.progress != null ? job.progress : 5);
+          setGenStage(getStageLabel(job.stage));
+          setGenStep(STAGE_STEPS[job.stage] || null);
+          setGenStartTime(Date.now() - 60000); // estimate: we're ~60s in
+        } else {
+          localStorage.removeItem(JOB_KEY);
+        }
+      })
+      .catch(() => localStorage.removeItem(JOB_KEY));
+  }, [JOB_KEY]);
+
+  // Polling effect — fires every 5 s while a job is active
+  useEffect(() => {
+    if (!generating || !activeJobId) return;
+    stopPolling();
+
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const res = await base44.functions.invoke('getMealJobStatus', { job_id: activeJobId });
+        const job = res?.data;
+        if (!job) return;
+
+        // Never regress displayed progress — only update when backend sends a real value
+        if (job.progress != null && job.stage !== 'ACTIVE_PLAN_CONFIRMED') {
+          setGenProgress(Math.min(job.progress, 99));
+        }
+        setGenStage(getStageLabel(job.stage));
+        setGenStep(STAGE_STEPS[job.stage] || null);
+
+        if (job.status === 'completed' && job.active_plan_id) {
+          stopPolling();
+          setGenProgress(100);
+          setGenStage('הושלם');
+          setGenStep(STAGE_TOTAL);
+          if (JOB_KEY) localStorage.removeItem(JOB_KEY);
+          setTimeout(() => navigate(`/MyMealPlan?plan_id=${job.active_plan_id}`), 400);
+        } else if (job.status === 'failed') {
+          stopPolling();
+          if (JOB_KEY) localStorage.removeItem(JOB_KEY);
+          setGenError({
+            job_id:     job.id,
+            trace_id:   job.trace_id,
+            traineeId:  job.trainee_id,
+            calories:   job.requested_calories,
+            stage:      job.stage,
+            safe_error: job.safe_error,
+            validation_codes: job.validation_codes,
+            started_at: job.started_at,
+            failed_at:  job.completed_at,
+            total_runtime_ms: job.started_at ? Date.now() - new Date(job.started_at).getTime() : null,
+            ts: new Date().toISOString(),
+          });
+          setGenerating(false);
+          setGenProgress(0);
+          setGenStage('');
+          setGenStep(null);
+        }
+      } catch (err) {
+        console.warn('[MealPlanWizard] poll error:', err.message);
+      }
+    }, 5000);
+
+    return stopPolling;
+  }, [generating, activeJobId]);
+
   const handleGenerate = async () => {
     if (!trainee) {
       alert('לא נמצאו פרטי מתאמן. נסה לרענן את הדף.');
       return;
     }
+
     setGenerating(true);
+    setGenProgress(5);
+    setGenStage('מתחיל יצירה');
+    setGenStep(1);
+    setGenError(null);
+    setGenStartTime(Date.now());
+    // Scroll to progress panel (it's above the button in the DOM)
+    setTimeout(() => progressPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+
     try {
-      // Sync calculated macros to Trainee — ensures NutritionLog shows same targets
+      // Sync calculated macros first (fast DB write)
       if (macros && trainee?.id) {
         await base44.entities.Trainee.update(trainee.id, {
           target_calories: macros.targetCalories,
@@ -172,20 +318,37 @@ export default function MealPlanWizard() {
         });
       }
 
-      // Generate plan — pass full prefs so AI prompt includes all user constraints
-      const res = await base44.functions.invoke('generatePersonalMealPlan', {
+      // Start job — returns job_id immediately; backend generates asynchronously
+      const startRes = await base44.functions.invoke('startMealGenerationJob', {
         trainee_id: trainee.id,
+        mode:       'personal',
         prefs,
       });
 
-      const planId = res?.data?.plan?.id;
-      if (!planId) throw new Error('Plan was not saved — missing id');
-      navigate(`/MyMealPlan?plan_id=${planId}`);
+      const jobId = startRes?.data?.job_id;
+      if (!jobId) throw new Error('Failed to start generation job');
+
+      // Persist job_id so browser refresh can reconnect
+      if (JOB_KEY) localStorage.setItem(JOB_KEY, jobId);
+      setActiveJobId(jobId);
+      setGenProgress(startRes?.data?.existing ? 20 : 5);
+      setGenStage(startRes?.data?.existing ? 'ממשיך יצירה קיימת' : 'מתחיל יצירה');
+      // Polling effect takes over from here
+
     } catch (err) {
-      console.error(err);
-      alert('שגיאה ביצירת התפריט, אנא נסה שוב');
-    } finally {
+      console.error('[MealPlanWizard] start error:', err.message);
+      setGenError({
+        job_id: null, trace_id: null,
+        traineeId: trainee?.id,
+        calories: macros?.targetCalories,
+        stage: 'REQUEST_FAILED',
+        safe_error: err.message,
+        ts: new Date().toISOString(),
+      });
       setGenerating(false);
+      setGenProgress(0);
+      setGenStage('');
+      setGenStep(null);
     }
   };
 
@@ -614,6 +777,93 @@ export default function MealPlanWizard() {
               ))}
             </div>
 
+            {/* Error state — confirmed failure, old plan preserved */}
+            {genError && !generating && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
+                <p className="text-sm font-bold text-red-800">
+                  לא הצלחנו ליצור את התפריט.
+                </p>
+                <p className="text-xs text-red-700">
+                  התפריט הקודם שלך נשמר ולא בוצע שום שינוי.
+                </p>
+                <button
+                  className="w-full py-2 rounded-xl border border-red-300 text-red-700 text-xs font-medium hover:bg-red-100 transition-colors"
+                  onClick={() => {
+                    const report = [
+                      '=== FitCoach Meal Plan Error Report ===',
+                      `trace_id: ${genError.trace_id || 'N/A'}`,
+                      `job_id: ${genError.job_id || 'N/A'}`,
+                      `trainee_id: ${genError.traineeId || 'N/A'}`,
+                      `requested_calories: ${genError.calories || 'N/A'}`,
+                      `started_at: ${genError.started_at || 'N/A'}`,
+                      `failed_at: ${genError.failed_at || 'N/A'}`,
+                      `total_runtime_ms: ${genError.total_runtime_ms || 'N/A'}`,
+                      `current_stage: ${genError.stage || 'N/A'}`,
+                      `backend_safe_error: ${genError.safe_error || 'N/A'}`,
+                      `validation_codes: ${genError.validation_codes || '[]'}`,
+                      `frontend_ts: ${genError.ts || 'N/A'}`,
+                      `old_plan_preserved: true`,
+                      `new_plan_created: false`,
+                    ].join('\n');
+                    navigator.clipboard.writeText(report).catch(() => {});
+                    alert('דוח שגיאה הועתק ללוח!');
+                  }}
+                >
+                  העתק דוח תקלה
+                </button>
+              </div>
+            )}
+
+            {/* Progress display — real backend stages via job polling */}
+            {generating && (() => {
+              const elapsedMs    = genStartTime ? Date.now() - genStartTime : 0;
+              const rateMs       = genProgress > 5 ? elapsedMs / genProgress : null;
+              const remainingMs  = rateMs ? Math.max(0, rateMs * (100 - genProgress)) : null;
+              const remainingMin = remainingMs != null ? Math.ceil(remainingMs / 60000) : null;
+              const estLabel     = remainingMin == null
+                ? null
+                : remainingMin <= 1
+                  ? 'פחות מדקה (הערכה)'
+                  : `~${remainingMin} דקות (הערכה)`;
+              return (
+                <div className="space-y-3" ref={progressPanelRef}>
+                  <div className="bg-teal-50 border border-teal-200 rounded-2xl p-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-semibold text-teal-800">{genStage || 'מתחיל...'}</span>
+                      <div className="flex items-center gap-2">
+                        {genStep != null && (
+                          <span className="text-xs text-teal-600 font-medium">שלב {genStep} מתוך {STAGE_TOTAL}</span>
+                        )}
+                        <span className="text-teal-700 font-mono font-bold text-sm">{genProgress}%</span>
+                      </div>
+                    </div>
+                    <div className="w-full bg-teal-100 rounded-full h-3 overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-700"
+                        style={{
+                          width: `${Math.max(genProgress, 4)}%`,
+                          background: 'linear-gradient(90deg, #79DBD6, #3b82f6)',
+                        }}
+                      />
+                    </div>
+                    {estLabel && genProgress > 5 && genProgress < 99 && (
+                      <p className="text-xs text-teal-600 text-center font-medium">{estLabel}</p>
+                    )}
+                    {genProgress <= 5 && (
+                      <p className="text-xs text-teal-600 text-center">
+                        ה-AI בונה תפריט שבועי מלא — תהליך זה לוקח 3–5 דקות
+                      </p>
+                    )}
+                    {genStartTime && (Date.now() - genStartTime) > 180000 && genProgress < 90 && (
+                      <p className="text-xs text-amber-600 text-center">
+                        ממשיך לעבוד ברקע — אפשר לסגור ולחזור
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+
             <button
               onClick={handleGenerate}
               disabled={generating || traineeLoading || !trainee}
@@ -633,15 +883,10 @@ export default function MealPlanWizard() {
               ) : (
                 <>
                   <Sparkles className="w-6 h-6" />
-                  צור תפריט אישי עם AI
+                  {genError ? 'נסה שוב' : 'צור תפריט אישי עם AI'}
                 </>
               )}
             </button>
-            {generating && (
-              <p className="text-center text-sm text-slate-500 animate-pulse">
-                ה-AI מתאים לך תפריט מדויק... עד 30 שניות
-              </p>
-            )}
           </div>
         )}
 
