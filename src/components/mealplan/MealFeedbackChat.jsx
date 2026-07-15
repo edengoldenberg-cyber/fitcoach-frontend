@@ -99,40 +99,59 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     }
   };
 
-  // ── Option B: create new plan ──────────────────────────────────────────────
+  // ── Option B: create new plan via async job ────────────────────────────────
   const doCreateNew = async () => {
     if (!detectedIntent || submitting.current) return;
     submitting.current = true;
     setLoading(true);
     setUiState('createLoading');
     try {
-      const res = await base44.functions.invoke('generateCalorieTargetPlan', {
+      // Start job — returns job_id immediately
+      const startRes = await base44.functions.invoke('startMealGenerationJob', {
         plan_id:         planId,
+        mode:            'calorie_target',
         target_calories: detectedIntent.target_calories,
       });
 
-      const data = res.data || res;
+      const jobId = startRes?.data?.job_id;
+      if (!jobId) throw new Error('Failed to start generation job');
 
-      if (data?.plan?.id) {
-        let refreshOk = false;
-        try {
-          if (onPlanUpdated) await onPlanUpdated();
-          refreshOk = true;
-        } catch {}
+      setStatus({ type: 'info', message: 'יוצר תפריט חדש — 3–5 דקות...' });
 
-        setUiState('createSuccess');
-        const actualCal = data.actual_calories || detectedIntent.target_calories;
-        setStatus({
-          type: 'success',
-          message: `תפריט חדש נוצר ל-${actualCal} קלוריות.`,
-        });
-        if (refreshOk && onEditSuccess) onEditSuccess(data);
-      } else {
-        setUiState('createFailed');
-        setStatus({ type: 'error', message: 'לא הצלחתי ליצור תפריט חדש. התפריט הנוכחי נשמר.' });
+      // Poll until complete or failed (max 8 min)
+      let elapsed = 0;
+      const POLL_MS  = 5000;
+      const MAX_WAIT = 8 * 60 * 1000;
+
+      while (elapsed < MAX_WAIT) {
+        await new Promise(r => setTimeout(r, POLL_MS));
+        elapsed += POLL_MS;
+
+        const statusRes = await base44.functions.invoke('getMealJobStatus', { job_id: jobId });
+        const job = statusRes?.data;
+        if (!job) continue;
+
+        if (job.status === 'completed' && job.active_plan_id) {
+          let refreshOk = false;
+          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
+          setUiState('createSuccess');
+          setStatus({ type: 'success', message: `תפריט חדש נוצר ל-${detectedIntent.target_calories} קלוריות.` });
+          if (refreshOk && onEditSuccess) onEditSuccess({});
+          return;
+        }
+
+        if (job.status === 'failed') {
+          setUiState('createFailed');
+          setStatus({ type: 'error', message: 'לא הצלחתי ליצור תפריט חדש. התפריט הנוכחי נשמר.' });
+          return;
+        }
       }
+
+      // Timed out — plan still might succeed
+      setUiState('createFailed');
+      setStatus({ type: 'error', message: 'היצירה לוקחת זמן. רענן את הדף עוד דקה.' });
     } catch (err) {
-      console.error('[MFC] generateCalorieTargetPlan failed:', err.message);
+      console.error('[MFC] doCreateNew failed:', err.message);
       setUiState('createFailed');
       setStatus({ type: 'error', message: 'שגיאה זמנית — התפריט הנוכחי נשמר.' });
     } finally {

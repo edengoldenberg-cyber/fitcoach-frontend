@@ -263,6 +263,7 @@ export default function MyMealPlan() {
   const [weeklyJobId,      setWeeklyJobId]      = useState(null);
   const [weeklyProgress,   setWeeklyProgress]   = useState(0);
   const [weeklyStage,      setWeeklyStage]       = useState('');
+  const [weeklyStep,       setWeeklyStep]        = useState(null);
   const [weeklyError,      setWeeklyError]       = useState(null);
   const [weeklyStartTime,  setWeeklyStartTime]   = useState(null);
   const weeklyPollRef     = useRef(null);
@@ -329,6 +330,21 @@ export default function MyMealPlan() {
     ACTIVE_PLAN_CONFIRMED:  'הושלם!',
     FAILED:                 'נכשל',
   };
+  const WEEKLY_STAGE_STEPS = {
+    REQUEST_ACCEPTED:        1,
+    INPUTS_LOADED:           2,
+    AI_GENERATION_STARTED:   3,
+    AI_RESPONSE_RECEIVED:    4,
+    WEEKLY_DAYS_PARSED:      5,
+    NORMALIZATION_COMPLETED: 6,
+    REPAIR_STARTED:          7,
+    REPAIR_COMPLETED:        8,
+    VALIDATION_COMPLETED:    9,
+    TRANSACTION_STARTED:     9,
+    PLAN_SAVED:              10,
+    ACTIVE_PLAN_CONFIRMED:   10,
+  };
+  const WEEKLY_STAGE_TOTAL = 10;
   const getWeeklyStageLabel = (stage) => WEEKLY_STAGE_LABELS[stage] || stage || 'מעבד...';
 
   const stopWeeklyPoll = () => {
@@ -374,6 +390,7 @@ export default function MyMealPlan() {
           setWeeklyProgress(Math.min(job.progress || 0, 99));
         }
         setWeeklyStage(getWeeklyStageLabel(job.stage));
+        setWeeklyStep(WEEKLY_STAGE_STEPS[job.stage] || null);
 
         if (job.status === 'completed' && job.active_plan_id) {
           stopWeeklyPoll();
@@ -388,6 +405,7 @@ export default function MyMealPlan() {
             setWeeklyJobId(null);
             setWeeklyProgress(0);
             setWeeklyStage('');
+            setWeeklyStep(null);
           }, 1200);
         } else if (job.status === 'failed') {
           stopWeeklyPoll();
@@ -406,6 +424,7 @@ export default function MyMealPlan() {
           setGeneratingWeekly(false);
           setWeeklyProgress(0);
           setWeeklyStage('');
+          setWeeklyStep(null);
           setWeeklyJobId(null);
         }
       } catch { /* ignore transient poll errors */ }
@@ -474,6 +493,7 @@ export default function MyMealPlan() {
     setGeneratingWeekly(true);
     setWeeklyProgress(5);
     setWeeklyStage('מתחיל יצירה');
+    setWeeklyStep(null);
     setWeeklyStartTime(Date.now());
     try {
       const startRes = await base44.functions.invoke('startMealGenerationJob', {
@@ -577,35 +597,44 @@ export default function MyMealPlan() {
           </div>
 
           {/* Real backend progress panel — shown only during generation */}
-          {generatingWeekly && (
-            <div className="bg-white rounded-2xl border border-teal-100 p-4 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-slate-700">{weeklyStage || 'מתחיל...'}</span>
-                <span className="text-slate-400 font-mono">{weeklyProgress}%</span>
+          {generatingWeekly && (() => {
+            const elapsedMs   = weeklyStartTime ? Date.now() - weeklyStartTime : 0;
+            const rateMs      = weeklyProgress > 5 ? elapsedMs / weeklyProgress : null;
+            const remainingMs = rateMs ? Math.max(0, rateMs * (100 - weeklyProgress)) : null;
+            const remainingMin = remainingMs != null ? Math.ceil(remainingMs / 60000) : null;
+            const estLabel = remainingMin == null
+              ? null
+              : remainingMin <= 1
+                ? 'פחות מדקה (הערכה)'
+                : `~${remainingMin} דקות (הערכה)`;
+            return (
+              <div className="bg-white rounded-2xl border border-teal-100 p-4 space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium text-slate-700">{weeklyStage || 'מתחיל...'}</span>
+                  <div className="flex items-center gap-2">
+                    {weeklyStep != null && (
+                      <span className="text-xs text-slate-400">שלב {weeklyStep} מתוך {WEEKLY_STAGE_TOTAL}</span>
+                    )}
+                    <span className="text-slate-500 font-mono font-medium">{weeklyProgress}%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{ width: `${weeklyProgress}%`, background: 'linear-gradient(90deg, #79DBD6, #3b82f6)' }}
+                  />
+                </div>
+                {estLabel && weeklyProgress > 5 && weeklyProgress < 99 && (
+                  <p className="text-xs text-slate-400 text-center">{estLabel}</p>
+                )}
+                {weeklyStartTime && (Date.now() - weeklyStartTime) > 180000 && weeklyProgress < 90 && (
+                  <p className="text-xs text-amber-600 text-center">
+                    ממשיך לעבוד ברקע — אפשר לסגור ולחזור
+                  </p>
+                )}
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${weeklyProgress}%`, background: 'linear-gradient(90deg, #79DBD6, #3b82f6)' }}
-                />
-              </div>
-              {weeklyProgress < 40 && (
-                <p className="text-xs text-slate-400 text-center">
-                  ה-AI בונה תפריט שבועי מלא — בדרך כלל 3–5 דקות
-                </p>
-              )}
-              {weeklyProgress >= 40 && weeklyProgress < 90 && (
-                <p className="text-xs text-slate-400 text-center">
-                  כמעט שם — בודק דיוק תזונתי ושומר...
-                </p>
-              )}
-              {weeklyStartTime && (Date.now() - weeklyStartTime) > 180000 && weeklyProgress < 90 && (
-                <p className="text-xs text-amber-600 text-center">
-                  זמן ממוצע: 3–5 דקות. ממשיך לעבוד ברקע — אפשר לסגור ולחזור.
-                </p>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Failure panel — copyable error report, old plan preserved */}
           {weeklyError && !generatingWeekly && (
