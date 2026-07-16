@@ -135,8 +135,8 @@ export default function CoachDailyWorkout() {
   // Load today's workout from server
   useEffect(() => {
     if (!todayWorkout) return;
-    setTitle(todayWorkout.title_he || '');
-    setDescription(todayWorkout.description_he || '');
+    setTitle(todayWorkout.title_he || todayWorkout.title || '');
+    setDescription(todayWorkout.description_he || todayWorkout.description || '');
     if (todayWorkout.exercises && Array.isArray(todayWorkout.exercises)) {
       setExercises(
         todayWorkout.exercises.map((ex) => ({
@@ -382,8 +382,8 @@ export default function CoachDailyWorkout() {
   const copyFromYesterdayMutation = useMutation({
     mutationFn: async () => {
       if (!yesterdayWorkout) throw new Error('אין אימון מאתמול');
-      setTitle(yesterdayWorkout.title_he);
-      setDescription(yesterdayWorkout.description_he || '');
+      setTitle(yesterdayWorkout.title_he || yesterdayWorkout.title || '');
+      setDescription(yesterdayWorkout.description_he || yesterdayWorkout.description || '');
       if (yesterdayWorkout.exercises && Array.isArray(yesterdayWorkout.exercises)) {
         setExercises(
           yesterdayWorkout.exercises.map((ex) => ({
