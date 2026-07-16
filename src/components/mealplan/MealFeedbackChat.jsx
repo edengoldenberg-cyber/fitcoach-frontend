@@ -54,6 +54,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   const [createJobStage,     setCreateJobStage]     = useState('');
   const [createJobStep,      setCreateJobStep]      = useState(null);
   const [createJobStartTime, setCreateJobStartTime] = useState(null);
+  const [createJobMode,      setCreateJobMode]      = useState(null); // 'adapt' | 'create'
 
   const suppressTimer  = useRef(null);
   const submitting     = useRef(false);
@@ -139,10 +140,14 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
           try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
 
           setUiState('createSuccess');
-          setStatus({ type: 'success', message: `תפריט חדש נוצר ל-${detectedIntent?.target_calories || ''} קלוריות.` });
+          const successMsg = (createJobMode === 'create' && detectedIntent?.target_calories)
+            ? `תפריט חדש נוצר ל-${detectedIntent.target_calories} קלוריות.`
+            : 'התפריט עודכן בהצלחה.';
+          setStatus({ type: 'success', message: successMsg });
           if (refreshOk && onEditSuccess) onEditSuccess({});
           setLoading(false);
           setCreateJobId(null);
+          setCreateJobMode(null);
           submitting.current = false;
           setTimeout(() => { setCreateJobProgress(0); setCreateJobStage(''); setCreateJobStep(null); }, 1500);
 
@@ -185,6 +190,14 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
         feedback:  feedbackText,
         day_index: dayIndex || 0,
       });
+
+      // Detect typed backend failure (ok: false with error_code)
+      if (res.ok === false) {
+        setUiState('adaptFailed');
+        setStatus({ type: 'error', message: res.safe_error || 'שגיאה פנימית — נסה שוב.' });
+        console.error('[MFC] doAdapt server error', { error_code: res.error_code, trace_id: res.trace_id });
+        return;
+      }
 
       const data    = res.data || res;
       const changed = !!data.changed;
@@ -238,6 +251,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     setCreateJobStage('מתחיל יצירה');
     setCreateJobStep(1);
     setCreateJobStartTime(Date.now());
+    setCreateJobMode('create');
 
     try {
       const startRes = await base44.functions.invoke('startMealGenerationJob', {
@@ -266,7 +280,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     }
   };
 
-  // ── Main send — existing path when flag is off ────────────────────────────
+  // ── Main send — thin dispatcher: backend classifies, frontend executes ───────
   const send = async () => {
     if (!text.trim() || loading) return;
 
@@ -283,44 +297,74 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     submitting.current = true;
     setLoading(true);
     setStatus(null);
+
+    let startedAsync = false;
     try {
-      const res = await base44.functions.invoke('mealPlanFeedback', {
+      const res = await base44.functions.invoke('routeMealFeedback', {
         plan_id:   planId,
         feedback:  text.trim(),
         day_index: dayIndex || 0,
       });
 
-      const data    = res.data || res;
-      const changed = !!data.changed;
+      if (res.ok === false) {
+        setStatus({ type: 'error', message: res.safe_error || res.error || 'שגיאה פנימית — נסה שוב.' });
+        console.error('[MFC] routeMealFeedback error', { action: res.action, error_code: res.error_code });
+        return;
+      }
 
-      if (changed) {
-        setText('');
-        if (onEditSuccess) onEditSuccess(data);
-
-        let refreshOk = false;
-        try {
-          if (onPlanUpdated) await onPlanUpdated();
-          refreshOk = true;
-        } catch {}
-
-        if (!refreshOk) {
-          setStatus({ type: 'error', message: 'התפריט נשמר, אך המסך לא התרענן. אנא טעינה מחדש.' });
+      // ── adapt_existing_job: backend started an async adaptation job ─────────
+      if (res.action === 'adapt_existing_job') {
+        const jobId = res.job_id;
+        if (!jobId) {
+          setStatus({ type: 'error', message: 'שגיאה בהפעלת תהליך עדכון — נסה שוב.' });
           return;
         }
-
-        setStatus({ type: 'success', message: 'השינוי בוצע — ראה סיכום למעלה' });
-
-        const firstChangedIdx = data.changed_indexes?.[0];
-        if (typeof firstChangedIdx === 'number' && onDayChanged) onDayChanged(firstChangedIdx);
-      } else {
-        setStatus({ type: 'error', message: data.ai_response || 'לא בוצע שינוי — נסה לנסח אחרת.' });
+        setText('');
+        if (JOB_LS_KEY) localStorage.setItem(JOB_LS_KEY, jobId);
+        setCreateJobId(jobId);
+        setCreateJobProgress(res.existing ? 20 : 5);
+        setCreateJobStage('מתחיל עדכון תפריט...');
+        setCreateJobStep(1);
+        setCreateJobStartTime(Date.now());
+        setCreateJobMode('adapt');
+        setUiState('createLoading');
+        startedAsync = true;
+        return;
       }
+
+      // ── immediate_update: backend already applied the change ────────────────
+      if (res.action === 'immediate_update') {
+        const changed = !!res.changed;
+        if (changed) {
+          setText('');
+          if (onEditSuccess) onEditSuccess(res);
+
+          let refreshOk = false;
+          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
+
+          if (!refreshOk) {
+            setStatus({ type: 'error', message: 'התפריט נשמר, אך המסך לא התרענן. אנא טעינה מחדש.' });
+            return;
+          }
+          setStatus({ type: 'success', message: 'השינוי בוצע — ראה סיכום למעלה' });
+          const firstChangedIdx = res.changed_indexes?.[0];
+          if (typeof firstChangedIdx === 'number' && onDayChanged) onDayChanged(firstChangedIdx);
+        } else {
+          setStatus({ type: 'error', message: res.ai_response || 'לא בוצע שינוי — נסה לנסח אחרת.' });
+        }
+        return;
+      }
+
+      setStatus({ type: 'error', message: 'תגובה לא צפויה מהשרת — נסה שוב.' });
+
     } catch (err) {
-      console.error('[MFC] mealPlanFeedback failed:', err.message);
+      console.error('[MFC] routeMealFeedback failed:', err.message);
       setStatus({ type: 'error', message: 'שגיאה זמנית — נסה שוב.' });
     } finally {
-      setLoading(false);
-      submitting.current = false;
+      if (!startedAsync) {
+        setLoading(false);
+        submitting.current = false;
+      }
     }
   };
 
@@ -487,7 +531,9 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
                   <p className="text-xs text-teal-600 text-center">{estLabel}</p>
                 )}
                 {createJobProgress <= 5 && (
-                  <p className="text-xs text-teal-600 text-center">ה-AI בונה תפריט חדש — 3–5 דקות</p>
+                  <p className="text-xs text-teal-600 text-center">
+                    {createJobMode === 'adapt' ? 'ה-AI מעדכן את התפריט — עד 2 דקות' : 'ה-AI בונה תפריט חדש — 3–5 דקות'}
+                  </p>
                 )}
                 {createJobStartTime && (Date.now() - createJobStartTime) > 180000 && createJobProgress < 90 && (
                   <p className="text-xs text-amber-600 text-center">ממשיך לעבוד ברקע — אפשר לסגור ולחזור</p>
