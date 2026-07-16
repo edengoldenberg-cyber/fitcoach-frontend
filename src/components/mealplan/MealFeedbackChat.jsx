@@ -84,8 +84,31 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   }, [loading]);
 
   // ── Resume in-progress create job on mount ────────────────────────────────
+  // Also handles the success-persistence case: if onPlanUpdated() caused a
+  // remount before setUiState('createSuccess') ran, we wrote the message to
+  // mfcSuccess_<planId> so the next mount can restore it immediately.
   useEffect(() => {
     if (!JOB_LS_KEY) return;
+
+    // Check for a persisted success message from a completed job whose
+    // component was remounted mid-success (e.g. parent re-rendered during
+    // onPlanUpdated). Only honour messages < 30 seconds old.
+    const SUCCESS_KEY = JOB_LS_KEY.replace('mfcCreateJob_', 'mfcSuccess_');
+    const rawSuccess  = localStorage.getItem(SUCCESS_KEY);
+    if (rawSuccess) {
+      try {
+        const { message, ts } = JSON.parse(rawSuccess);
+        if (Date.now() - ts < 30000) {
+          localStorage.removeItem(SUCCESS_KEY);
+          setOpen(true);
+          setUiState('createSuccess');
+          setStatus({ type: 'success', message });
+          return; // nothing else to check
+        }
+      } catch { /* malformed — fall through */ }
+      localStorage.removeItem(SUCCESS_KEY);
+    }
+
     const savedId = localStorage.getItem(JOB_LS_KEY);
     if (!savedId) return;
     base44.functions.invoke('getMealJobStatus', { job_id: savedId })
@@ -136,13 +159,25 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
           setCreateJobStage('הושלם!');
           if (JOB_LS_KEY) localStorage.removeItem(JOB_LS_KEY);
 
-          let refreshOk = false;
-          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
-
-          setUiState('createSuccess');
           const successMsg = (createJobMode === 'create' && detectedIntent?.target_calories)
             ? `תפריט חדש נוצר ל-${detectedIntent.target_calories} קלוריות.`
             : 'התפריט עודכן בהצלחה.';
+
+          // Persist success before onPlanUpdated so the message survives
+          // any component remount caused by the parent re-rendering after plan refresh.
+          const SUCCESS_KEY = JOB_LS_KEY
+            ? JOB_LS_KEY.replace('mfcCreateJob_', 'mfcSuccess_') : null;
+          if (SUCCESS_KEY) {
+            localStorage.setItem(SUCCESS_KEY, JSON.stringify({ message: successMsg, ts: Date.now() }));
+          }
+
+          let refreshOk = false;
+          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
+
+          // Show success (if component is still mounted — otherwise the
+          // mount useEffect above will restore it from localStorage).
+          if (SUCCESS_KEY) localStorage.removeItem(SUCCESS_KEY);
+          setUiState('createSuccess');
           setStatus({ type: 'success', message: successMsg });
           if (refreshOk && onEditSuccess) onEditSuccess({});
           setLoading(false);
