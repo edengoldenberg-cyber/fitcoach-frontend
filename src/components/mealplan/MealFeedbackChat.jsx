@@ -9,22 +9,67 @@ import { detectCalorieTargetIntent } from './calorieIntentDetector';
 //   'choice'        — A/B/Cancel panel shown, no API call made
 //   'confirmCreate' — second confirmation before Option B
 //   'adaptLoading'  — Option A: calling mealPlanFeedback
-//   'createLoading' — Option B: calling generateCalorieTargetPlan
+//   'createLoading' — Option B: polling startMealGenerationJob
 //   'adaptSuccess'  — Option A succeeded
 //   'adaptFailed'   — Option A failed (may offer "Create instead" button)
 //   'createSuccess' — Option B succeeded
 //   'createFailed'  — Option B failed
 
+// ── Stage mapping for the create-new progress panel ──────────────────────────
+const MFC_STAGE_LABELS = {
+  REQUEST_ACCEPTED:       'בקשה התקבלה',
+  INPUTS_LOADED:          'נתונים נטענו',
+  AI_GENERATION_STARTED:  'ה-AI מייצר תפריט',
+  AI_RESPONSE_RECEIVED:   'תגובת AI התקבלה',
+  WEEKLY_DAYS_PARSED:     'מעבד 7 ימים',
+  NORMALIZATION_COMPLETED:'נרמול ערכים',
+  REPAIR_STARTED:         'בודק דיוק תזונתי',
+  REPAIR_COMPLETED:       'תיקון הושלם',
+  VALIDATION_COMPLETED:   'ולידציה עברה',
+  TRANSACTION_STARTED:    'שומר תפריט',
+  PLAN_SAVED:             'תפריט נשמר',
+  ACTIVE_PLAN_CONFIRMED:  'הושלם!',
+  FAILED:                 'נכשל',
+};
+const MFC_STAGE_STEPS = {
+  REQUEST_ACCEPTED: 1, INPUTS_LOADED: 2, AI_GENERATION_STARTED: 3,
+  AI_RESPONSE_RECEIVED: 4, WEEKLY_DAYS_PARSED: 5, NORMALIZATION_COMPLETED: 6,
+  REPAIR_STARTED: 7, REPAIR_COMPLETED: 8, VALIDATION_COMPLETED: 9,
+  TRANSACTION_STARTED: 9, PLAN_SAVED: 10, ACTIVE_PLAN_CONFIRMED: 10,
+};
+const MFC_STAGE_TOTAL = 10;
+const getMFCStageLabel = (stage) => MFC_STAGE_LABELS[stage] || stage || 'מעבד...';
+
 export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDayChanged, onEditSuccess }) {
   const [open,            setOpen]            = useState(false);
   const [text,            setText]            = useState('');
   const [loading,         setLoading]         = useState(false);
-  const [status,          setStatus]          = useState(null); // { type: 'success'|'error', message }
+  const [status,          setStatus]          = useState(null);
   const [uiState,         setUiState]         = useState('idle');
   const [detectedIntent,  setDetectedIntent]  = useState(null);
-  const suppressTimer = useRef(null);
-  const submitting    = useRef(false); // duplicate-click guard
 
+  // ── Create-new progress state ──────────────────────────────────────────────
+  const [createJobId,        setCreateJobId]        = useState(null);
+  const [createJobProgress,  setCreateJobProgress]  = useState(0);
+  const [createJobStage,     setCreateJobStage]     = useState('');
+  const [createJobStep,      setCreateJobStep]      = useState(null);
+  const [createJobStartTime, setCreateJobStartTime] = useState(null);
+
+  const suppressTimer  = useRef(null);
+  const submitting     = useRef(false);
+  const createPollRef  = useRef(null);
+
+  // localStorage key for job resume — tied to the source plan
+  const JOB_LS_KEY = planId ? `mfcCreateJob_${planId}` : null;
+
+  const stopCreatePoll = () => {
+    if (createPollRef.current) { clearInterval(createPollRef.current); createPollRef.current = null; }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => () => { stopCreatePoll(); clearTimeout(suppressTimer.current); }, []);
+
+  // Meal-editing event broadcast (unchanged)
   useEffect(() => {
     clearTimeout(suppressTimer.current);
     if (loading) {
@@ -37,13 +82,97 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     return () => clearTimeout(suppressTimer.current);
   }, [loading]);
 
+  // ── Resume in-progress create job on mount ────────────────────────────────
+  useEffect(() => {
+    if (!JOB_LS_KEY) return;
+    const savedId = localStorage.getItem(JOB_LS_KEY);
+    if (!savedId) return;
+    base44.functions.invoke('getMealJobStatus', { job_id: savedId })
+      .then(res => {
+        const job = res?.data;
+        if (!job) { localStorage.removeItem(JOB_LS_KEY); return; }
+        if (job.status === 'queued' || job.status === 'running') {
+          setCreateJobId(savedId);
+          setLoading(true);
+          setUiState('createLoading');
+          setOpen(true);
+          setCreateJobProgress(job.progress || 5);
+          setCreateJobStage(getMFCStageLabel(job.stage));
+          setCreateJobStep(MFC_STAGE_STEPS[job.stage] || null);
+          setCreateJobStartTime(Date.now() - 60000);
+          if (job.requested_calories) {
+            setDetectedIntent({ target_calories: job.requested_calories, intent: 'calorie_target_change' });
+          }
+          submitting.current = true;
+        } else {
+          localStorage.removeItem(JOB_LS_KEY);
+        }
+      })
+      .catch(() => localStorage.removeItem(JOB_LS_KEY));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JOB_LS_KEY]);
+
+  // ── Polling interval — fires every 5s while create job is active ──────────
+  useEffect(() => {
+    if (!createJobId || uiState !== 'createLoading') return;
+    stopCreatePoll();
+
+    createPollRef.current = setInterval(async () => {
+      try {
+        const res = await base44.functions.invoke('getMealJobStatus', { job_id: createJobId });
+        const job = res?.data;
+        if (!job) return;
+
+        if (job.progress != null && job.stage !== 'ACTIVE_PLAN_CONFIRMED') {
+          setCreateJobProgress(Math.min(job.progress, 99));
+        }
+        setCreateJobStage(getMFCStageLabel(job.stage));
+        setCreateJobStep(MFC_STAGE_STEPS[job.stage] || null);
+
+        if (job.status === 'completed' && job.active_plan_id) {
+          stopCreatePoll();
+          setCreateJobProgress(100);
+          setCreateJobStage('הושלם!');
+          if (JOB_LS_KEY) localStorage.removeItem(JOB_LS_KEY);
+
+          let refreshOk = false;
+          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
+
+          setUiState('createSuccess');
+          setStatus({ type: 'success', message: `תפריט חדש נוצר ל-${detectedIntent?.target_calories || ''} קלוריות.` });
+          if (refreshOk && onEditSuccess) onEditSuccess({});
+          setLoading(false);
+          setCreateJobId(null);
+          submitting.current = false;
+          setTimeout(() => { setCreateJobProgress(0); setCreateJobStage(''); setCreateJobStep(null); }, 1500);
+
+        } else if (job.status === 'failed') {
+          stopCreatePoll();
+          if (JOB_LS_KEY) localStorage.removeItem(JOB_LS_KEY);
+          setUiState('createFailed');
+          setStatus({ type: 'error', message: 'לא הצלחתי ליצור תפריט חדש. התפריט הנוכחי נשמר.' });
+          setLoading(false);
+          setCreateJobId(null);
+          setCreateJobProgress(0);
+          setCreateJobStage('');
+          setCreateJobStep(null);
+          submitting.current = false;
+        }
+      } catch (err) {
+        console.warn('[MFC] poll error:', err.message);
+      }
+    }, 5000);
+
+    return stopCreatePoll;
+  }, [createJobId, uiState]);
+
   const resetToIdle = () => {
     setUiState('idle');
     setDetectedIntent(null);
     setStatus(null);
   };
 
-  // ── Option A: adapt existing plan ──────────────────────────────────────────
+  // ── Option A: adapt existing plan ─────────────────────────────────────────
   const doAdapt = async (feedbackText) => {
     if (submitting.current) return;
     submitting.current = true;
@@ -99,14 +228,18 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     }
   };
 
-  // ── Option B: create new plan via async job ────────────────────────────────
+  // ── Option B: create new plan via async job ───────────────────────────────
   const doCreateNew = async () => {
     if (!detectedIntent || submitting.current) return;
     submitting.current = true;
     setLoading(true);
     setUiState('createLoading');
+    setCreateJobProgress(5);
+    setCreateJobStage('מתחיל יצירה');
+    setCreateJobStep(1);
+    setCreateJobStartTime(Date.now());
+
     try {
-      // Start job — returns job_id immediately
       const startRes = await base44.functions.invoke('startMealGenerationJob', {
         plan_id:         planId,
         mode:            'calorie_target',
@@ -116,65 +249,36 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
       const jobId = startRes?.data?.job_id;
       if (!jobId) throw new Error('Failed to start generation job');
 
-      setStatus({ type: 'info', message: 'יוצר תפריט חדש — 3–5 דקות...' });
+      if (JOB_LS_KEY) localStorage.setItem(JOB_LS_KEY, jobId);
+      setCreateJobId(jobId);
+      setCreateJobProgress(startRes?.data?.existing ? 20 : 5);
+      // Polling useEffect takes over from here
 
-      // Poll until complete or failed (max 8 min)
-      let elapsed = 0;
-      const POLL_MS  = 5000;
-      const MAX_WAIT = 8 * 60 * 1000;
-
-      while (elapsed < MAX_WAIT) {
-        await new Promise(r => setTimeout(r, POLL_MS));
-        elapsed += POLL_MS;
-
-        const statusRes = await base44.functions.invoke('getMealJobStatus', { job_id: jobId });
-        const job = statusRes?.data;
-        if (!job) continue;
-
-        if (job.status === 'completed' && job.active_plan_id) {
-          let refreshOk = false;
-          try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
-          setUiState('createSuccess');
-          setStatus({ type: 'success', message: `תפריט חדש נוצר ל-${detectedIntent.target_calories} קלוריות.` });
-          if (refreshOk && onEditSuccess) onEditSuccess({});
-          return;
-        }
-
-        if (job.status === 'failed') {
-          setUiState('createFailed');
-          setStatus({ type: 'error', message: 'לא הצלחתי ליצור תפריט חדש. התפריט הנוכחי נשמר.' });
-          return;
-        }
-      }
-
-      // Timed out — plan still might succeed
-      setUiState('createFailed');
-      setStatus({ type: 'error', message: 'היצירה לוקחת זמן. רענן את הדף עוד דקה.' });
     } catch (err) {
       console.error('[MFC] doCreateNew failed:', err.message);
       setUiState('createFailed');
       setStatus({ type: 'error', message: 'שגיאה זמנית — התפריט הנוכחי נשמר.' });
-    } finally {
       setLoading(false);
+      setCreateJobProgress(0);
+      setCreateJobStage('');
+      setCreateJobStep(null);
       submitting.current = false;
     }
   };
 
-  // ── Main send — existing path when flag is off ─────────────────────────────
+  // ── Main send — existing path when flag is off ────────────────────────────
   const send = async () => {
     if (!text.trim() || loading) return;
 
-    // Choice UI intercept — only when flag is on
     if (CALORIE_TARGET_CHOICE_UI) {
       const intent = detectCalorieTargetIntent(text.trim());
       if (intent) {
         setDetectedIntent(intent);
         setUiState('choice');
-        return; // do not call any API yet
+        return;
       }
     }
 
-    // Existing path — byte-for-byte identical to original when flag is off
     if (submitting.current) return;
     submitting.current = true;
     setLoading(true);
@@ -225,7 +329,6 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   };
 
   const isLoading = loading;
-  // States where the normal text input is hidden (choice UI is active)
   const choiceActive = CALORIE_TARGET_CHOICE_UI &&
     ['choice', 'confirmCreate', 'adaptLoading', 'createLoading'].includes(uiState);
 
@@ -248,7 +351,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
         <div className="px-4 pb-4 border-t border-slate-50 pt-3 space-y-3">
 
           {/* Status banner */}
-          {status && (
+          {status && uiState !== 'createLoading' && (
             <div className={`rounded-xl p-3 border text-sm text-right flex items-center gap-2 ${
               status.type === 'success'
                 ? 'bg-green-50 border-green-200 text-green-800'
@@ -341,13 +444,57 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
             </div>
           )}
 
-          {/* ── LOADING STATE for adapt or create ── */}
-          {CALORIE_TARGET_CHOICE_UI && (uiState === 'adaptLoading' || uiState === 'createLoading') && (
+          {/* ── ADAPT LOADING — simple spinner ── */}
+          {CALORIE_TARGET_CHOICE_UI && uiState === 'adaptLoading' && (
             <div className="flex items-center justify-center gap-2 py-4 text-sm text-slate-500">
               <Loader2 className="w-4 h-4 animate-spin text-teal-500" />
-              {uiState === 'adaptLoading' ? 'מתאים את התפריט הקיים...' : 'מייצר תפריט חדש...'}
+              מתאים את התפריט הקיים...
             </div>
           )}
+
+          {/* ── CREATE LOADING — real backend progress panel ── */}
+          {CALORIE_TARGET_CHOICE_UI && uiState === 'createLoading' && (() => {
+            const elapsedMs   = createJobStartTime ? Date.now() - createJobStartTime : 0;
+            const rateMs      = createJobProgress > 5 ? elapsedMs / createJobProgress : null;
+            const remainingMs = rateMs ? Math.max(0, rateMs * (100 - createJobProgress)) : null;
+            const remainingMin = remainingMs != null ? Math.ceil(remainingMs / 60000) : null;
+            const estLabel = remainingMin == null
+              ? null
+              : remainingMin <= 1
+                ? 'פחות מדקה (הערכה)'
+                : `~${remainingMin} דקות (הערכה)`;
+            return (
+              <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-semibold text-teal-800">{createJobStage || 'מתחיל...'}</span>
+                  <div className="flex items-center gap-2">
+                    {createJobStep != null && (
+                      <span className="text-teal-600">שלב {createJobStep} מתוך {MFC_STAGE_TOTAL}</span>
+                    )}
+                    <span className="text-teal-700 font-mono font-bold">{createJobProgress}%</span>
+                  </div>
+                </div>
+                <div className="w-full bg-teal-100 rounded-full h-2.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${Math.max(createJobProgress, 4)}%`,
+                      background: 'linear-gradient(90deg, #79DBD6, #3b82f6)',
+                    }}
+                  />
+                </div>
+                {estLabel && createJobProgress > 5 && createJobProgress < 99 && (
+                  <p className="text-xs text-teal-600 text-center">{estLabel}</p>
+                )}
+                {createJobProgress <= 5 && (
+                  <p className="text-xs text-teal-600 text-center">ה-AI בונה תפריט חדש — 3–5 דקות</p>
+                )}
+                {createJobStartTime && (Date.now() - createJobStartTime) > 180000 && createJobProgress < 90 && (
+                  <p className="text-xs text-amber-600 text-center">ממשיך לעבוד ברקע — אפשר לסגור ולחזור</p>
+                )}
+              </div>
+            );
+          })()}
 
           {/* ── NORMAL INPUT — shown when choice UI is not active ── */}
           {!choiceActive && (
