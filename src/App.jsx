@@ -52,6 +52,7 @@ import NutritionAIDebugCenter from './pages/NutritionAIDebugCenter';
 import AIMealAnalysisFlowReport from './pages/AIMealAnalysisFlowReport';
 import DebugFoods from './pages/DebugFoods';
 import CanonicalFoodReview from './pages/CanonicalFoodReview';
+import AutomationCenter from './pages/AutomationCenter';
 import { useLocation, Navigate } from 'react-router-dom';
 import React, { useEffect, useMemo, useState } from 'react';
 import GoogleLoginScreen from './components/shared/GoogleLoginScreen';
@@ -76,6 +77,18 @@ const LoginRedirect = () => {
 const { Pages = {}, Layout, mainPage } = pagesConfig || {};
 const mainPageKey = mainPage ?? Object.keys(Pages)?.[0];
 const MainPage = mainPageKey && Pages[mainPageKey] ? Pages[mainPageKey] : null;
+
+// Pages in the auto-route loop that must only be accessible to coaches.
+// Without this, any logged-in trainee can navigate to e.g. /CoachDashboard.
+const COACH_ONLY_PAGES = new Set([
+  'CoachDashboard', 'CoachAutomations', 'CoachDailyAlert', 'CoachDailyWorkout',
+  'CoachExternalMembers', 'CoachGroupWorkouts', 'CoachInsights', 'CoachNutrition',
+  'CoachRecommendedFoods', 'CoachReports', 'CoachSettings', 'CoachWorkouts',
+  'ManageTrainees', 'MessagingCenter', 'MissionControl', 'WhatsAppAutomations',
+  'WhatsAppManager', 'CreateDailyPersonal', 'CreateProgram', 'CreateRotationProgram',
+  'SendDailyPersonal', 'TemplateManager', 'AddTrainee', 'CopyLogs',
+  'TraineeManagement', 'TraineeCard360', 'SuggestFavoritesManager',
+]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -358,17 +371,20 @@ const AuthenticatedApp = () => {
            <PageNotFound />
          )
        } />
-      {Object.entries(Pages).map(([path, Page]) => (
-        <Route
-          key={path}
-          path={`/${path}`}
-          element={
-            <LayoutWrapper currentPageName={path}>
-              <Page />
-            </LayoutWrapper>
-          }
-        />
-      ))}
+      {Object.entries(Pages).map(([path, Page]) => {
+        const inner = (
+          <LayoutWrapper currentPageName={path}>
+            <Page />
+          </LayoutWrapper>
+        );
+        return (
+          <Route
+            key={path}
+            path={`/${path}`}
+            element={COACH_ONLY_PAGES.has(path) ? <CoachRoute>{inner}</CoachRoute> : inner}
+          />
+        );
+      })}
       <Route path="/WhatsAppDebugDashboard" element={
         <AdminRoute>
           <LayoutWrapper currentPageName="WhatsAppDebugDashboard">
@@ -403,6 +419,13 @@ const AuthenticatedApp = () => {
             <ReminderAutomations />
           </LayoutWrapper>
         </AdminRoute>
+      } />
+      <Route path="/AutomationCenter" element={
+        <CoachRoute>
+          <LayoutWrapper currentPageName="AutomationCenter">
+            <AutomationCenter />
+          </LayoutWrapper>
+        </CoachRoute>
       } />
       <Route path="/MealPlanWizard" element={
         <LayoutWrapper currentPageName="MealPlanWizard">
