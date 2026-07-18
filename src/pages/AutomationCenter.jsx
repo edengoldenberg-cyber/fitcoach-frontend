@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import RuleBuilderModal from '@/components/automation/RuleBuilderModal';
+import MessageTemplateEditor from '@/components/automation/MessageTemplateEditor';
 import {
   Zap, Bell, AlertTriangle, CheckCircle2, XCircle, Clock, RotateCcw,
   Search, Plus, Edit, Copy, Archive, Trash2, Pause, Play, Eye,
   BarChart2, Settings, Activity, RefreshCw, ChevronDown, ChevronUp,
-  Send, User, Shield,
+  Send, User, Shield, MessageSquare,
 } from 'lucide-react';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -52,13 +53,14 @@ const api = (fn, body = {}) => base44.functions.invoke(fn, body);
 // ─── TABS ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'overview',  label: 'סקירה',       icon: <Activity size={15} /> },
-  { id: 'rules',     label: 'חוקים',        icon: <Zap size={15} /> },
-  { id: 'health',    label: 'ציוני בריאות', icon: <User size={15} /> },
-  { id: 'alerts',    label: 'התראות',       icon: <Bell size={15} /> },
-  { id: 'history',   label: 'היסטוריה',     icon: <Clock size={15} /> },
-  { id: 'analytics', label: 'אנליטיקה',    icon: <BarChart2 size={15} /> },
-  { id: 'settings',  label: 'הגדרות',      icon: <Settings size={15} /> },
+  { id: 'overview',   label: 'סקירה',       icon: <Activity size={15} /> },
+  { id: 'rules',      label: 'חוקים',        icon: <Zap size={15} /> },
+  { id: 'templates',  label: 'תבניות',       icon: <MessageSquare size={15} /> },
+  { id: 'health',     label: 'ציוני בריאות', icon: <User size={15} /> },
+  { id: 'alerts',     label: 'התראות',       icon: <Bell size={15} /> },
+  { id: 'history',    label: 'היסטוריה',     icon: <Clock size={15} /> },
+  { id: 'analytics',  label: 'אנליטיקה',    icon: <BarChart2 size={15} /> },
+  { id: 'settings',   label: 'הגדרות',      icon: <Settings size={15} /> },
 ];
 
 // ─── Overview Tab ─────────────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ function RulesTab({ rules = [], qc }) {
   const [editRule, setEditRule]       = useState(null);
   const [showBuilder, setShowBuilder] = useState(false);
   const [simRule, setSimRule]         = useState(null);
+  const [templateRule, setTplRule]    = useState(null);
   const [simTraineeId, setSimTId]     = useState('');
   const [simResult, setSimResult]     = useState(null);
 
@@ -237,8 +240,19 @@ function RulesTab({ rules = [], qc }) {
           onArchive={() => archMut.mutate(rule.code)}
           onDelete={() => { if (window.confirm('למחוק?')) delMut.mutate(rule.code); }}
           onSimulate={() => { setSimRule(rule); setSimResult(null); }}
+          onTemplates={() => setTplRule(rule)}
         />
       ))}
+
+      {/* Template editor */}
+      {templateRule && (
+        <MessageTemplateEditor
+          ruleCode={templateRule.code}
+          ruleName={templateRule.name}
+          ruleId={templateRule.id}
+          onClose={() => setTplRule(null)}
+        />
+      )}
 
       {/* Builder modal */}
       {showBuilder && (
@@ -300,7 +314,7 @@ function RulesTab({ rules = [], qc }) {
   );
 }
 
-function RuleRow({ rule, onEdit, onToggle, onPause, onDuplicate, onArchive, onDelete, onSimulate }) {
+function RuleRow({ rule, onEdit, onToggle, onPause, onDuplicate, onArchive, onDelete, onSimulate, onTemplates }) {
   const [expanded, setExpanded] = useState(false);
   const stats = rule.today_stats || {};
   const totalToday = Object.values(stats).reduce((s, v) => s + v, 0);
@@ -347,6 +361,7 @@ function RuleRow({ rule, onEdit, onToggle, onPause, onDuplicate, onArchive, onDe
           )}
           <div className="flex flex-wrap gap-1.5">
             <button onClick={onEdit}       className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-600 flex items-center gap-1"><Edit size={10}/> עריכה</button>
+            <button onClick={onTemplates}  className="text-xs px-2 py-1 rounded-lg border border-teal-200 text-teal-600 flex items-center gap-1"><MessageSquare size={10}/> תבניות</button>
             <button onClick={onSimulate}   className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-600 flex items-center gap-1"><Play size={10}/> סימולציה</button>
             <button onClick={onDuplicate}  className="text-xs px-2 py-1 rounded-lg border border-slate-200 text-slate-600 flex items-center gap-1"><Copy size={10}/> שכפל</button>
             <button onClick={onPause}      className={`text-xs px-2 py-1 rounded-lg border flex items-center gap-1 ${rule.paused ? 'border-teal-200 text-teal-600' : 'border-slate-200 text-slate-600'}`}><Pause size={10}/> {rule.paused ? 'המשך' : 'השהה'}</button>
@@ -778,6 +793,101 @@ function SettingsTab() {
   );
 }
 
+// ─── Templates Tab ────────────────────────────────────────────────────────────
+
+function TemplatesTab({ rules = [] }) {
+  const [activeRule, setActiveRule] = useState(null);
+  const [search, setSearch] = useState('');
+
+  const filteredRules = rules.filter(r =>
+    !r.archived && (!search || r.name.includes(search) || r.code.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const { data: allTemplatesData } = useQuery({
+    queryKey:  ['all_templates'],
+    queryFn:   () => base44.functions.invoke('getMessageTemplatesForRules', { rule_codes: filteredRules.map(r => r.code) }),
+    staleTime: 30000,
+    enabled:   filteredRules.length > 0,
+  });
+
+  const byRule = allTemplatesData?.data?.templates || {};
+
+  return (
+    <div className="space-y-3" dir="rtl">
+      <div className="relative">
+        <Search size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+        <Input value={search} onChange={e => setSearch(e.target.value)} placeholder="חיפוש חוק..." className="pr-9 h-9 text-sm" />
+      </div>
+
+      <div className="bg-teal-50 border border-teal-200 rounded-xl p-3 text-xs text-teal-700 leading-relaxed">
+        💡 לכל חוק ניתן להוסיף מספר תבניות. המערכת תבחר אוטומטית לפי סגמנט המתאמן ולעולם לא תשלח את אותה תבנית פעמיים ברצף.
+      </div>
+
+      {filteredRules.map(rule => {
+        const templates = byRule[rule.code] || [];
+        return (
+          <div key={rule.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <PriorityBadge p={rule.priority} />
+                <span className="font-medium text-sm text-slate-800">{rule.name}</span>
+                {templates.length > 0 && (
+                  <span className="text-xs bg-teal-100 text-teal-700 px-2 py-0.5 rounded-full font-medium">
+                    {templates.length} תבניות
+                  </span>
+                )}
+              </div>
+              <Button size="sm" variant="outline" className="text-xs gap-1 h-7"
+                onClick={() => setActiveRule(rule)}>
+                <MessageSquare size={11} />
+                {templates.length === 0 ? 'הוסף' : 'ערוך'}
+              </Button>
+            </div>
+
+            {templates.length > 0 && (
+              <div className="px-4 py-2 space-y-1">
+                {templates.map(t => {
+                  const tone = t.tone ? `${['😊','💪','📋','🤝','😄'].find((_, i) => ['friendly','motivational','professional','personal','funny'][i] === t.tone) || ''} ${t.tone}` : '';
+                  return (
+                    <div key={t.id} className={`flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0 ${t.enabled ? '' : 'opacity-50'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-medium text-slate-700">{t.name}</span>
+                          {t.segment && t.segment !== 'all' && (
+                            <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">{t.segment}</span>
+                          )}
+                          {tone && <span className="text-xs text-slate-400">{tone}</span>}
+                        </div>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{t.content.slice(0, 60)}...</p>
+                      </div>
+                      {t.times_sent > 0 && <span className="text-xs text-slate-400 shrink-0">📤 {t.times_sent}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {templates.length === 0 && (
+              <div className="px-4 py-3 text-xs text-slate-400 text-center">
+                אין תבניות — המערכת תשתמש בהודעה הסטנדרטית של החוק
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {activeRule && (
+        <MessageTemplateEditor
+          ruleCode={activeRule.code}
+          ruleName={activeRule.name}
+          ruleId={activeRule.id}
+          onClose={() => { setActiveRule(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function AutomationCenter() {
@@ -853,13 +963,14 @@ export default function AutomationCenter() {
       </div>
 
       <div className="px-4 pt-4">
-        {activeTab === 'overview'  && <OverviewTab rules={rules} dash={dash} timeline={timeline} qc={qc} />}
-        {activeTab === 'rules'     && <RulesTab    rules={rules} qc={qc} />}
-        {activeTab === 'health'    && <HealthTab   qc={qc} />}
-        {activeTab === 'alerts'    && <AlertsTab   qc={qc} />}
-        {activeTab === 'history'   && <HistoryTab  qc={qc} />}
-        {activeTab === 'analytics' && <AnalyticsTab />}
-        {activeTab === 'settings'  && <SettingsTab />}
+        {activeTab === 'overview'   && <OverviewTab   rules={rules} dash={dash} timeline={timeline} qc={qc} />}
+        {activeTab === 'rules'      && <RulesTab      rules={rules} qc={qc} />}
+        {activeTab === 'templates'  && <TemplatesTab  rules={rules} />}
+        {activeTab === 'health'     && <HealthTab     qc={qc} />}
+        {activeTab === 'alerts'     && <AlertsTab     qc={qc} />}
+        {activeTab === 'history'    && <HistoryTab    qc={qc} />}
+        {activeTab === 'analytics'  && <AnalyticsTab  />}
+        {activeTab === 'settings'   && <SettingsTab   />}
       </div>
     </div>
   );
