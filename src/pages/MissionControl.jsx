@@ -140,6 +140,7 @@ function calcRisk(daysSince) {
 
 const NAV_ITEMS = [
   { key: 'dashboard',    label: 'מרכז בקרה',       icon: LayoutDashboard },
+  { key: 'arbox-automations', label: 'אוטומציות Arbox', icon: Zap },
   { key: 'automations',  label: 'אוטומציות',        icon: Zap },
   { key: 'queue',        label: 'תור הודעות',       icon: MessageSquare },
   { key: 'live',         label: 'פעילות חיה',       icon: Activity },
@@ -2215,6 +2216,408 @@ function ReminderCenterSection({ coachEmail }) {
   );
 }
 
+// ─── Section: Arbox Automations ──────────────────────────────────────────────
+
+const ARBOX_TRIGGER_META = {
+  no_attendance:      { label: 'נעדרים מעל 7 ימים',           color: 'red',    icon: '🚨' },
+  birthday:           { label: 'יום הולדת היום',              color: 'purple', icon: '🎂' },
+  trial_upcoming:     { label: 'תזכורת לשיעור ניסיון',        color: 'blue',   icon: '🎯' },
+  trial_no_conversion:{ label: 'שיעור ניסיון ללא המרה',        color: 'orange', icon: '⚡' },
+  trial_no_show:      { label: 'לא הגיע/ה לשיעור ניסיון',     color: 'yellow', icon: '❌' },
+  package_expiry:     { label: 'מנוי עומד להסתיים',           color: 'orange', icon: '📋' },
+  remaining_sessions: { label: 'יתרת כניסות נמוכה',           color: 'yellow', icon: '📊' },
+  new_customer:       { label: 'לקוח/ה חדש/ה',               color: 'green',  icon: '🌟' },
+  returning_customer: { label: 'לקוח/ה שחזר/ה',              color: 'teal',   icon: '🔄' },
+  class_reminder:     { label: 'תזכורת לשיעור',               color: 'blue',   icon: '⏰' },
+};
+
+const COLOR_MAP = {
+  red:    'bg-red-50 border-red-200 text-red-700',
+  orange: 'bg-orange-50 border-orange-200 text-orange-700',
+  yellow: 'bg-amber-50 border-amber-200 text-amber-700',
+  green:  'bg-green-50 border-green-200 text-green-700',
+  teal:   'bg-teal-50 border-teal-200 text-teal-700',
+  blue:   'bg-blue-50 border-blue-200 text-blue-700',
+  purple: 'bg-purple-50 border-purple-200 text-purple-700',
+};
+
+function RecipientDrawer({ automation, coachEmail, onClose }) {
+  const queryClient                 = useQueryClient();
+  const [selected, setSelected]     = useState(new Set());
+  const [editingMsg, setEditingMsg] = useState(false);
+  const [msgDraft, setMsgDraft]     = useState(automation?.message_template || '');
+  const [sending, setSending]       = useState(false);
+  const [sendResult, setSendResult] = useState(null);
+  const [confirmSend, setConfirmSend] = useState(false);
+
+  const triggerConfig = automation?.trigger_config
+    ? (typeof automation.trigger_config === 'string' ? JSON.parse(automation.trigger_config) : automation.trigger_config)
+    : {};
+
+  const { data: res, isLoading, refetch } = useQuery({
+    queryKey: ['arboxRecipients', automation?.id, automation?.trigger_type],
+    queryFn: () => base44.functions.invoke('getArboxAutomationRecipients', {
+      triggerType: automation.trigger_type,
+      coachEmail,
+      triggerConfig,
+    }),
+    enabled: !!automation && !!coachEmail,
+    staleTime: 60000,
+  });
+
+  const recipients  = res?.data?.recipients ?? [];
+  const isStale     = res?.data?.is_stale ?? false;
+  const syncInfo    = res?.data?.sync ?? null;
+  const unsupported = res?.data?.unsupported;
+  const dryRun      = true; // backend env var controls actual sends
+
+  const allIds = recipients.map(r => r.arbox_user_id);
+  const toggleAll = () => {
+    if (selected.size === allIds.length) setSelected(new Set());
+    else setSelected(new Set(allIds));
+  };
+  const toggle = (id) => {
+    const s = new Set(selected);
+    s.has(id) ? s.delete(id) : s.add(id);
+    setSelected(s);
+  };
+
+  const handleSend = async () => {
+    if (!selected.size) return;
+    setSending(true);
+    setSendResult(null);
+    try {
+      const res2 = await base44.functions.invoke('sendManualArboxMessages', {
+        coachEmail,
+        automationId: automation.id,
+        recipientArboxIds: [...selected],
+      });
+      setSendResult(res2?.data ?? {});
+      queryClient.invalidateQueries(['arboxRecipients']);
+      queryClient.invalidateQueries(['arboxSummaries']);
+      setConfirmSend(false);
+    } catch (err) {
+      toast.error('שגיאה בשליחה: ' + err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const saveMsg = async () => {
+    await base44.entities.WhatsAppAutomation.update(automation.id, { message_template: msgDraft });
+    queryClient.invalidateQueries(['whatsappAutomations']);
+    toast.success('ההודעה עודכנה');
+    setEditingMsg(false);
+  };
+
+  const meta = ARBOX_TRIGGER_META[automation?.trigger_type] || { label: automation?.trigger_type, icon: '⚙️' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex" dir="rtl">
+      <div className="flex-1 bg-black/40" onClick={onClose} />
+      <div className="w-full max-w-2xl bg-white overflow-y-auto flex flex-col shadow-2xl">
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-slate-200 px-5 py-4 flex items-center gap-3 z-10">
+          <span className="text-2xl">{meta.icon}</span>
+          <div className="flex-1 min-w-0">
+            <h2 className="font-bold text-slate-800 truncate">{automation?.name}</h2>
+            <p className="text-xs text-slate-500">{automation?.trigger_type} · cooldown: {automation?.cooldown_hours}h</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded hover:bg-slate-100 text-slate-500"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Dry-run banner */}
+        <div className="mx-4 mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-sm text-amber-800">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>מצב בדיקה — לא נשלחות הודעות אמיתיות עד שמוגדר ARBOX_AUTOMATION_DRY_RUN=false</span>
+        </div>
+
+        {/* Sync status */}
+        {syncInfo && (
+          <div className={`mx-4 mt-2 rounded-xl border px-4 py-2 text-xs flex items-center gap-2 ${isStale ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-green-200 bg-green-50 text-green-700'}`}>
+            {isStale ? <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> : <Check className="w-3.5 h-3.5 flex-shrink-0" />}
+            <span>סנכרון {syncInfo.sync_type}: {syncInfo.last_sync ? new Date(syncInfo.last_sync).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : 'מעולם לא'}{syncInfo.age_min != null ? ` (לפני ${syncInfo.age_min} דקות)` : ''}</span>
+            <button onClick={() => refetch()} className="mr-auto text-slate-500 hover:text-slate-700"><RefreshCw className="w-3.5 h-3.5" /></button>
+          </div>
+        )}
+
+        {/* Message editor */}
+        <div className="mx-4 mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-600">הודעה</p>
+            <button onClick={() => setEditingMsg(v => !v)} className="text-xs text-teal-600 hover:text-teal-700 flex items-center gap-1">
+              <Edit2 className="w-3 h-3" /> {editingMsg ? 'ביטול' : 'ערוך'}
+            </button>
+          </div>
+          {editingMsg ? (
+            <div className="space-y-2">
+              <textarea value={msgDraft} onChange={e => setMsgDraft(e.target.value)} className="w-full h-32 text-sm border border-slate-200 rounded-lg p-2 resize-none font-mono" dir="rtl" />
+              <div className="flex gap-2">
+                <Button size="sm" className="bg-teal-500 hover:bg-teal-600 text-white text-xs h-7" onClick={saveMsg}>שמור</Button>
+                <Button size="sm" variant="outline" className="text-xs h-7" onClick={() => { setMsgDraft(automation.message_template); setEditingMsg(false); }}>ביטול</Button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-600 whitespace-pre-wrap font-mono leading-relaxed">{automation?.message_template}</p>
+          )}
+        </div>
+
+        {/* Recipients */}
+        <div className="flex-1 px-4 mt-3">
+          {unsupported ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-center">
+              <p className="text-sm font-bold text-slate-600">לא נתמך עדיין</p>
+              <p className="text-xs text-slate-400 mt-1">{res?.data?.unsupported_reason ?? 'נדרש מידע נוסף מ-Arbox'}</p>
+            </div>
+          ) : isLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-10 rounded-xl bg-slate-100 animate-pulse" />)}</div>
+          ) : recipients.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center">
+              <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">אין לקוחות כשירים כרגע</p>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-bold text-slate-700">{recipients.length} לקוחות כשירים</p>
+                <div className="flex gap-2">
+                  <button onClick={toggleAll} className="text-xs text-teal-600 hover:text-teal-700">{selected.size === allIds.length ? 'בטל הכל' : 'בחר הכל'}</button>
+                  <button onClick={() => {
+                    const rows = [['שם','טלפון','Arbox ID','סיבה','נתון מרכזי','מנוי','סנכרון אחרון'],
+                      ...recipients.map(r => [r.name, r.phone||'', r.arbox_user_id, r.eligibility_reason, r.last_check_in||r.birthday||r.membership_end||'', r.membership_type||'', r.last_arbox_sync||''])];
+                    downloadBlob(toCSV(rows), `recipients-${automation.trigger_type}-${Date.now()}.csv`);
+                  }} className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"><Download className="w-3 h-3" />CSV</button>
+                </div>
+              </div>
+              <div className="border border-slate-200 rounded-xl overflow-hidden bg-white mb-3">
+                <table className="w-full text-xs">
+                  <thead><tr className="bg-slate-800 text-white">{['☐','שם','טלפון','סיבה','נתון','מנוי','סנכרון'].map(h=><th key={h} className="text-right px-2 py-2 font-medium">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {recipients.map((r, i) => (
+                      <tr key={r.arbox_user_id} className={`border-b border-slate-100 hover:bg-slate-50 ${selected.has(r.arbox_user_id) ? 'bg-teal-50' : i%2===0 ? '' : 'bg-slate-50/30'}`}>
+                        <td className="px-2 py-1.5"><input type="checkbox" checked={selected.has(r.arbox_user_id)} onChange={() => toggle(r.arbox_user_id)} className="w-3.5 h-3.5" /></td>
+                        <td className="px-2 py-1.5 font-medium text-slate-800">{r.name}</td>
+                        <td className="px-2 py-1.5 font-mono text-slate-500">{r.phone || '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-500">{r.eligibility_reason}</td>
+                        <td className="px-2 py-1.5 font-bold text-slate-700">
+                          {r.days_since_visit != null ? `${r.days_since_visit}d` : r.birthday || r.days_until_expiry != null ? `${r.days_until_expiry}d` : r.sessions_left != null ? `${r.sessions_left} כניסות` : r.trial_attended_at ? fmtShort(r.trial_attended_at) : '—'}
+                        </td>
+                        <td className="px-2 py-1.5 text-slate-400">{r.membership_type || '—'}</td>
+                        <td className="px-2 py-1.5 text-slate-400">{r.last_arbox_sync ? fmtShort(r.last_arbox_sync) : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Send result */}
+        {sendResult && (
+          <div className="mx-4 mb-3 rounded-xl border border-green-200 bg-green-50 p-3 text-xs">
+            <p className="font-bold text-green-800 mb-1">תוצאת שליחה:</p>
+            <p className="text-green-700">
+              {sendResult.dry_run_mode ? `🔄 DRY_RUN: ${sendResult.dry_run ?? 0} הודעות סומולציה` : `✅ ${sendResult.queued ?? 0} בתור`}
+              {sendResult.skipped_no_phone > 0 && ` · ללא טלפון: ${sendResult.skipped_no_phone}`}
+              {sendResult.skipped_revalidation > 0 && ` · לא עמד/ה בתנאי: ${sendResult.skipped_revalidation}`}
+              {sendResult.errors > 0 && ` · שגיאות: ${sendResult.errors}`}
+            </p>
+          </div>
+        )}
+
+        {/* Footer actions */}
+        <div className="sticky bottom-0 border-t border-slate-200 bg-white px-4 py-3 flex gap-2">
+          {!confirmSend ? (
+            <Button
+              className="flex-1 bg-teal-600 hover:bg-teal-700 text-white gap-1.5"
+              disabled={!selected.size || sending}
+              onClick={() => setConfirmSend(true)}
+            >
+              <MessageSquare className="w-4 h-4" /> שלח ל-{selected.size} נבחרים {dryRun && '(DRY-RUN)'}
+            </Button>
+          ) : (
+            <div className="flex-1 space-y-2">
+              <p className="text-xs text-center text-amber-700 font-semibold">שלח ל-{selected.size} לקוחות? {dryRun ? '(DRY-RUN — לא נשלח בפועל)' : ''}</p>
+              <div className="flex gap-2">
+                <Button className="flex-1 bg-teal-600 hover:bg-teal-700 text-white text-xs h-8" disabled={sending} onClick={handleSend}>
+                  {sending ? <><Loader2 className="w-3.5 h-3.5 animate-spin ml-1" />שולח...</> : 'אשר שליחה'}
+                </Button>
+                <Button variant="outline" className="flex-1 text-xs h-8" onClick={() => setConfirmSend(false)}>ביטול</Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArboxAutomationsSection({ coachEmail }) {
+  const queryClient = useQueryClient();
+  const [selectedAutomation, setSelectedAutomation] = useState(null);
+  const [seeding, setSeeding]                       = useState(false);
+
+  const { data: automationsRes, isLoading: loadingAutos } = useQuery({
+    queryKey: ['arboxAutomationsAll', coachEmail],
+    queryFn:  () => base44.entities.WhatsAppAutomation.filter({ coach_email: coachEmail }),
+    enabled:  !!coachEmail,
+    staleTime: 30000,
+  });
+
+  const arboxTriggers  = new Set(Object.keys(ARBOX_TRIGGER_META));
+  const allAutomations = (automationsRes || []).filter(a => arboxTriggers.has(a.trigger_type));
+
+  const { data: summaryRes, isLoading: loadingSummary, refetch: refetchSummary } = useQuery({
+    queryKey: ['arboxSummaries', coachEmail],
+    queryFn:  () => base44.functions.invoke('getArboxAutomationSummaries', { coachEmail }),
+    enabled:  !!coachEmail && allAutomations.length > 0,
+    staleTime: 60000,
+  });
+
+  const summaries = summaryRes?.data?.summaries ?? {};
+  const dryRun    = true; // controlled by backend ARBOX_AUTOMATION_DRY_RUN env var
+
+  const handleSeed = async () => {
+    if (seeding) return;
+    setSeeding(true);
+    try {
+      const res = await base44.functions.invoke('seedArboxAutomations', { coachEmail });
+      if (res?.data?.created > 0) toast.success(`נוצרו ${res.data.created} אוטומציות`);
+      else toast.success('האוטומציות כבר קיימות');
+      queryClient.invalidateQueries(['arboxAutomationsAll']);
+      queryClient.invalidateQueries(['arboxSummaries']);
+    } catch (err) {
+      toast.error('שגיאה: ' + err.message);
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleToggle = async (automation) => {
+    await base44.entities.WhatsAppAutomation.update(automation.id, { enabled: !automation.enabled });
+    queryClient.invalidateQueries(['arboxAutomationsAll']);
+  };
+
+  if (loadingAutos) return <div className="text-center py-16 text-slate-400"><RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />טוען...</div>;
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <SectionHeader title="אוטומציות Arbox" sub={`${allAutomations.length} מוגדרות · ${allAutomations.filter(a => a.enabled).length} פעילות`} />
+        <div className="flex gap-2">
+          {dryRun && (
+            <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 border border-amber-200 text-amber-700">
+              <AlertTriangle className="w-3.5 h-3.5" /> מצב בדיקה
+            </span>
+          )}
+          <button onClick={() => refetchSummary()} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs bg-slate-50 border border-slate-200 text-slate-600 hover:bg-slate-100">
+            <RefreshCw className="w-3.5 h-3.5" /> רענן
+          </button>
+          {allAutomations.length === 0 && (
+            <Button className="bg-teal-500 hover:bg-teal-600 text-white text-xs gap-1.5 h-8" onClick={handleSeed} disabled={seeding}>
+              {seeding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+              צור אוטומציות ברירת מחדל
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {allAutomations.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-200 p-12 text-center space-y-3">
+          <Zap className="w-10 h-10 text-slate-300 mx-auto" />
+          <p className="text-slate-600 font-semibold">אין אוטומציות Arbox עדיין</p>
+          <p className="text-sm text-slate-400">לחץ על "צור אוטומציות ברירת מחדל" כדי ליצור את 10 האוטומציות הסטנדרטיות</p>
+          <Button className="bg-teal-500 hover:bg-teal-600 text-white gap-1.5" onClick={handleSeed} disabled={seeding}>
+            {seeding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+            צור אוטומציות ברירת מחדל
+          </Button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3">
+          {allAutomations.map(automation => {
+            const meta    = ARBOX_TRIGGER_META[automation.trigger_type] || { label: automation.trigger_type, icon: '⚙️', color: 'blue' };
+            const colorCls = COLOR_MAP[meta.color] || COLOR_MAP.blue;
+            const summary = summaries[automation.trigger_type];
+            const count   = summary?.total ?? '—';
+            const stale   = summary?.is_stale ?? false;
+
+            return (
+              <div key={automation.id} className={`rounded-2xl border p-4 ${automation.enabled ? colorCls : 'bg-white border-slate-200'}`}>
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl mt-0.5">{meta.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h3 className="font-bold text-slate-800 truncate">{automation.name}</h3>
+                      <Switch
+                        checked={!!automation.enabled}
+                        onCheckedChange={() => handleToggle(automation)}
+                        className="flex-shrink-0"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-500 mb-2">{automation.trigger_type} · {automation.cooldown_hours}h cooldown</p>
+
+                    {/* Stats row */}
+                    <div className="flex items-center gap-3 flex-wrap mb-3">
+                      <span className={`inline-flex items-center gap-1 text-sm font-bold ${loadingSummary ? 'text-slate-400' : count > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        <Users className="w-3.5 h-3.5" />
+                        {loadingSummary ? '...' : count} כשירים
+                      </span>
+                      {stale && (
+                        <span className="text-xs text-amber-600 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" /> נתונים לא עדכניים
+                        </span>
+                      )}
+                      {summary?.sync?.last_sync && (
+                        <span className="text-xs text-slate-400">
+                          סנכרון: {new Date(summary.sync.last_sync).toLocaleString('he-IL', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                        </span>
+                      )}
+                      {!automation.enabled && (
+                        <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">לא פעיל</span>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        onClick={() => setSelectedAutomation(automation)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:border-teal-400 hover:text-teal-700 transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" /> צפייה בלקוחות
+                      </button>
+                      <button
+                        onClick={() => setSelectedAutomation({ ...automation, _editMsg: true })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition-colors"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" /> עריכת הודעה
+                      </button>
+                      {automation.last_run_at && (
+                        <span className="flex items-center gap-1 text-xs text-slate-400 px-2 py-1.5">
+                          <History className="w-3 h-3" /> ריצה: {fmtShort(automation.last_run_at)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {selectedAutomation && (
+        <RecipientDrawer
+          automation={selectedAutomation}
+          coachEmail={coachEmail}
+          onClose={() => setSelectedAutomation(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MissionControl() {
@@ -2287,8 +2690,9 @@ export default function MissionControl() {
 
   const renderSection = () => {
     switch (activeSection) {
-      case 'dashboard':   return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} onRefresh={refresh} />;
-      case 'automations': return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
+      case 'dashboard':         return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} onRefresh={refresh} />;
+      case 'arbox-automations': return <ArboxAutomationsSection coachEmail={coachEmail} />;
+      case 'automations':       return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'queue':       return <QueueSection queueItems={queueItems} onRefresh={refresh} />;
       case 'live':        return <LiveSection queueItems={queueItems} />;
       case 'arbox':       return <ArboxSection coachEmail={coachEmail} arboxStatus={arboxStatus} onRefresh={refresh} />;
