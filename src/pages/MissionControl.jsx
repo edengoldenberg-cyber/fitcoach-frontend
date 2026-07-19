@@ -37,7 +37,7 @@ import {
   RefreshCw, Download, Plus, Edit2, Trash2, Play, CheckCircle2,
   ChevronRight, ChevronDown, Search, Phone, Wifi, WifiOff, Eye,
   History, Info, Calendar, Filter, TrendingUp, AlertCircle,
-  Check, X, Settings, Bell, ArrowUpRight, Layers, Menu,
+  Check, X, Settings, Bell, ArrowUpRight, Layers, Menu, Loader2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
