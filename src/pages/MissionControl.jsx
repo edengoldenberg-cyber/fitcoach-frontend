@@ -372,6 +372,9 @@ function AutomationsSection({ automations, queueStatsMap, coachEmail, onRefresh 
   const [validating, setValidating] = useState(null);
   const [historyFor, setHistoryFor] = useState(null);
   const [expanded, setExpanded]   = useState(new Set());
+  // Activation gate state
+  const [gateAutomation, setGateAutomation] = useState(null); // { id, name, blockers }
+  const [gateChecking, setGateChecking]     = useState(null); // id being checked
   const queryClient = useQueryClient();
 
   const filtered = useMemo(() => automations.filter(a => {
@@ -391,6 +394,46 @@ function AutomationsSection({ automations, queueStatsMap, coachEmail, onRefresh 
     mutationFn: ({ id, enabled }) => base44.entities.WhatsAppAutomation.update(id, { enabled: !enabled }),
     onSuccess:  () => queryClient.invalidateQueries(['whatsappAutomations']),
   });
+
+  // Activation gate: when enabling an automation, validate Arbox data readiness first.
+  // Disabling always proceeds without a gate.
+  const handleToggle = async (automation) => {
+    if (automation.enabled) {
+      // Disabling: no gate needed
+      toggleMut.mutate({ id: automation.id, enabled: automation.enabled });
+      return;
+    }
+    // Enabling: check Arbox data readiness
+    setGateChecking(automation.id);
+    try {
+      const res = await base44.functions.invoke('validateArboxAutomationActivation', {
+        automationId: automation.id,
+        coachEmail,
+      });
+      if (!res?.ok) {
+        toast.error(`שגיאה בבדיקת מוכנות: ${res?.error || 'שגיאה לא ידועה'}`);
+        return;
+      }
+      const { can_activate, blockers } = res.data ?? {};
+      if (can_activate) {
+        // All gates pass — proceed with activation
+        toggleMut.mutate({ id: automation.id, enabled: automation.enabled });
+      } else {
+        // Show blockers before allowing override activation
+        setGateAutomation({ id: automation.id, name: automation.name, blockers: blockers ?? [], automation });
+      }
+    } catch (err) {
+      toast.error(`שגיאה בבדיקת מוכנות: ${err.message}`);
+    } finally {
+      setGateChecking(null);
+    }
+  };
+
+  const forceActivate = () => {
+    if (!gateAutomation) return;
+    toggleMut.mutate({ id: gateAutomation.id, enabled: gateAutomation.automation.enabled });
+    setGateAutomation(null);
+  };
 
   const toggleRow = id => setExpanded(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -479,7 +522,12 @@ function AutomationsSection({ automations, queueStatsMap, coachEmail, onRefresh 
                     <td className="px-2 py-2 text-center"><span className={`font-bold ${stats.failed > 0 ? 'text-red-600' : 'text-slate-400'}`}>{stats.failed}</span></td>
                     <td className="px-2 py-2 text-slate-500">{fmtDate(a.last_run_at)}</td>
                     <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
-                      <Switch checked={!!a.enabled} onCheckedChange={() => toggleMut.mutate({ id: a.id, enabled: a.enabled })} />
+                      <Switch
+                        checked={!!a.enabled}
+                        disabled={gateChecking === a.id}
+                        onCheckedChange={() => handleToggle(a)}
+                      />
+                      {gateChecking === a.id && <span className="text-xs text-slate-400 block mt-0.5">בודק...</span>}
                     </td>
                     <td className="px-2 py-2" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1">
@@ -518,6 +566,40 @@ function AutomationsSection({ automations, queueStatsMap, coachEmail, onRefresh 
       {showForm && <AutomationFormDialog open onClose={() => { setShowForm(false); setEditing(null); }} editing={editing} coachEmail={coachEmail} onSaved={() => queryClient.invalidateQueries(['whatsappAutomations'])} />}
       {validating && <ValidationDialog open onClose={() => setValidating(null)} automation={validating} coachEmail={coachEmail} onTestSend={onRefresh} />}
       {historyFor && <HistoryDialog open onClose={() => setHistoryFor(null)} automation={historyFor} />}
+
+      {/* Activation gate dialog — shown when enabling an automation with data-readiness blockers */}
+      {gateAutomation && (
+        <Dialog open onOpenChange={() => setGateAutomation(null)}>
+          <DialogContent className="max-w-md" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-amber-700">
+                <AlertTriangle className="w-5 h-5" /> אזהרת הפעלה — {gateAutomation.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">
+                נמצאו חסמים שעלולים לגרום לשליחת הודעות שגויות. הפעלה מומלצת רק לאחר תיקון:
+              </p>
+              <div className="space-y-2">
+                {gateAutomation.blockers.map((b, i) => (
+                  <div key={i} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                    <p className="text-xs font-bold text-amber-800">{b.code}</p>
+                    <p className="text-xs text-amber-700 mt-0.5">{b.msg}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setGateAutomation(null)}>
+                  ביטול
+                </Button>
+                <Button className="flex-1 bg-amber-600 hover:bg-amber-700 text-white text-xs" onClick={forceActivate}>
+                  הפעל בכל זאת (לא מומלץ)
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
