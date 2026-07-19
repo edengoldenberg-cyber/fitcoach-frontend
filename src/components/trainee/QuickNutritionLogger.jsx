@@ -66,6 +66,7 @@ function FoodChip({ food, onAdd, onFavorite }) {
 
 export default function QuickNutritionLogger({ trainee, dateStr, defaultMealType, onAddMeal, onAddMealAsync, open: controlledOpen, onOpenChange, hideTrigger = false, title = 'הוספה מהירה' }) {
   const [internalOpen, setInternalOpen] = useState(false);
+  const [addingSavedMealId, setAddingSavedMealId] = useState(null);
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange || setInternalOpen;
   const [search, setSearch] = useState('');
@@ -132,21 +133,53 @@ export default function QuickNutritionLogger({ trainee, dateStr, defaultMealType
   };
 
   const addSavedMeal = async (savedMeal) => {
-    const saveOne = onAddMealAsync || onAddMeal;
+    if (addingSavedMealId) return;
+
     const foods = savedMeal.foods || [];
-    let failedFood = null;
+    if (!foods.length) {
+      toast.error('הארוחה השמורה ריקה');
+      return;
+    }
+
+    const mealType = savedMeal.meal_type || defaultMealType || 'snack';
+
+    setAddingSavedMealId(savedMeal.id);
     try {
-      for (const food of foods) {
-        await saveOne({ ...food, trainee_email: trainee.user_email, date: dateStr, meal_type: savedMeal.meal_type || defaultMealType || 'snack', learning_event_type: 'search' });
+      // Create one MealEntry per food item — matches the canonical Nutrition Engine
+      // architecture used by photo, AI text, manual, and barcode save paths.
+      for (const f of foods) {
+        const calories = Number.isFinite(Number(f.calories)) ? Math.round(Number(f.calories)) : 0;
+        if (!calories && !f.food_name) continue;
+        await base44.entities.MealEntry.create({
+          trainee_email:       trainee.user_email,
+          date:                dateStr,
+          meal_type:           mealType,
+          food_name:           f.food_name || 'פריט לא ידוע',
+          calories,
+          protein:  Number.isFinite(Number(f.protein)) ? Number(f.protein) : 0,
+          carbs:    Number.isFinite(Number(f.carbs))   ? Number(f.carbs)   : 0,
+          fat:      Number.isFinite(Number(f.fat))     ? Number(f.fat)     : 0,
+          quantity: f.grams_equivalent || f.grams_final || f.quantity || 100,
+          unit:     f.unit || 'gram',
+          source:   'saved_meal',
+          learning_event_type: 'search',
+        });
       }
-      // Only update usage_count after every ingredient saved successfully.
-      await base44.entities.UserSavedMeals.update(savedMeal.id, { usage_count: (savedMeal.usage_count || 0) + 1, last_used_at: new Date().toISOString() });
+
+      // Update usage_count only after all individual creates succeed.
+      await base44.entities.UserSavedMeals.update(savedMeal.id, {
+        usage_count:  (savedMeal.usage_count || 0) + 1,
+        last_used_at: new Date().toISOString(),
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['meals'] });
       queryClient.invalidateQueries({ queryKey: ['quickSavedMeals'] });
-      toast.success('הארוחה השמורה נוספה');
+      toast.success(`"${savedMeal.meal_name}" נוספה`);
     } catch (err) {
-      failedFood = err?.food_name || '';
-      console.error('[addSavedMeal] partial save failure', err);
-      toast.error(`שגיאה בשמירת הארוחה${failedFood ? ` (${failedFood})` : ''} — חלק מהמרכיבים לא נשמרו`);
+      console.error('[addSavedMeal] error:', err);
+      toast.error('שגיאה בהוספת הארוחה — נסה שנית');
+    } finally {
+      setAddingSavedMealId(null);
     }
   };
 
@@ -207,7 +240,12 @@ export default function QuickNutritionLogger({ trainee, dateStr, defaultMealType
               <h3 className="flex items-center gap-1 text-sm font-bold text-slate-700"><BookmarkPlus className="h-4 w-4" /> ארוחות שמורות</h3>
               <div className="grid grid-cols-2 gap-2">
                 {savedMeals.slice(0, 4).map((meal) => (
-                  <button key={meal.id} onClick={() => addSavedMeal(meal)} className="rounded-xl border bg-emerald-50 p-2 text-right min-h-0">
+                  <button
+                    key={meal.id}
+                    onClick={() => addSavedMeal(meal)}
+                    disabled={!!addingSavedMealId}
+                    className={`rounded-xl border bg-emerald-50 p-2 text-right min-h-0 transition-opacity ${addingSavedMealId === meal.id ? 'opacity-50' : ''}`}
+                  >
                     <p className="text-sm font-bold text-emerald-900 truncate">{meal.meal_name}</p>
                     <p className="text-xs text-emerald-700">{meal.macros_snapshot?.calories || 0} קל׳ · {meal.foods?.length || 0} פריטים</p>
                   </button>
