@@ -270,7 +270,7 @@ function DashboardSection({ automations, queueItems, arboxStatus, absenceData, c
   const queueSent    = queueItems.filter(q => q.status === 'sent').length;
   const queueFailed  = queueItems.filter(q => q.status === 'failed').length;
   const queuePending = queueItems.filter(q => q.status === 'queued' || q.status === 'sending').length;
-  const highRisk = (absenceData?.tiers?.days30?.length ?? 0) + (absenceData?.tiers?.days45?.length ?? 0) + (absenceData?.tiers?.days60?.length ?? 0) + (absenceData?.tiers?.days90?.length ?? 0) + (absenceData?.tiers?.days90p?.length ?? 0);
+  const highRisk = (absenceData?.tiers?.w21?.length ?? 0) + (absenceData?.tiers?.w45?.length ?? 0) + (absenceData?.tiers?.w60?.length ?? 0) + (absenceData?.tiers?.w90?.length ?? 0) + (absenceData?.tiers?.w90p?.length ?? 0);
 
   const KPI = ({ label, value, sub, color = 'slate', icon }) => (
     <div className={`bg-white border border-slate-200 rounded-xl p-5 flex items-center gap-4`}>
@@ -1138,9 +1138,11 @@ function AbsenceSection({ coachEmail }) {
     enabled:  !!coachEmail,
     staleTime: 60000,
   });
-  const tiers = res?.data?.tiers ?? {};
-  const total = res?.data?.total ?? 0;
+  const tiers    = res?.data?.tiers ?? {};
+  const total    = res?.data?.active_count ?? res?.data?.total ?? 0;
+  const absent   = res?.data?.absent_count ?? 0;
   const lastSync = res?.data?.last_bookings_sync;
+  const isStale  = res?.data?.is_stale ?? false;
 
   const handleRefresh = async () => {
     if (syncing) return;
@@ -1159,19 +1161,17 @@ function AbsenceSection({ coachEmail }) {
     }
   };
 
+  // Tiers: only customers absent >= 7 days (Arbox single source of truth).
+  // Keys match getArboxAbsenceReport backend response.
   const TIERS = [
-    { key: 'today',   label: 'היום',       days: '0',    color: 'green',  risk: 'green'  },
-    { key: 'days3',   label: '1-3 ימים',   days: '1-3',  color: 'green',  risk: 'green'  },
-    { key: 'days5',   label: '4-5 ימים',   days: '4-5',  color: 'green',  risk: 'green'  },
-    { key: 'days7',   label: '6-7 ימים',   days: '6-7',  color: 'yellow', risk: 'yellow' },
-    { key: 'days14',  label: '8-14 ימים',  days: '8-14', color: 'yellow', risk: 'yellow' },
-    { key: 'days21',  label: '15-21 ימים', days: '15-21',color: 'orange', risk: 'orange' },
-    { key: 'days30',  label: '22-30 ימים', days: '22-30',color: 'red',    risk: 'red'    },
-    { key: 'days45',  label: '31-45 ימים', days: '31-45',color: 'red',    risk: 'red'    },
-    { key: 'days60',  label: '46-60 ימים', days: '46-60',color: 'red',    risk: 'red'    },
-    { key: 'days90',  label: '61-90 ימים', days: '61-90',color: 'red',    risk: 'red'    },
-    { key: 'days90p', label: '90+ ימים',   days: '90+',  color: 'red',    risk: 'red'    },
-    { key: 'never',   label: 'אין נתונים', days: '—',    color: 'yellow', risk: 'yellow' },
+    { key: 'w7',   label: '7-13 ימים',  days: '7-13',  color: 'yellow', risk: 'yellow' },
+    { key: 'w14',  label: '14-20 ימים', days: '14-20', color: 'yellow', risk: 'yellow' },
+    { key: 'w21',  label: '21-30 ימים', days: '21-30', color: 'orange', risk: 'orange' },
+    { key: 'w45',  label: '31-45 ימים', days: '31-45', color: 'red',    risk: 'red'    },
+    { key: 'w60',  label: '46-60 ימים', days: '46-60', color: 'red',    risk: 'red'    },
+    { key: 'w90',  label: '61-90 ימים', days: '61-90', color: 'red',    risk: 'red'    },
+    { key: 'w90p', label: '90+ ימים',   days: '90+',   color: 'red',    risk: 'red'    },
+    { key: 'never',label: 'לא ביקרו',   days: '—',     color: 'yellow', risk: 'yellow' },
   ];
 
   const [activeTier, setActiveTier] = useState(null);
@@ -1195,7 +1195,7 @@ function AbsenceSection({ coachEmail }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <SectionHeader title="מרכז היעדרות" sub={`${total} לקוחות פעילים · מציג לקוחות פעילים בלבד`} />
+        <SectionHeader title="מרכז היעדרות" sub={`${absent} נעדרים (≥7 ימים) מתוך ${total} לקוחות פעילים · מקור: Arbox`} />
         <div className="flex flex-col items-end gap-1">
           <button
             onClick={handleRefresh}
@@ -1206,12 +1206,20 @@ function AbsenceSection({ coachEmail }) {
             {syncing ? 'מסנכרן...' : 'רענן נתונים עכשיו'}
           </button>
           {lastSync && (
-            <span className="text-xs text-slate-400">
-              עודכן לאחרונה: {new Date(lastSync).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            <span className={`text-xs ${isStale ? 'text-amber-600 font-semibold' : 'text-slate-400'}`}>
+              {isStale && '⚠️ '}עודכן: {new Date(lastSync).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
+          {!lastSync && <span className="text-xs text-red-500">⚠️ לא בוצע סנכרון</span>}
         </div>
       </div>
+
+      {isStale && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 flex items-center gap-2 text-sm text-amber-800">
+          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <span>הנתונים לא עדכניים — הסנכרון האחרון לפני יותר מ-60 דקות. לחץ "רענן" לעדכון מיידי.</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-3">
         {TIERS.map(t => {
