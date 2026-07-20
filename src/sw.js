@@ -41,6 +41,34 @@ self.addEventListener('fetch', (event) => {
 self.skipWaiting();
 clientsClaim();
 
+// ─── Push notification handler ────────────────────────────────────────────────
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let payload = { title: 'FitCoach', body: '', url: '/', icon: '/icon-192.png' };
+  try { payload = { ...payload, ...event.data.json() }; } catch {}
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body:  payload.body,
+      icon:  payload.icon,
+      badge: '/icon-192.png',
+      tag:   'fitcoach-reminder',
+      data:  { url: payload.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      const existing = list.find(c => c.url.includes(self.location.origin) && 'focus' in c);
+      if (existing) return existing.focus();
+      return clients.openWindow(url);
+    })
+  );
+});
+
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 

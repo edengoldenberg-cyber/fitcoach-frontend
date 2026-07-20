@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Bell, BellOff, X } from 'lucide-react';
 
-const VAPID_PUBLIC_KEY = 'BGHxT8YxQKZPYDJNTlJ3y0i8yPtX9GJbOZOhHqYGYZg8kN8N9VaWPbF5YqQvHbJKNzF4YqQvHbJKNzF4YqQvHbI';
+const VAPID_PUBLIC_KEY = 'BLYV4o1VzRU6RAseJHuj0YOyPhV9fkkC_NNR38jKtXbCcOHTIYe1zK7UdxT6Sg433UwOnGXngdUqw-s_VV003HY';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
