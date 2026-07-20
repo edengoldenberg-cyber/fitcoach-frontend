@@ -148,8 +148,22 @@ export default function AutomationSettings() {
     onError: () => toast.error('שגיאה בשמירה'),
   });
 
+  // Enabling any specific reminder type implicitly requires the master WhatsApp toggle.
+  // Without master=true, canSendAutomation blocks all reminders silently.
+  const REMINDER_TYPES_REQUIRING_MASTER = new Set([
+    'nutrition_reminders_enabled',
+    'water_reminders_enabled',
+    'workout_reminders_enabled',
+    'weigh_in_reminders_enabled',
+  ]);
+
   const toggle = (key) => {
     const updated = { ...prefs, [key]: !prefs[key] };
+    // When a specific reminder type is toggled ON, auto-enable the master WhatsApp toggle.
+    // When toggling OFF, or toggling non-reminder keys, leave master unchanged.
+    if (REMINDER_TYPES_REQUIRING_MASTER.has(key) && updated[key] === true) {
+      updated.whatsapp_reminders_enabled = true;
+    }
     setPrefs(updated);
     saveMutation.mutate(updated);
   };
