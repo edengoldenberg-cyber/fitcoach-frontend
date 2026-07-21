@@ -91,9 +91,12 @@ export default function AddTrainee() {
       try {
         const waRes = await Promise.race([
           base44.functions.invoke('onTraineeCreated', { data: trainee }),
-          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 9000)),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000)),
         ]);
-        whatsappSent = !!waRes?.sent || !!waRes?.queue_id;
+        // sent=true means message was enqueued (not necessarily delivered yet).
+        // queue_id is set when enqueued successfully (including duplicates).
+        // ok=true with no reason means success path was reached.
+        whatsappSent = !!(waRes?.sent || waRes?.queue_id || (waRes?.ok && !waRes?.reason));
       } catch (waErr) {
         console.error('WhatsApp invite failed (non-blocking):', waErr.message);
       }
