@@ -3,6 +3,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { base44 } from '@/api/base44Client';
+import { useQueryClient } from '@tanstack/react-query';
 import { Sparkles, Loader2, Send, X, TrendingUp, Utensils, Dumbbell, Droplets, ChevronRight, User } from "lucide-react";
 import { format, subDays } from 'date-fns';
 import { detectMutationIntent, getMutationFailureMessage } from '@/utils/mealMutationDetector';
@@ -125,6 +126,7 @@ const MessageBubble = ({ msg }) => {
 const ELIOR_GREETING = (name) => `היי${name ? ` ${name}` : ''}! 👋 אני אליאור, העוזר האישי שלך לכושר ותזונה. אשמח לעזור לך היום — שאל אותי כל שאלה!`;
 
 export default function SuperAICoach({ open, onClose, trainee, meals, water, workouts, measurements }) {
+  const queryClient = useQueryClient();
   const firstName = trainee?.full_name?.split(' ')[0] || '';
   const [messages, setMessages] = useState([{ role: 'assistant', content: ELIOR_GREETING(firstName) }]);
   const [input, setInput] = useState('');
@@ -247,11 +249,12 @@ ${context}
       return;
     }
 
-    // Async job started — we can't poll here; direct user to /MyMealPlan
+    // Async job started — the plan will be updated in the background.
+    // MyMealPlan has its own polling for active jobs and will refresh itself.
     if (res?.action === 'adapt_existing_job') {
       setMessages(prev => prev.filter(m => !m.loading).concat({
         role: 'assistant',
-        content: 'עדכון התפריט התחיל! התהליך ייקח מספר שניות. פתח את דף "התפריט שלי" כדי לראות את ההתקדמות ואת התוצאה הסופית.',
+        content: 'עדכון התפריט התחיל! זה ייקח כמה שניות. פתח את דף "התפריט שלי" — ההתקדמות תוצג שם אוטומטית.',
       }));
       return;
     }
@@ -259,7 +262,12 @@ ${context}
     // Synchronous update — check the verified backend result
     if (res?.action === 'immediate_update') {
       if (res.changed === true) {
-        // SUCCESS: verified by the backend. Only claim success here.
+        // SUCCESS: verified by the backend. Invalidate cached plan so MyMealPlan
+        // shows the updated data without requiring a manual refresh.
+        try {
+          await queryClient.invalidateQueries({ queryKey: ['activeMealPlan', trainee?.id] });
+        } catch {}
+
         const verified = res.after;
         const calLine  = verified?.calories != null
           ? `התפריט עודכן — ממוצע יומי מאומת: ${verified.calories} קלוריות.`
@@ -267,7 +275,7 @@ ${context}
 
         setMessages(prev => prev.filter(m => !m.loading).concat({
           role: 'assistant',
-          content: `✅ ${calLine}\n\nרענן את דף "התפריט שלי" כדי לראות את הפירוט המלא.`,
+          content: `✅ ${calLine}\n\nהתפריט עודכן. אם דף "התפריט שלי" פתוח, הוא יתרענן אוטומטית.`,
         }));
       } else {
         // Backend processed the request but the plan did not change
