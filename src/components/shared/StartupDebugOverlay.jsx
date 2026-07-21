@@ -6,13 +6,8 @@ import { base44 } from '@/api/client';
 
 function isDebugEnabled() {
   try {
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('STARTUP_DEBUG') === '1') return true;
-  } catch {}
-  try {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('startupDebug') === '1') {
-      return true;
-    }
+    if (params.get('startupDebug') === '1') return true;
   } catch {}
   return false;
 }

@@ -30,9 +30,8 @@ const TRIGGER_TYPES = [
   { value: 'class_reminder',       label: 'תזכורת לפני שיעור',            category: 'auto',      auto: true },
   { value: 'exact_date',           label: 'תאריך מדויק',                  category: 'auto',      auto: true },
   { value: 'weekday_time',         label: 'יום ושעה קבועים',              category: 'auto',      auto: true },
-  // ── Manual / legacy ──────────────────────────────────────────────────────
+  // ── Manual test only ─────────────────────────────────────────────────────
   { value: 'manual_test',            label: 'בדיקה ידנית',              category: 'test' },
-  { value: 'custom_scheduled',       label: 'שליחה מתוזמנת (לגסי)',      category: 'custom' },
 ];
 
 const TRIGGER_BADGE_CLASSES = {
@@ -864,7 +863,7 @@ function AutomationsTable({
                     <div className="flex items-center gap-1 mt-0.5">
                       {isAuto && a.enabled && (
                         <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${waConnected ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                          {waConnected ? 'אוטומטי ✅' : 'אוטומטי ⚠️'}
+                          {waConnected ? 'אוטומטי ✅' : 'אוטומטי — WhatsApp לא מחובר ⚠️'}
                         </span>
                       )}
                       <span className="text-xs text-slate-400">
@@ -1011,7 +1010,7 @@ function AutomationsTable({
                           )}
                           {isAuto && a.enabled && (
                             <p className={`text-xs mt-2 ${waConnected ? 'text-green-600' : 'text-amber-600'}`}>
-                              {waConnected ? '✅ פעיל ומופעל אוטומטית כל 5 דק׳' : '⚠️ פעיל — ממתין לחיבור WhatsApp לשליחה'}
+                              {waConnected ? '✅ פעיל — מופעל אוטומטית כל 5 דק׳ דרך Green API' : '⚠️ פעיל — WhatsApp לא מחובר, שליחה מושהית'}
                             </p>
                           )}
                         </div>
@@ -1293,12 +1292,14 @@ export default function WhatsAppAutomations() {
     staleTime: 30000,
   });
 
-  const { data: waStatus } = useQuery({
+  const { data: waStatus, isLoading: waLoading, refetch: waRefetch } = useQuery({
     queryKey: ['waStatus'],
     queryFn:  () => base44.functions.invoke('testWhatsAppConnection', {}),
-    staleTime: 60000,
+    staleTime: 30000,
   });
-  const waConnected = waStatus?.data?.connected;
+  // Only true when we have a definitive "authorized" response — not during loading or on error
+  const waConfigured = !!(waStatus?.data?.status && waStatus.data.status !== 'CONFIG_REQUIRED');
+  const waConnected  = waStatus?.data?.connected === true;
 
   // Aggregated queue stats per automation
   const queueStatsMap = useMemo(() => {
@@ -1386,13 +1387,31 @@ export default function WhatsAppAutomations() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* WA Status pill */}
+            {/* WA Status pill — shows live runtime state, not just config */}
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${
-              waConnected ? 'bg-green-50 border-green-200 text-green-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+              waLoading
+                ? 'bg-slate-50 border-slate-200 text-slate-500'
+                : waConnected
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : waConfigured
+                    ? 'bg-amber-50 border-amber-200 text-amber-700'
+                    : 'bg-red-50 border-red-200 text-red-700'
             }`}>
-              {waConnected ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
-              {waConnected ? 'Green API מחובר' : 'WhatsApp לא מחובר'}
-              <button onClick={() => refetch()} className="hover:opacity-70">
+              {waLoading
+                ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                : waConnected
+                  ? <Wifi className="w-3.5 h-3.5" />
+                  : <WifiOff className="w-3.5 h-3.5" />
+              }
+              {waLoading
+                ? 'בודק חיבור...'
+                : waConnected
+                  ? 'WhatsApp מחובר ✅'
+                  : waConfigured
+                    ? 'WhatsApp מוגדר — לא מחובר ⚠️'
+                    : 'WhatsApp לא מוגדר ❌'
+              }
+              <button onClick={() => waRefetch()} className="hover:opacity-70" title="בדוק שוב">
                 <RefreshCw className="w-3 h-3" />
               </button>
             </div>

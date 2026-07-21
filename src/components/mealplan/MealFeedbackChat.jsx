@@ -408,8 +408,8 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   };
 
   const isLoading = loading;
-  const choiceActive = CALORIE_TARGET_CHOICE_UI &&
-    ['choice', 'confirmCreate', 'adaptLoading', 'createLoading'].includes(uiState);
+  const choiceActive = uiState === 'createLoading' || (CALORIE_TARGET_CHOICE_UI &&
+    ['choice', 'confirmCreate', 'adaptLoading'].includes(uiState));
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
@@ -532,7 +532,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
           )}
 
           {/* ── CREATE LOADING — real backend progress panel ── */}
-          {CALORIE_TARGET_CHOICE_UI && uiState === 'createLoading' && (() => {
+          {uiState === 'createLoading' && (() => {
             const elapsedMs   = createJobStartTime ? Date.now() - createJobStartTime : 0;
             const rateMs      = createJobProgress > 5 ? elapsedMs / createJobProgress : null;
             const remainingMs = rateMs ? Math.max(0, rateMs * (100 - createJobProgress)) : null;

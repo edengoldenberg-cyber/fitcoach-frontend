@@ -55,13 +55,16 @@ function calculateMacros(prefs) {
     : parseFloat(prefs.height_cm);
 
   // Canonical formula — identical to backend and EditPersonalInfo
+  // Pass explicit kg/weeks so the deficit matches the displayed weekly-loss rate.
   const result = calcNutritionTargets({
-    weight_kg:      prefs.weight_kg,
+    weight_kg:             prefs.weight_kg,
     height_cm,
-    age:            prefs.age,
-    gender:         prefs.gender,
-    activity_level: prefs.activity_level,
-    goal:           prefs.goal || 'maintain',
+    age:                   prefs.age,
+    gender:                prefs.gender,
+    activity_level:        prefs.activity_level,
+    goal:                  prefs.weight_goal_kg > 0 ? 'weight_loss' : (prefs.goal || 'maintain'),
+    goal_weight_change_kg: prefs.weight_goal_kg,
+    goal_timeline_weeks:   prefs.goal_timeline_weeks,
   });
 
   return {

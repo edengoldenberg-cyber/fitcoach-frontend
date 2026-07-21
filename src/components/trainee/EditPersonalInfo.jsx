@@ -74,26 +74,29 @@ export default function EditPersonalInfo({ open, onClose, trainee }) {
   const age = ageFromBirthDate(formData.birth_date);
 
   // Canonical formula — identical to backend nutrition.fn.js
+  // Pass explicit kg/weeks so the deficit matches the displayed weekly-loss rate.
   const autoTargets = (formData.weight_kg && formData.height_cm && age)
     ? calcNutritionTargets({
-        weight_kg:      formData.weight_kg,
-        height_cm:      formData.height_cm,
+        weight_kg:             formData.weight_kg,
+        height_cm:             formData.height_cm,
         age,
-        gender:         formData.gender,
-        activity_level: formData.activity_level,
-        goal:           formData.goal,
+        gender:                formData.gender,
+        activity_level:        formData.activity_level,
+        goal:                  formData.goal,
+        goal_weight_change_kg: formData.goal_weight_change_kg,
+        goal_timeline_weeks:   formData.goal_timeline_weeks,
       })
     : null;
 
   const customTargets = (showCustomCalories && customCalories && formData.weight_kg && age)
     ? calcNutritionTargets({
-        weight_kg:         formData.weight_kg,
-        height_cm:         formData.height_cm,
+        weight_kg:             formData.weight_kg,
+        height_cm:             formData.height_cm,
         age,
-        gender:            formData.gender,
-        activity_level:    formData.activity_level,
-        goal:              formData.goal,
-        override_calories: customCalories,
+        gender:                formData.gender,
+        activity_level:        formData.activity_level,
+        goal:                  formData.goal,
+        override_calories:     customCalories,
       })
     : null;
 

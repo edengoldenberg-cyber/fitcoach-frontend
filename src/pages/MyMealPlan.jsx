@@ -432,9 +432,14 @@ export default function MyMealPlan() {
     return stopWeeklyPoll;
   }, [generatingWeekly, weeklyJobId]);
 
-  // Sync plan totals → trainee targets so nutrition dashboard rings match.
+  // Legacy reconciliation: syncs plan.total_* → trainee.target_* to recover from:
+  //   (a) revision-0 plans created before backend target sync was added
+  //   (b) past non-transactional sync failures (.catch(() => {}) paths, now fixed)
+  // Do NOT run while generation is active — the wizard pre-writes the approved target
+  // before the job starts, and firing here would overwrite it with the stale plan total.
   useEffect(() => {
     if (!plan || !trainee?.id) return;
+    if (generatingWeekly) return;
     const planCal  = plan.total_calories || 0;
     const planPro  = plan.total_protein  || 0;
     const planCarb = plan.total_carbs    || 0;

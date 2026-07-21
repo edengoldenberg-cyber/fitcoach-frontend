@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { base44 } from '@/api/base44Client';
 import { Sparkles, Loader2, Send, X, TrendingUp, Utensils, Dumbbell, Droplets, ChevronRight, User } from "lucide-react";
 import { format, subDays } from 'date-fns';
+import { detectMutationIntent, getMutationFailureMessage } from '@/utils/mealMutationDetector';
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +194,100 @@ ${context}
     }
   };
 
+  // ── handleMutation ───────────────────────────────────────────────────────────
+  // Called when sendMessage detects a plan mutation intent.
+  // Routes to routeMealFeedback (the canonical mutation endpoint) and only claims
+  // success when the backend confirms changed === true with verified state.
+  // Never returns success text based on AI prose alone.
+  const handleMutation = async (intent, userText) => {
+    // Look up the trainee's active plan — entity API enforces ownership
+    let activePlan = null;
+    try {
+      const plans = await base44.entities.PersonalMealPlan.filter({
+        trainee_id: trainee?.id,
+        is_active:  true,
+      });
+      activePlan = plans?.[0] || null;
+    } catch (err) {
+      console.error('[SuperAICoach] plan lookup failed:', err.message);
+    }
+
+    if (!activePlan) {
+      setMessages(prev => prev.filter(m => !m.loading).concat({
+        role: 'assistant',
+        content: 'אין לך תפריט פעיל כרגע. עבור לדף "התפריט שלי" כדי ליצור תפריט חדש.',
+      }));
+      return;
+    }
+
+    let res;
+    try {
+      res = await base44.functions.invoke('routeMealFeedback', {
+        plan_id:              activePlan.id,
+        feedback:             userText,
+        day_index:            0,
+        caller_trainee_email: trainee?.user_email || null,
+      });
+    } catch (err) {
+      console.error('[SuperAICoach] routeMealFeedback failed:', err.message);
+      setMessages(prev => prev.filter(m => !m.loading).concat({
+        role: 'assistant',
+        content: 'שגיאה בביצוע השינוי. לא נשמרו שינויים. נסה שוב.',
+      }));
+      return;
+    }
+
+    // Backend returned a typed error
+    if (res?.ok === false) {
+      const safeMsg = res.safe_error || res.error || 'שגיאה פנימית — השינוי לא בוצע.';
+      setMessages(prev => prev.filter(m => !m.loading).concat({
+        role: 'assistant',
+        content: `לא ניתן לבצע את השינוי: ${safeMsg}`,
+      }));
+      return;
+    }
+
+    // Async job started — we can't poll here; direct user to /MyMealPlan
+    if (res?.action === 'adapt_existing_job') {
+      setMessages(prev => prev.filter(m => !m.loading).concat({
+        role: 'assistant',
+        content: 'עדכון התפריט התחיל! התהליך ייקח מספר שניות. פתח את דף "התפריט שלי" כדי לראות את ההתקדמות ואת התוצאה הסופית.',
+      }));
+      return;
+    }
+
+    // Synchronous update — check the verified backend result
+    if (res?.action === 'immediate_update') {
+      if (res.changed === true) {
+        // SUCCESS: verified by the backend. Only claim success here.
+        const verified = res.after;
+        const calLine  = verified?.calories != null
+          ? `התפריט עודכן — ממוצע יומי מאומת: ${verified.calories} קלוריות.`
+          : 'השינוי בוצע ואומת בהצלחה.';
+
+        setMessages(prev => prev.filter(m => !m.loading).concat({
+          role: 'assistant',
+          content: `✅ ${calLine}\n\nרענן את דף "התפריט שלי" כדי לראות את הפירוט המלא.`,
+        }));
+      } else {
+        // Backend processed the request but the plan did not change
+        const failMsg = getMutationFailureMessage(intent, res.ai_response);
+        setMessages(prev => prev.filter(m => !m.loading).concat({
+          role: 'assistant',
+          content: failMsg,
+        }));
+      }
+      return;
+    }
+
+    // Unexpected response shape
+    setMessages(prev => prev.filter(m => !m.loading).concat({
+      role: 'assistant',
+      content: 'לא הצלחתי לאמת את השינוי. בדוק בדף "התפריט שלי" אם השינוי בוצע.',
+    }));
+  };
+
+  // ── sendMessage ───────────────────────────────────────────────────────────────
   const sendMessage = async (text) => {
     const userText = text || input.trim();
     if (!userText || loading) return;
@@ -201,15 +296,23 @@ ${context}
 
     const newMessages = [...messages, { role: 'user', content: userText }];
     setMessages(newMessages);
-
-    // Add loading bubble
     setMessages(prev => [...prev, { role: 'assistant', content: '', loading: true }]);
     setLoading(true);
 
-    const context = buildFullContext(trainee, meals, water, workouts);
-    const history = newMessages.slice(-6).map(m => `${m.role === 'user' ? 'מתאמן' : 'AI Coach'}: ${m.content}`).join('\n');
-
     try {
+      // ── Mutation detection — route to backend before calling text AI ──────────
+      // detectMutationIntent returns non-null only for clear plan-change requests.
+      // The AI text endpoint is never used for mutations — only for informational queries.
+      const mutationIntent = detectMutationIntent(userText);
+      if (mutationIntent) {
+        await handleMutation(mutationIntent, userText);
+        return; // handleMutation sets its own messages
+      }
+
+      // ── Informational query — text generation only ──────────────────────────
+      const context = buildFullContext(trainee, meals, water, workouts);
+      const history = newMessages.slice(-6).map(m => `${m.role === 'user' ? 'מתאמן' : 'AI Coach'}: ${m.content}`).join('\n');
+
       const res = await base44.functions.invoke('askAICoach', {
         prompt: `אתה אליאור - העוזר האישי לכושר ותזונה של המתאמן. אתה מדבר בגוף ראשון, ידידותי ואנושי כמו חבר שמכיר אותך טוב.
 
@@ -226,6 +329,7 @@ ${history}
 - סיים תמיד עם המלצה אחת ברורה
 - אל תמליץ ייעוץ רפואי
 - כתוב בעברית טבעית, חמה ונעימה
+- אם המשתמש מבקש לשנות את התפריט, הסבר שיש לו כפתור "שינויים בתפריט" בדף התפריט שלו
 
 שאלה: ${userText}`,
       });
@@ -244,13 +348,13 @@ ${history}
           topic: 'general',
           user_question: userText,
           ai_recommendation: result.substring(0, 200),
-          full_response: result
+          full_response: result,
         }).catch(e => console.warn('[AICoach] consultation save failed:', e.message));
       }
     } catch (err) {
       setMessages(prev => prev.filter(m => !m.loading).concat({
         role: 'assistant',
-        content: '❌ שגיאה בקבלת תשובה. נסה שוב.'
+        content: '❌ שגיאה בקבלת תשובה. נסה שוב.',
       }));
     } finally {
       setLoading(false);

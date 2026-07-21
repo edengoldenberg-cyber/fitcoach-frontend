@@ -48,14 +48,18 @@ const GOAL_ADJUSTMENTS = {
  * @param {object} p
  * @param {number} p.weight_kg
  * @param {number} p.height_cm
- * @param {number} p.age          — integer years
+ * @param {number} p.age                   — integer years
  * @param {'male'|'female'} p.gender
- * @param {string} p.activity_level  — key of ACTIVITY_MULTIPLIERS
- * @param {string} p.goal            — any key of GOAL_ADJUSTMENTS
- * @param {number} [p.override_calories] — if set, skips goal adjustment
+ * @param {string} p.activity_level        — key of ACTIVITY_MULTIPLIERS
+ * @param {string} p.goal                  — any key of GOAL_ADJUSTMENTS
+ * @param {number} [p.goal_weight_change_kg] — explicit kg to lose/gain
+ * @param {number} [p.goal_timeline_weeks]   — weeks to achieve the goal
+ * @param {number} [p.override_calories]   — if set, skips goal adjustment
  * @returns {{ calories, protein, carbs, fat, bmr, tdee }} — all integers
  */
-export function calcNutritionTargets({ weight_kg, height_cm, age, gender, activity_level, goal, override_calories } = {}) {
+export function calcNutritionTargets({ weight_kg, height_cm, age, gender, activity_level, goal,
+                                       goal_weight_change_kg, goal_timeline_weeks,
+                                       override_calories } = {}) {
   const w = parseFloat(weight_kg) || 75;
   const h = parseFloat(height_cm) || 170;
   const a = parseInt(age)         || 30;
@@ -72,6 +76,14 @@ export function calcNutritionTargets({ weight_kg, height_cm, age, gender, activi
   let calories;
   if (override_calories && parseInt(override_calories) > 0) {
     calories = Math.max(1200, parseInt(override_calories));
+  } else if (parseFloat(goal_weight_change_kg) > 0 && parseFloat(goal_timeline_weeks) > 0) {
+    // Derive the daily calorie delta from the explicit goal the user set.
+    // 1 kg body fat ≈ 7700 kcal. Cap at 1000 kcal/day to preserve the 1200 kcal floor.
+    const kgPerWeek  = parseFloat(goal_weight_change_kg) / parseFloat(goal_timeline_weeks);
+    const dailyDelta = Math.round((kgPerWeek * 7700) / 7);
+    const capped     = Math.min(1000, dailyDelta);
+    const isLoss     = (GOAL_ADJUSTMENTS[goal] ?? 0) <= 0;
+    calories = Math.max(1200, isLoss ? tdee - capped : tdee + capped);
   } else {
     const adj = GOAL_ADJUSTMENTS[goal] ?? 0;
     calories = Math.max(1200, tdee + adj);
