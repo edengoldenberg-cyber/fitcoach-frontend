@@ -18,7 +18,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { he } from 'date-fns/locale/he';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, Cell, Tooltip, LabelList } from 'recharts';
 import StatusBadge from '../components/shared/StatusBadge';
 import ChatWithTrainee from '../components/coach/ChatWithTrainee';
 import CoachAIAssistant from '../components/coach/CoachAIAssistant';
@@ -146,26 +146,51 @@ export default function TraineeProfile() {
   const weeklyCaloriesData = useMemo(() => {
     return weekDays.map(day => {
       const dayStr = format(day, 'yyyy-MM-dd');
-      const dayMeals = meals.filter(m => m.date === dayStr);
+      // Filter by both date AND trainee email — the entities API may return all coach's
+      // trainees' data due to the ownership filter overriding the specific email param.
+      const dayMeals = meals.filter(m => m.date === dayStr && m.trainee_email === traineeEmail);
       return {
         day: format(day, 'EEE', { locale: he }),
         calories: dayMeals.reduce((sum, m) => sum + (m.calories || 0), 0),
         target: trainee?.target_calories || 2000,
       };
     });
-  }, [meals, weekDays, trainee]);
+  }, [meals, weekDays, trainee, traineeEmail]);
 
   const weeklyWaterData = useMemo(() => {
     return weekDays.map(day => {
       const dayStr = format(day, 'yyyy-MM-dd');
-      const dayWater = waterEntries.filter(w => w.date === dayStr);
+      // Same trainee-email guard as weeklyCaloriesData
+      const dayWater = waterEntries.filter(w => w.date === dayStr && w.trainee_email === traineeEmail);
       return {
         day: format(day, 'EEE', { locale: he }),
         water: dayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0),
         target: trainee?.water_target_ml || 3000,
       };
     });
-  }, [waterEntries, weekDays, trainee]);
+  }, [waterEntries, weekDays, trainee, traineeEmail]);
+
+  const weeklyCalorieSummary = useMemo(() => {
+    const populated = weeklyCaloriesData.filter(d => d.calories > 0);
+    const total     = populated.reduce((s, d) => s + d.calories, 0);
+    const loggedDays = populated.length;
+    return {
+      total,
+      loggedDays,
+      avgPerLoggedDay: loggedDays > 0 ? Math.round(total / loggedDays) : 0,
+    };
+  }, [weeklyCaloriesData]);
+
+  const weeklyWaterSummary = useMemo(() => {
+    const populated = weeklyWaterData.filter(d => d.water > 0);
+    const totalMl   = populated.reduce((s, d) => s + d.water, 0);
+    const loggedDays = populated.length;
+    return {
+      totalL:          (totalMl / 1000).toFixed(1),
+      loggedDays,
+      avgPerLoggedDayL: loggedDays > 0 ? (totalMl / loggedDays / 1000).toFixed(1) : '0',
+    };
+  }, [weeklyWaterData]);
 
   const weightData = useMemo(() => {
     return [...measurements]
@@ -385,44 +410,80 @@ export default function TraineeProfile() {
             <WorkoutPerformanceAnalyzer workouts={workouts} />
             {/* Weekly Calories */}
             <Card className="p-4 bg-white border-0 shadow-sm">
-              <h3 className="font-medium text-slate-700 mb-3">קלוריות שבועיות</h3>
-              <div className="h-40">
+              <h3 className="font-medium text-slate-700 mb-1">קלוריות שבועיות</h3>
+              {/* Summary row */}
+              <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-3">
+                <span>סה״כ: <strong className="text-slate-700">{weeklyCalorieSummary.total.toLocaleString()} קל׳</strong></span>
+                <span>ממוצע ליום רישום: <strong className="text-slate-700">{weeklyCalorieSummary.avgPerLoggedDay.toLocaleString()} קל׳</strong></span>
+                <span>ימים שנרשמו: <strong className="text-slate-700">{weeklyCalorieSummary.loggedDays}/7</strong></span>
+              </div>
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyCaloriesData}>
-                    <XAxis dataKey="day" fontSize={12} />
+                  <BarChart data={weeklyCaloriesData} margin={{ top: 18, right: 4, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis hide />
+                    <Tooltip
+                      formatter={(v) => v > 0 ? [`${v.toLocaleString()} קל׳`, 'קלוריות'] : ['לא נרשם', '']}
+                      labelFormatter={(l) => `יום ${l}`}
+                      contentStyle={{ direction: 'rtl', fontSize: 12 }}
+                    />
                     <Bar dataKey="calories" radius={[4, 4, 0, 0]}>
                       {weeklyCaloriesData.map((entry, i) => (
-                        <Cell 
-                          key={i} 
-                          fill={entry.calories >= entry.target * 0.8 ? '#10B981' : entry.calories >= entry.target * 0.5 ? '#F59E0B' : '#EF4444'} 
+                        <Cell
+                          key={i}
+                          fill={entry.calories >= entry.target * 0.8 ? '#10B981' : entry.calories >= entry.target * 0.5 ? '#F59E0B' : entry.calories > 0 ? '#EF4444' : '#E2E8F0'}
                         />
                       ))}
+                      <LabelList
+                        dataKey="calories"
+                        position="top"
+                        formatter={(v) => v > 0 ? v.toLocaleString() : ''}
+                        style={{ fontSize: 10, fill: '#475569', fontWeight: 500 }}
+                      />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              <p className="text-[10px] text-slate-400 mt-1 text-left">הממוצע מחושב על ימי רישום בלבד (לא על 7 ימים קלנדריים)</p>
             </Card>
 
             {/* Weekly Water */}
             <Card className="p-4 bg-white border-0 shadow-sm">
-              <h3 className="font-medium text-slate-700 mb-3">שתיית מים שבועית</h3>
-              <div className="h-40">
+              <h3 className="font-medium text-slate-700 mb-1">שתיית מים שבועית</h3>
+              {/* Summary row */}
+              <div className="flex flex-wrap gap-3 text-xs text-slate-500 mb-3">
+                <span>סה״כ: <strong className="text-slate-700">{weeklyWaterSummary.totalL} ליטר</strong></span>
+                <span>ממוצע ליום רישום: <strong className="text-slate-700">{weeklyWaterSummary.avgPerLoggedDayL} ליטר</strong></span>
+                <span>ימים שנרשמו: <strong className="text-slate-700">{weeklyWaterSummary.loggedDays}/7</strong></span>
+              </div>
+              <div className="h-44">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={weeklyWaterData}>
-                    <XAxis dataKey="day" fontSize={12} />
+                  <BarChart data={weeklyWaterData} margin={{ top: 18, right: 4, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="day" fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis hide />
+                    <Tooltip
+                      formatter={(v) => v > 0 ? [`${(v / 1000).toFixed(2)} ליטר`, 'מים'] : ['לא נרשם', '']}
+                      labelFormatter={(l) => `יום ${l}`}
+                      contentStyle={{ direction: 'rtl', fontSize: 12 }}
+                    />
                     <Bar dataKey="water" radius={[4, 4, 0, 0]}>
                       {weeklyWaterData.map((entry, i) => (
-                        <Cell 
-                          key={i} 
-                          fill={entry.water >= entry.target ? '#3B82F6' : entry.water >= entry.target * 0.5 ? '#93C5FD' : '#DBEAFE'} 
+                        <Cell
+                          key={i}
+                          fill={entry.water >= entry.target ? '#3B82F6' : entry.water >= entry.target * 0.5 ? '#93C5FD' : entry.water > 0 ? '#BFDBFE' : '#E2E8F0'}
                         />
                       ))}
+                      <LabelList
+                        dataKey="water"
+                        position="top"
+                        formatter={(v) => v > 0 ? `${(v / 1000).toFixed(1)}L` : ''}
+                        style={{ fontSize: 10, fill: '#475569', fontWeight: 500 }}
+                      />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
+              <p className="text-[10px] text-slate-400 mt-1 text-left">הממוצע מחושב על ימי רישום בלבד (לא על 7 ימים קלנדריים)</p>
             </Card>
           </TabsContent>
 

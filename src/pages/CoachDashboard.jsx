@@ -258,24 +258,27 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tm-notes'] }); setShowNote(false); setNewNote(''); toast.success('הערה נשמרה'); },
   });
 
-  const todayCalories = meals.filter(m => m.date === today).reduce((s, m) => s + (m.calories || 0), 0);
-  const todayWater = water.filter(w => w.date === today).reduce((s, w) => s + (w.amount_ml || 0), 0);
+  const todayCalories = meals.filter(m => m.date === today && m.trainee_email === email).reduce((s, m) => s + (m.calories || 0), 0);
+  const todayWater = water.filter(w => w.date === today && w.trainee_email === email).reduce((s, w) => s + (w.amount_ml || 0), 0);
   const todayWorkout = workouts.some(w => w.date === today);
   const lastWeight = measurements.sort((a, b) => new Date(b.date) - new Date(a.date))[0]?.weight_kg;
 
   const weeklyCaloriesData = weekDays.map(day => {
     const d = getIsraelDateString(day);
+    // Filter by trainee email: the coach's ownership filter may return all trainees' data
+    const dayMeals = meals.filter(m => m.date === d && m.trainee_email === email);
     return {
       day: format(day, 'EEE', { locale: he }),
-      calories: meals.filter(m => m.date === d).reduce((s, m) => s + (m.calories || 0), 0),
+      calories: dayMeals.reduce((s, m) => s + (m.calories || 0), 0),
       target: trainee.target_calories || 2000,
     };
   });
   const weeklyWaterData = weekDays.map(day => {
     const d = getIsraelDateString(day);
+    const dayWater = water.filter(w => w.date === d && w.trainee_email === email);
     return {
       day: format(day, 'EEE', { locale: he }),
-      water: water.filter(w => w.date === d).reduce((s, w) => s + (w.amount_ml || 0), 0),
+      water: dayWater.reduce((s, w) => s + (w.amount_ml || 0), 0),
       target: trainee.water_target_ml || 3000,
     };
   });
@@ -1161,7 +1164,7 @@ export default function CoachDashboard() {
               const mutedDays = notifPref?.disabled_days || [];
               const traineeFirstMeal = allMealsEver
                 .filter(m => nutritionRecordMatchesTrainee(m, trainee))
-                .sort((a, b) => new Date(a.created_date) - new Date(b.created_date))[0];
+                .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
               return (
                 <TraineeMiniCard
                    key={trainee.id}
@@ -1173,7 +1176,7 @@ export default function CoachDashboard() {
                    onDelete={handleDeleteOne}
                    onClick={() => setSelectedTrainee(trainee)}
                    notifStatus={{ remindersOn, mutedDays }}
-                   firstMealDate={traineeFirstMeal?.created_date}
+                   firstMealDate={traineeFirstMeal?.created_at}
                    meals={allMealsEver}
                    workouts={allWorkouts}
                  />
