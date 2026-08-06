@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import WhatsAppKillSwitch from '@/components/admin/WhatsAppKillSwitch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -37,7 +38,7 @@ import {
   RefreshCw, Download, Plus, Edit2, Trash2, Play, CheckCircle2,
   ChevronRight, ChevronDown, Search, Phone, Wifi, WifiOff, Eye,
   History, Info, Calendar, Filter, TrendingUp, AlertCircle,
-  Check, X, Settings, Bell, ArrowUpRight, Layers, Menu, Loader2,
+  Check, X, Settings, Bell, ArrowUpRight, Layers, Menu, Loader2, ShieldAlert,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -139,6 +140,7 @@ function calcRisk(daysSince) {
 // ─── Sidebar Nav ──────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
+  { key: 'killswitch',   label: '🛑 כיבוי חירום',   icon: ShieldAlert, adminOnly: true },
   { key: 'dashboard',    label: 'מרכז בקרה',       icon: LayoutDashboard },
   { key: 'arbox-automations', label: 'אוטומציות Arbox', icon: Zap },
   { key: 'automations',  label: 'אוטומציות',        icon: Zap },
@@ -2690,6 +2692,7 @@ export default function MissionControl() {
 
   const renderSection = () => {
     switch (activeSection) {
+      case 'killswitch':        return user?.role === 'admin' ? <WhatsAppKillSwitch /> : null;
       case 'dashboard':         return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'arbox-automations': return <ArboxAutomationsSection coachEmail={coachEmail} />;
       case 'automations':       return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
@@ -2780,7 +2783,7 @@ export default function MissionControl() {
 
         {/* Nav */}
         <nav className="flex-1 px-2 py-2 space-y-0.5">
-          {NAV_ITEMS.map(item => {
+          {NAV_ITEMS.filter(item => !item.adminOnly || user?.role === 'admin').map(item => {
             const Icon = item.icon;
             const isActive = activeSection === item.key;
             const badge = item.key === 'failed' && failedCount > 0 ? failedCount : item.key === 'automations' ? enabledCount : item.key === 'duplicates' && duplicateCount > 0 ? duplicateCount : null;
