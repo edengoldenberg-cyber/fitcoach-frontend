@@ -17,7 +17,7 @@ import { Input }   from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge }   from '@/components/ui/badge';
 import { Card }    from '@/components/ui/card';
-import { AlertCircle, CheckCircle2, Pause, Play, Trash2, Send, RefreshCw, ShieldAlert } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Pause, Play, Trash2, Send, RefreshCw, ShieldAlert, Zap, PackageOpen } from 'lucide-react';
 import { toast }   from 'sonner';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -69,6 +69,21 @@ export default function WhatsAppKillSwitch() {
   });
   const auditRows = auditRes?.data?.audit ?? [];
 
+  // ── Emergency stop mutation ───────────────────────────────────────────────
+  const emergencyMut = useMutation({
+    mutationFn: () => invoke('adminEmergencyStop', { reason: pauseReason || 'Emergency stop' }),
+    onSuccess: (res) => {
+      if (res?.ok) {
+        toast.success(`🛑 עצירת חירום — ${res.data?.held?.held ?? 0} הודעות הוקפאו`);
+        qc.invalidateQueries(['whatsappKillSwitch']);
+        qc.invalidateQueries(['whatsappOpsAudit']);
+      } else {
+        toast.error('שגיאה בעצירת חירום: ' + (res?.error || 'unknown'));
+      }
+    },
+    onError: (e) => toast.error('שגיאה: ' + e.message),
+  });
+
   // ── Pause mutation ────────────────────────────────────────────────────────
   const pauseMut = useMutation({
     mutationFn: () => invoke('adminPauseWhatsApp', { reason: pauseReason || 'Admin manual pause' }),
@@ -90,7 +105,7 @@ export default function WhatsAppKillSwitch() {
     onSuccess: (res) => {
       if (res?.ok) {
         toast.success('▶ מערכת WhatsApp חזרה לפעילות');
-        toast.warning('⚠️ הודעות שהוקפאו (2099) לא שוחזרו אוטומטית. עליך לנקות אותן ידנית.', { duration: 8000 });
+        toast.warning('⚠️ הודעות מוקפאות (is_held) לא שוחזרו אוטומטית. השתמש בשחרור מבוקר.', { duration: 8000 });
         qc.invalidateQueries(['whatsappKillSwitch']);
         qc.invalidateQueries(['whatsappOpsAudit']);
       } else {
@@ -112,6 +127,21 @@ export default function WhatsAppKillSwitch() {
         qc.invalidateQueries(['whatsappOpsAudit']);
       } else {
         toast.error('שגיאה בניקוי התור: ' + (res?.error || 'unknown'));
+      }
+    },
+    onError: (e) => toast.error('שגיאה: ' + e.message),
+  });
+
+  // ── Release held mutation ─────────────────────────────────────────────────
+  const releaseMut = useMutation({
+    mutationFn: (batchSize) => invoke('adminReleaseHeldMessages', { batch_size: batchSize || 25, reason: 'Controlled release post-incident' }),
+    onSuccess: (res) => {
+      if (res?.ok) {
+        toast.success(`📬 שוחררו ${res.data?.released} הודעות — נותרו ${res.data?.remaining}`);
+        qc.invalidateQueries(['whatsappKillSwitch']);
+        qc.invalidateQueries(['whatsappOpsAudit']);
+      } else {
+        toast.error('שגיאה בשחרור: ' + (res?.error || 'unknown'));
       }
     },
     onError: (e) => toast.error('שגיאה: ' + e.message),
@@ -182,22 +212,40 @@ export default function WhatsAppKillSwitch() {
         </div>
       </Card>
 
+      {/* Emergency Stop — full-width red banner */}
+      <Card className="p-4 border-2 border-red-400 bg-red-50">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-red-600" />
+            <div>
+              <div className="font-bold text-red-800">עצירת חירום (Emergency Stop)</div>
+              <div className="text-xs text-red-600">עוצר הכל בפעולה אחת: מפסיק שיקול, מקפיא תור, כותב אירוע ביקורת.</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Input placeholder="סיבה" value={pauseReason} onChange={e => setPauseReason(e.target.value)} className="text-sm w-48" />
+            <Button
+              className="bg-red-700 hover:bg-red-800 text-white font-bold px-6"
+              disabled={paused || emergencyMut.isPending}
+              onClick={() => emergencyMut.mutate()}
+            >
+              {emergencyMut.isPending ? 'עוצר...' : '🛑 עצור הכל'}
+            </Button>
+          </div>
+        </div>
+        {paused && <p className="text-xs text-green-700 mt-2 text-center font-medium">המערכת כבר מושהית ✓</p>}
+      </Card>
+
       {/* Action buttons */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-        {/* 1. Pause */}
+        {/* 1. Pause (manual, granular) */}
         <Card className="p-4 space-y-3">
           <div className="flex items-center gap-2 text-red-700 font-semibold">
             <Pause className="w-4 h-4" />
             עצור התראות ותזכורות
           </div>
-          <p className="text-xs text-slate-500">מקפיא את כל ההודעות הממתינות. אינו מוחק כלום.</p>
-          <Input
-            placeholder="סיבה (אופציונלי)"
-            value={pauseReason}
-            onChange={e => setPauseReason(e.target.value)}
-            className="text-sm"
-          />
+          <p className="text-xs text-slate-500">מקפיא ומשהה. פחות מאשר עצירת חירום — לשימוש מניעתי.</p>
           <Button
             className="w-full bg-red-600 hover:bg-red-700 text-white"
             disabled={paused || pauseMut.isPending}
@@ -255,11 +303,11 @@ export default function WhatsAppKillSwitch() {
             החזר התראות ותזכורות
           </div>
           <p className="text-xs text-slate-500">
-            מחדש שליחה. הודעות מוקפאות (2099) לא ישוחזרו אוטומטית — ניקה אותן קודם.
+            מחדש שליחה. הודעות מוקפאות (is_held) נשארות מוקפאות — שחרר אותן ידנית לאחר מכן.
           </p>
           {heldCount > 0 && (
             <p className="text-xs text-amber-600 font-medium">
-              ⚠ {heldCount} הודעות עדיין מוקפאות. שקול לנקות לפני חידוש.
+              ⚠ {heldCount} הודעות עדיין מוקפאות. שחרר אותן בנפרד בכרטיס שחרור מבוקר.
             </p>
           )}
           <Button
@@ -273,6 +321,31 @@ export default function WhatsAppKillSwitch() {
         </Card>
 
       </div>
+
+      {/* 4. Controlled Release — post-resume, rate-limited */}
+      {heldCount > 0 && (
+        <Card className="p-4 border border-purple-200 bg-purple-50 space-y-3">
+          <div className="flex items-center gap-2 text-purple-800 font-semibold">
+            <PackageOpen className="w-4 h-4" />
+            שחרור מבוקר של הודעות מוקפאות
+          </div>
+          <p className="text-xs text-purple-700">
+            משחרר קבוצה של הודעות מוקפאות (is_held) לתור — הworker יעבד אותן לפי מגבלות ה-burst guard.
+            קרא כרטיס זה שוב לאחר כל שחרור לראות כמה נותרו.
+          </p>
+          <div className="flex items-center gap-2 text-sm font-medium text-purple-800">
+            <span>מוקפאות: {heldCount}</span>
+          </div>
+          <div className="flex gap-2">
+            {[10, 25, 50].map(n => (
+              <Button key={n} variant="outline" size="sm" className="flex-1 border-purple-300 text-purple-700"
+                disabled={releaseMut.isPending} onClick={() => releaseMut.mutate(n)}>
+                {releaseMut.isPending ? '...' : `שחרר ${n}`}
+              </Button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Test message (available while paused) */}
       <Card className="p-4 space-y-3">
