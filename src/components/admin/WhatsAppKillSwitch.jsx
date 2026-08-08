@@ -180,35 +180,72 @@ export default function WhatsAppKillSwitch() {
         </Button>
       </div>
 
-      {/* Status card */}
+      {/* Status + operational metrics */}
       <Card className="p-4 border-2" style={{ borderColor: paused ? '#fca5a5' : '#86efac' }}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-2">
           <StatusBadge paused={paused} />
-          {gate.updated_by && (
-            <span className="text-xs text-slate-400">
-              שונה על-ידי: {gate.updated_by} · {gate.updated_at ? new Date(gate.updated_at).toLocaleString('he-IL') : '—'}
-            </span>
-          )}
+          <div className="text-xs text-slate-400 text-left">
+            {gate.updated_by && <span>שונה: {gate.updated_by} · {gate.updated_at ? new Date(gate.updated_at).toLocaleString('he-IL') : '—'}</span>}
+          </div>
         </div>
-        {gate.reason && <p className="text-sm text-slate-600 mb-3">סיבה: {gate.reason}</p>}
+        {gate.reason && <p className="text-xs text-slate-600 mb-2">סיבה: {gate.reason}</p>}
         {gate.env_override && (
-          <p className="text-xs text-amber-600 font-medium">⚠ סביבה: WHATSAPP_AUTOMATIONS_PAUSED=true (דריסת קוד קשה — מחייבת restart להסרה)</p>
+          <p className="text-xs text-amber-700 font-medium mb-2">⚠ WHATSAPP_AUTOMATIONS_PAUSED=true בסביבה (דריסת קוד קשה)</p>
         )}
 
-        {/* Queue counts */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-3">
+        {/* Primary metrics row */}
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mt-2">
           {[
-            { label: 'ממתינות',   val: queuedCount,  color: pickable > 0 ? 'text-orange-600' : 'text-slate-700' },
-            { label: 'ניתן לאיסוף', val: pickable,   color: pickable > 0 ? 'text-red-600 font-bold' : 'text-green-600' },
-            { label: 'בשליחה',    val: sendingCount, color: 'text-blue-600' },
-            { label: 'מוקפאות',   val: heldCount,    color: 'text-purple-600' },
-            { label: 'נשלחו (שעה)', val: queue.sent_last_hour ?? 0, color: 'text-slate-600' },
+            { label: 'גודל תור',     val: queuedCount,                      color: 'text-slate-800' },
+            { label: 'ניתן לאיסוף', val: pickable,                          color: pickable > 0 ? 'text-red-700 font-bold' : 'text-green-700' },
+            { label: 'בשליחה',       val: sendingCount,                     color: 'text-blue-700' },
+            { label: 'מוקפאות',      val: queue.total_held ?? heldCount,    color: 'text-purple-700' },
+            { label: 'נכשלו היום',   val: queue.failed_today ?? 0,          color: 'text-red-600' },
+            { label: 'נשלחו/שעה',   val: queue.sent_last_hour ?? 0,        color: 'text-slate-600' },
           ].map(({ label, val, color }) => (
             <div key={label} className="bg-slate-50 rounded p-2 text-center">
-              <div className={`text-xl font-bold ${color}`}>{val}</div>
+              <div className={`text-lg font-bold ${color}`}>{val}</div>
               <div className="text-xs text-slate-500">{label}</div>
             </div>
           ))}
+        </div>
+
+        {/* Secondary metrics row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
+          <div className="bg-slate-50 rounded p-2">
+            <div className="text-xs text-slate-500">הודעות/דקה</div>
+            <div className={`text-base font-semibold ${(queue.messages_per_minute ?? 0) > 20 ? 'text-red-600' : 'text-slate-700'}`}>
+              {queue.messages_per_minute ?? 0}
+              {(queue.messages_per_minute ?? 0) > 20 && <span className="text-xs mr-1">⚠</span>}
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded p-2">
+            <div className="text-xs text-slate-500">הודעה ממתינה ישנה ביותר</div>
+            <div className="text-xs font-medium text-slate-700 truncate">
+              {queue.oldest_pickable_created_at
+                ? new Date(queue.oldest_pickable_created_at).toLocaleString('he-IL')
+                : '—'}
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded p-2">
+            <div className="text-xs text-slate-500">הודעה מוקפאת ישנה ביותר</div>
+            <div className="text-xs font-medium text-slate-700 truncate">
+              {(() => {
+                const oldestHeld = queue.by_status?.reduce((m, r) => {
+                  if (!r.oldest_held) return m;
+                  return !m || new Date(r.oldest_held) < new Date(m) ? r.oldest_held : m;
+                }, null);
+                return oldestHeld ? new Date(oldestHeld).toLocaleString('he-IL') : '—';
+              })()}
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded p-2">
+            <div className="text-xs text-slate-500">מצב פעיל</div>
+            <div className="text-sm font-bold text-slate-800">
+              {paused ? '⏸ מושהה' : '▶ פעיל'}
+              {gate.source === 'default_absent' && <span className="text-xs text-amber-600 mr-1"> (ברירת מחדל)</span>}
+            </div>
+          </div>
         </div>
       </Card>
 
