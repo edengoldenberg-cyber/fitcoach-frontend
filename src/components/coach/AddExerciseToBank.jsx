@@ -175,13 +175,14 @@ export default function AddExerciseToBank({ open, onClose, initialName = '', onS
     doCreate();
   };
 
-  const doCreate = () => {
+  const doCreate = (forceCreate = false) => {
     createMutation.mutate({
-      name_he:         formData.name_he.trim(),
+      name_he:              formData.name_he.trim(),
       muscle_group_primary: formData.muscle_group_primary,
-      movement_pattern: formData.movement_pattern || null,
-      equipment:       formData.equipment,
-      status:          'active',
+      movement_pattern:     formData.movement_pattern || null,
+      equipment:            formData.equipment,
+      status:               'active',
+      ...(forceCreate ? { force_create: true } : {}),
     });
   };
 
@@ -199,7 +200,7 @@ export default function AddExerciseToBank({ open, onClose, initialName = '', onS
 
   const handleCreateNew = () => {
     setShowSimilarDialog(false);
-    doCreate();
+    doCreate(true);
   };
 
   const handleClose = () => {
