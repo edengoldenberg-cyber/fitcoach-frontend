@@ -88,6 +88,7 @@ const COACH_ONLY_PAGES = new Set([
   'WhatsAppManager', 'CreateDailyPersonal', 'CreateProgram', 'CreateRotationProgram',
   'SendDailyPersonal', 'TemplateManager', 'AddTrainee', 'CopyLogs',
   'TraineeManagement', 'TraineeCard360', 'SuggestFavoritesManager',
+  'TraineeAnalytics',
 ]);
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?

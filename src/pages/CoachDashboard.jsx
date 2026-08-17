@@ -14,7 +14,8 @@ import {
   Search, Users, UserPlus, Trash2, CheckSquare, Square, X,
   Utensils, Droplets, Dumbbell, Scale, MessageSquare,
   Target, TrendingUp, Sparkles, Send, Plus, Settings, ChevronLeft,
-  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock, ArrowRight
+  BookOpen, Calendar, Brain, Bell, BellOff, Eye, RotateCcw, UserX, Lock, ArrowRight,
+  BarChart2,
 } from "lucide-react";
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
@@ -354,6 +355,11 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
 
         {/* Quick actions */}
         <div className="flex flex-wrap gap-2">
+          <Button size="sm" className="text-xs h-8 gap-1 text-white flex-shrink-0"
+            style={{ backgroundColor: '#0d9488' }}
+            onClick={() => navigate(`${createPageUrl('TraineeAnalytics')}?id=${trainee.id}&email=${encodeURIComponent(email)}`)}>
+            <BarChart2 className="w-3.5 h-3.5" />פתח דשבורד ניתוח מלא
+          </Button>
           <Button size="sm" variant="outline" className="text-xs h-8 gap-1"
             onClick={() => setShowPanelVisibility(true)}>
             <Eye className="w-3.5 h-3.5" />פאנלים

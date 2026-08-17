@@ -71,6 +71,7 @@ import TraineeManagement from './pages/TraineeManagement';
 import TraineeNotifications from './pages/TraineeNotifications';
 import TraineeOnlineTraining from './pages/TraineeOnlineTraining';
 import TraineeOnlineWorkouts from './pages/TraineeOnlineWorkouts';
+import TraineeAnalytics from './pages/TraineeAnalytics';
 import TraineeProfile from './pages/TraineeProfile';
 import TraineeQA from './pages/TraineeQA';
 import UnitsDebug from './pages/UnitsDebug';
@@ -154,6 +155,7 @@ export const PAGES = {
     "TraineeNotifications": TraineeNotifications,
     "TraineeOnlineTraining": TraineeOnlineTraining,
     "TraineeOnlineWorkouts": TraineeOnlineWorkouts,
+    "TraineeAnalytics": TraineeAnalytics,
     "TraineeProfile": TraineeProfile,
     // TraineeQA removed from auto-route loop — explicit AdminRoute in App.jsx
     "UnitsDebug": UnitsDebug,

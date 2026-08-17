@@ -11,10 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   ArrowRight, Utensils, Droplets, Dumbbell, Scale, Settings, Lock,
-  MessageSquare, Target, TrendingUp, Calendar, Plus, Send, Sparkles, User, Mail
+  MessageSquare, Target, TrendingUp, Calendar, Send, Sparkles, User, Mail,
+  BarChart2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { format, subDays, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns';
 import { he } from 'date-fns/locale/he';
@@ -22,7 +23,6 @@ import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, BarChart, Bar, Cell
 import StatusBadge from '../components/shared/StatusBadge';
 import ChatWithTrainee from '../components/coach/ChatWithTrainee';
 import CoachAIAssistant from '../components/coach/CoachAIAssistant';
-import WorkoutPerformanceAnalyzer from '../components/coach/WorkoutPerformanceAnalyzer';
 import CoachMetricsView from '../components/coach/CoachMetricsView';
 import ChangePasswordDialog from '../components/coach/ChangePasswordDialog';
 import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
@@ -36,8 +36,8 @@ import TraineeNotificationTimeline from '../components/coach/TraineeNotification
 import { parseCoachRating, encodeCoachRating } from '@/utils/workoutUtils';
 
 export default function TraineeProfile() {
+  const navigate = useNavigate();
   const [showTargetsDialog, setShowTargetsDialog] = useState(false);
-  const [showNoteDialog, setShowNoteDialog] = useState(false);
   const [showChatDialog, setShowChatDialog] = useState(false);
   const [showRatingDialog, setShowRatingDialog] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState(null);
@@ -50,7 +50,6 @@ export default function TraineeProfile() {
   const [showPersonalDetailsDialog, setShowPersonalDetailsDialog] = useState(false);
   const [moduleSettings, setModuleSettings] = useState({});
   const [workoutRating, setWorkoutRating] = useState({ rating: 0, feedback: '' });
-  const [newNote, setNewNote] = useState('');
   const [targets, setTargets] = useState({});
   
   const queryClient = useQueryClient();
@@ -96,18 +95,6 @@ export default function TraineeProfile() {
     enabled: !!traineeEmail,
   });
 
-  const { data: notes = [] } = useQuery({
-    queryKey: ['traineeNotes', traineeEmail],
-    queryFn: () => base44.entities.CoachNote.filter({ trainee_email: traineeEmail }),
-    enabled: !!traineeEmail,
-  });
-
-  const { data: aiConsultations = [] } = useQuery({
-    queryKey: ['aiConsultations', traineeEmail],
-    queryFn: () => base44.entities.AIConsultation.filter({ trainee_email: traineeEmail }),
-    enabled: !!traineeEmail,
-  });
-
   const updateTraineeMutation = useMutation({
     mutationFn: (data) => base44.entities.Trainee.update(trainee.id, data),
     onSuccess: () => {
@@ -115,15 +102,6 @@ export default function TraineeProfile() {
       queryClient.invalidateQueries({ queryKey: ['trainees'] });
       setShowTargetsDialog(false);
       setShowModulesDialog(false);
-    },
-  });
-
-  const addNoteMutation = useMutation({
-    mutationFn: (data) => base44.entities.CoachNote.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['traineeNotes'] });
-      setShowNoteDialog(false);
-      setNewNote('');
     },
   });
 
@@ -271,12 +249,21 @@ export default function TraineeProfile() {
               <Sparkles className="w-4 h-4" />
               AI
             </Button>
+            <Button
+              onClick={() => trainee && navigate(`${createPageUrl('TraineeAnalytics')}?id=${trainee.id}&email=${encodeURIComponent(traineeEmail)}`)}
+              disabled={!trainee}
+              className="text-white"
+              style={{ backgroundColor: '#0d9488' }}
+            >
+              <BarChart2 className="w-4 h-4 ml-1" />
+              פתח דשבורד ניתוח מלא
+            </Button>
             <Button variant="outline" onClick={() => setShowChatDialog(true)}>
               <MessageSquare className="w-4 h-4 ml-1" />
               הודעה
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => {
                 const phone = trainee?.phone?.replace(/\D/g, '');
                 const message = encodeURIComponent(`שלום ${trainee?.full_name}, ראיתי את הסיכום שלך. בוא נשפר ביחד! 💪`);
@@ -287,9 +274,6 @@ export default function TraineeProfile() {
             >
               <Send className="w-4 h-4 ml-1" />
               WhatsApp
-            </Button>
-            <Button variant="outline" onClick={() => setShowNoteDialog(true)}>
-              הערה
             </Button>
             <Button variant="outline" onClick={() => { 
               setTargets({
@@ -398,16 +382,13 @@ export default function TraineeProfile() {
             <TabsTrigger value="nutrition" className="flex-shrink-0">תזונה</TabsTrigger>
             <TabsTrigger value="workouts" className="flex-shrink-0">אימונים</TabsTrigger>
             <TabsTrigger value="metrics" className="flex-shrink-0">מדדים</TabsTrigger>
-            <TabsTrigger value="ai" className="flex-shrink-0">AI</TabsTrigger>
             <TabsTrigger value="notifications" className="flex-shrink-0">
               <Mail className="w-4 h-4 ml-1" />
               התראות
             </TabsTrigger>
-            <TabsTrigger value="notes" className="flex-shrink-0">הערות</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
-            <WorkoutPerformanceAnalyzer workouts={workouts} />
             {/* Weekly Calories */}
             <Card className="p-4 bg-white border-0 shadow-sm">
               <h3 className="font-medium text-slate-700 mb-1">קלוריות שבועיות</h3>
@@ -543,54 +524,6 @@ export default function TraineeProfile() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="ai" className="space-y-4">
-            <Card className="p-4">
-              <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                <Sparkles className="w-5 h-5" style={{ color: '#79DBD6' }} />
-                ייעוצי AI אחרונים
-              </h3>
-              {aiConsultations.length === 0 ? (
-                <p className="text-center text-slate-500 py-8">המתאמן עדיין לא השתמש ב-AI Coach</p>
-              ) : (
-                <div className="space-y-3">
-                  {aiConsultations.slice(0, 10).map(consultation => (
-                    <Card key={consultation.id} className="p-3 bg-slate-50">
-                      <div className="flex items-start justify-between mb-2">
-                        <Badge className={
-                          consultation.topic === 'nutrition' ? 'bg-green-100 text-green-800' :
-                          consultation.topic === 'training' ? 'bg-blue-100 text-blue-800' :
-                          'bg-slate-100 text-slate-800'
-                        }>
-                          {consultation.topic === 'nutrition' ? 'תזונה' :
-                           consultation.topic === 'training' ? 'אימון' : 'כללי'}
-                        </Badge>
-                        <span className="text-xs text-slate-500">
-                          {new Date(consultation.date).toLocaleDateString('he-IL')}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-xs text-slate-500">שאלה:</p>
-                          <p className="text-sm text-slate-700">{consultation.user_question}</p>
-                        </div>
-                        {consultation.data_used && (
-                          <div>
-                            <p className="text-xs text-slate-500">נתונים ששימשו:</p>
-                            <p className="text-xs text-slate-600">{consultation.data_used}</p>
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-xs text-slate-500">המלצת AI:</p>
-                          <p className="text-sm text-slate-700">{consultation.ai_recommendation}</p>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </TabsContent>
-
           <TabsContent value="notifications" className="space-y-4">
             <TraineeNotificationTimeline trainee={trainee} />
           </TabsContent>
@@ -673,32 +606,6 @@ export default function TraineeProfile() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="notes" className="space-y-4">
-            <Card className="p-4 bg-white border-0 shadow-sm">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-medium text-slate-700">הערות מאמן</h3>
-                <Button size="sm" onClick={() => setShowNoteDialog(true)}>
-                  <Plus className="w-4 h-4 ml-1" />
-                  הערה חדשה
-                </Button>
-              </div>
-              
-              {notes.length === 0 ? (
-                <p className="text-center py-8 text-slate-400">אין הערות עדיין</p>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {notes.slice().reverse().map(note => (
-                    <div key={note.id} className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <p className="text-slate-700">{note.note}</p>
-                      <p className="text-xs text-slate-400 mt-2">
-                        {note.date ? format(new Date(note.date), 'd/M/yyyy') : format(new Date(note.created_date), 'd/M/yyyy')}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Card>
-          </TabsContent>
         </Tabs>
       </div>
 
@@ -809,35 +716,6 @@ export default function TraineeProfile() {
               style={{ backgroundColor: '#79DBD6' }}
             >
               שמור דירוג
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Note Dialog */}
-      <Dialog open={showNoteDialog} onOpenChange={setShowNoteDialog}>
-        <DialogContent dir="rtl">
-          <DialogHeader>
-            <DialogTitle>הוסף הערה</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <Textarea
-              value={newNote}
-              onChange={(e) => setNewNote(e.target.value)}
-              placeholder="כתוב הערה למתאמן..."
-              rows={4}
-            />
-            <Button 
-              onClick={() => addNoteMutation.mutate({
-                trainee_email: traineeEmail,
-                coach_email: currentUser?.email,
-                note: newNote,
-                date: today,
-              })}
-              disabled={!newNote.trim()}
-              className="w-full"
-            >
-              שמור הערה
             </Button>
           </div>
         </DialogContent>
