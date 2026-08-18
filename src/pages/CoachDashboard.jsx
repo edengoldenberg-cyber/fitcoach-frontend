@@ -979,23 +979,30 @@ export default function CoachDashboard() {
     if (!t.full_name?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === 'all') return true;
     const badge = traineeTodayStats[t.user_email]?.overallBadge;
-    if (filter === 'good')    return badge === 'on_track';
-    if (filter === 'partial') return badge === 'partial';
-    // 'bad' tab: trainees who should have logged but haven't (no_data) or are behind
-    if (filter === 'bad')     return badge === 'behind' || badge === 'no_data';
+    if (filter === 'good')         return badge === 'on_track';
+    if (filter === 'partial')      return badge === 'partial';
+    // 'behind' = has data but materially below expected pace
+    if (filter === 'behind')       return badge === 'behind';
+    // 'not_reported' = evaluation window open, zero logs — informational, NOT alarm
+    if (filter === 'not_reported') return badge === 'no_data';
+    // neutral / no_target remain visible under 'all' only
     return true;
   }), [trainees, search, filter, traineeTodayStats]);
 
   const stats = useMemo(() => {
-    let good = 0, partial = 0, bad = 0;
+    // Each counter is independent — no merging of semantically distinct states.
+    // on_track + partial + behind + notReported + neutral + noTarget === total
+    let onTrack = 0, partial = 0, behind = 0, notReported = 0, neutral = 0, noTarget = 0;
     trainees.forEach(t => {
       const badge = traineeTodayStats[t.user_email]?.overallBadge;
-      if (badge === 'on_track')                    good++;
-      else if (badge === 'partial')                partial++;
-      else if (badge === 'behind' || badge === 'no_data') bad++;
-      // neutral / no_target / loading: not counted in any bucket (too early or no target)
+      if      (badge === 'on_track')  onTrack++;
+      else if (badge === 'partial')   partial++;
+      else if (badge === 'behind')    behind++;
+      else if (badge === 'no_data')   notReported++;
+      else if (badge === 'neutral')   neutral++;
+      else if (badge === 'no_target') noTarget++;
     });
-    return { good, partial, bad, total: trainees.length };
+    return { onTrack, partial, behind, notReported, neutral, noTarget, total: trainees.length };
   }, [trainees, traineeTodayStats]);
 
   // Today-specific activity counts
@@ -1153,23 +1160,27 @@ export default function CoachDashboard() {
           </div>
         </Card>
 
-        {/* Weekly Adherence Stats */}
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          <Card className="p-3 text-center bg-white shadow-sm border-slate-100 cursor-pointer hover:border-slate-300" onClick={() => setFilter('all')}>
-            <p className="text-xl font-bold text-slate-800">{stats.total}</p>
-            <p className="text-[10px] text-slate-500 mt-0.5">סה״כ</p>
+        {/* TODAY Status Counters — 5 independent buckets, never merging behind + no_data */}
+        <div className="grid grid-cols-5 gap-1.5 mb-4">
+          <Card className="p-2 text-center bg-white shadow-sm border-slate-100 cursor-pointer hover:border-slate-300" onClick={() => setFilter('all')}>
+            <p className="text-lg font-bold text-slate-800">{stats.total}</p>
+            <p className="text-[9px] text-slate-500 mt-0.5">סה״כ</p>
           </Card>
-          <Card className="p-3 text-center bg-emerald-50 border-emerald-100 cursor-pointer hover:border-emerald-300" onClick={() => setFilter('good')}>
-            <p className="text-xl font-bold text-emerald-700">{stats.good}</p>
-            <p className="text-[10px] text-emerald-600 mt-0.5">מצוין</p>
+          <Card className="p-2 text-center bg-emerald-50 border-emerald-100 cursor-pointer hover:border-emerald-300" onClick={() => setFilter('good')}>
+            <p className="text-lg font-bold text-emerald-700">{stats.onTrack}</p>
+            <p className="text-[9px] text-emerald-600 mt-0.5">מצוין</p>
           </Card>
-          <Card className="p-3 text-center bg-amber-50 border-amber-100 cursor-pointer hover:border-amber-300" onClick={() => setFilter('partial')}>
-            <p className="text-xl font-bold text-amber-700">{stats.partial}</p>
-            <p className="text-[10px] text-amber-600 mt-0.5">חלקי</p>
+          <Card className="p-2 text-center bg-amber-50 border-amber-100 cursor-pointer hover:border-amber-300" onClick={() => setFilter('partial')}>
+            <p className="text-lg font-bold text-amber-700">{stats.partial}</p>
+            <p className="text-[9px] text-amber-600 mt-0.5">חלקי</p>
           </Card>
-          <Card className="p-3 text-center bg-red-50 border-red-100 cursor-pointer hover:border-red-300" onClick={() => setFilter('bad')}>
-            <p className="text-xl font-bold text-red-700">{stats.bad}</p>
-            <p className="text-[10px] text-red-600 mt-0.5">זקוקים לתשומת לב</p>
+          <Card className="p-2 text-center bg-red-50 border-red-100 cursor-pointer hover:border-red-300" onClick={() => setFilter('behind')}>
+            <p className="text-lg font-bold text-red-700">{stats.behind}</p>
+            <p className="text-[9px] text-red-600 mt-0.5">בפיגור</p>
+          </Card>
+          <Card className="p-2 text-center bg-slate-50 border-slate-200 cursor-pointer hover:border-slate-400" onClick={() => setFilter('not_reported')}>
+            <p className="text-lg font-bold text-slate-600">{stats.notReported}</p>
+            <p className="text-[9px] text-slate-500 mt-0.5">לא דיווחו</p>
           </Card>
         </div>
 
@@ -1183,10 +1194,11 @@ export default function CoachDashboard() {
         <div className="flex items-center justify-between mb-4 gap-2">
           <Tabs value={filter} onValueChange={setFilter} className="flex-1">
             <TabsList className="bg-white border w-full justify-start overflow-x-auto flex-nowrap h-9">
-              <TabsTrigger value="all" className="flex-shrink-0 text-xs h-7">הכל ({stats.total})</TabsTrigger>
-              <TabsTrigger value="good" className="text-emerald-600 flex-shrink-0 text-xs h-7">מצוין ({stats.good})</TabsTrigger>
-              <TabsTrigger value="partial" className="text-amber-600 flex-shrink-0 text-xs h-7">חלקי ({stats.partial})</TabsTrigger>
-              <TabsTrigger value="bad" className="text-red-600 flex-shrink-0 text-xs h-7">חסר ({stats.bad})</TabsTrigger>
+              <TabsTrigger value="all"          className="flex-shrink-0 text-xs h-7">הכל ({stats.total})</TabsTrigger>
+              <TabsTrigger value="good"         className="text-emerald-600 flex-shrink-0 text-xs h-7">מצוין ({stats.onTrack})</TabsTrigger>
+              <TabsTrigger value="partial"      className="text-amber-600  flex-shrink-0 text-xs h-7">חלקי ({stats.partial})</TabsTrigger>
+              <TabsTrigger value="behind"       className="text-red-600    flex-shrink-0 text-xs h-7">בפיגור ({stats.behind})</TabsTrigger>
+              <TabsTrigger value="not_reported" className="text-slate-500  flex-shrink-0 text-xs h-7">לא דיווחו ({stats.notReported})</TabsTrigger>
               {allTraineesIncDeleted.length > 0 && (
                 <TabsTrigger value="deleted" className="text-slate-500 flex-shrink-0 text-xs h-7">
                   <UserX className="w-3 h-3 ml-1" />מחוקים ({allTraineesIncDeleted.length})
