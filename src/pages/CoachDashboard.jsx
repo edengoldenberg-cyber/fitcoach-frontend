@@ -39,11 +39,12 @@ import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDial
 // ─── helpers ───────────────────────────────────────────────────────────────
 // Accepts today_status.overall_badge strings from the backend.
 function getStatusBadge(badge) {
-  if (badge === 'on_track')  return { label: 'מצוין',         cls: 'bg-emerald-100 text-emerald-700' };
-  if (badge === 'partial')   return { label: 'חלקי',           cls: 'bg-amber-100  text-amber-700'   };
-  if (badge === 'behind')    return { label: 'בפיגור',         cls: 'bg-red-100    text-red-700'     };
-  if (badge === 'no_data')   return { label: 'לא תועד',        cls: 'bg-slate-100  text-slate-500'   };
-  if (badge === 'no_target') return { label: 'אין יעד',        cls: 'bg-slate-100  text-slate-400'   };
+  if (badge === 'on_track')       return { label: 'מצוין',         cls: 'bg-emerald-100 text-emerald-700' };
+  if (badge === 'partial')        return { label: 'חלקי',           cls: 'bg-amber-100  text-amber-700'   };
+  if (badge === 'behind')         return { label: 'בפיגור',         cls: 'bg-red-100    text-red-700'     };
+  if (badge === 'no_data')        return { label: 'לא תועד',        cls: 'bg-slate-100  text-slate-500'   };
+  if (badge === 'no_target')      return { label: 'אין יעד',        cls: 'bg-slate-100  text-slate-400'   };
+  if (badge === 'not_applicable') return { label: 'לא רלוונטי',     cls: 'bg-slate-100  text-slate-400'   };
   // neutral or undefined (loading, early morning)
   return { label: 'מוקדם', cls: 'bg-slate-100 text-slate-400' };
 }
@@ -909,18 +910,28 @@ export default function CoachDashboard() {
       const proteinLogged  = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein || 0), 0));
       const waterMl        = todayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
 
-      const nutritionLogged = mealCount > 0;
-      const waterLogged     = todayWater.length > 0;
+      // Respect visible_modules: don't show nutrition data if module is disabled
+      const vm = (() => {
+        const raw = t.visible_modules;
+        if (!raw) return {};
+        if (typeof raw === 'object') return raw;
+        try { return JSON.parse(raw); } catch { return {}; }
+      })();
+      const nutritionApplicable = vm.nutrition !== false;
+      const waterApplicable     = vm.water     !== false;
+
+      const nutritionLogged = nutritionApplicable && mealCount > 0;
+      const waterLogged     = waterApplicable     && todayWater.length > 0;
       // Show configured target; null if not set — no default invention for display
-      const calTarget   = t.target_calories   || null;
-      const waterTarget = t.water_target_ml   || null;
+      const calTarget   = nutritionApplicable ? (t.target_calories || null) : null;
+      const waterTarget = waterApplicable     ? (t.water_target_ml || null) : null;
 
       // Badge: from backend today_status (authoritative).
       // Falls back to 'neutral' while the summary is still loading.
       const overallBadge = summaryByEmail[e]?.today_status?.overall_badge ?? 'neutral';
 
       s[e] = {
-        mealCount,
+        mealCount:       nutritionApplicable ? mealCount : 0,
         caloriesLogged:  nutritionLogged ? caloriesLogged : null,
         proteinLogged:   nutritionLogged ? proteinLogged  : null,
         waterMl:         waterLogged     ? waterMl        : null,
@@ -992,17 +1003,18 @@ export default function CoachDashboard() {
   const stats = useMemo(() => {
     // Each counter is independent — no merging of semantically distinct states.
     // on_track + partial + behind + notReported + neutral + noTarget === total
-    let onTrack = 0, partial = 0, behind = 0, notReported = 0, neutral = 0, noTarget = 0;
+    let onTrack = 0, partial = 0, behind = 0, notReported = 0, neutral = 0, noTarget = 0, notApplicable = 0;
     trainees.forEach(t => {
       const badge = traineeTodayStats[t.user_email]?.overallBadge;
-      if      (badge === 'on_track')  onTrack++;
-      else if (badge === 'partial')   partial++;
-      else if (badge === 'behind')    behind++;
-      else if (badge === 'no_data')   notReported++;
-      else if (badge === 'neutral')   neutral++;
-      else if (badge === 'no_target') noTarget++;
+      if      (badge === 'on_track')       onTrack++;
+      else if (badge === 'partial')        partial++;
+      else if (badge === 'behind')         behind++;
+      else if (badge === 'no_data')        notReported++;
+      else if (badge === 'neutral')        neutral++;
+      else if (badge === 'no_target')      noTarget++;
+      else if (badge === 'not_applicable') notApplicable++;
     });
-    return { onTrack, partial, behind, notReported, neutral, noTarget, total: trainees.length };
+    return { onTrack, partial, behind, notReported, neutral, noTarget, notApplicable, total: trainees.length };
   }, [trainees, traineeTodayStats]);
 
   // Today-specific activity counts
