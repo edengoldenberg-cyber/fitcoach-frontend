@@ -46,9 +46,10 @@ function getStatusBadge(pct) {
 // ─── MiniCard (in list) ─────────────────────────────────────────────────────
 const DAY_LABELS_SHORT = { sunday: 'א', monday: 'ב', tuesday: 'ג', wednesday: 'ד', thursday: 'ה', friday: 'ו', saturday: 'ש' };
 
-function TraineeMiniCard({ trainee, stats, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
+function TraineeMiniCard({ trainee, todayStats, weekStats, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
   const initials = trainee.full_name?.split(' ').map(n => n[0]).join('') || '?';
-  const avg = Math.round(((stats?.nutrition || 0) + (stats?.water || 0) + (stats?.workout || 0)) / 3);
+  // Badge is TODAY-only — never mixes historical data
+  const avg   = todayStats?.avgBadge ?? 0;
   const badge = getStatusBadge(avg);
   const remindersOn = notifStatus?.remindersOn ?? true;
   const mutedDays = notifStatus?.mutedDays || [];
@@ -134,12 +135,18 @@ function TraineeMiniCard({ trainee, stats, selected, selectMode, onSelect, onDel
             )}
             </Link>
           </div>
+          {/* TODAY quick-stats — source: today's MealEntry / WaterEntry / WorkoutSession only */}
           <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Utensils className="w-3 h-3 text-emerald-500" />
-            <span>{stats?.mealsCount || 0} ארוחות · {stats?.calories || 0}/{stats?.targetCalories || 0} קל׳</span>
-            <span>·</span>
-            <span>חל׳ {stats?.protein || 0}g</span>
-            <Dumbbell className={`w-3 h-3 mr-auto ${stats?.workout ? 'text-orange-500' : 'text-slate-300'}`} />
+            <Utensils className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+            {todayStats?.nutritionLogged ? (
+              <span className="truncate">
+                {todayStats.mealCount} ארוחות · {todayStats.caloriesLogged}/{todayStats.calTarget} קל׳
+                {todayStats.proteinLogged != null ? ` · חל׳ ${todayStats.proteinLogged}g` : ''}
+              </span>
+            ) : (
+              <span className="text-slate-400 italic text-[11px]">לא תועדה תזונה היום</span>
+            )}
+            <Dumbbell className={`w-3 h-3 mr-auto flex-shrink-0 ${todayStats?.workoutDone ? 'text-orange-500' : 'text-slate-300'}`} />
           </div>
         </div>
         {!selectMode && <ChevronLeft className="w-4 h-4 text-slate-300 flex-shrink-0" />}
@@ -849,48 +856,121 @@ export default function CoachDashboard() {
     enabled: traineeEmails.length > 0,
   });
 
-  const traineeStatuses = useMemo(() => {
+  // ── Israel week start (Sunday) — matches backend getWeekBoundaries() exactly ──
+  const israelWeekStartStr = useMemo(() => {
+    const base = new Date(today + 'T00:00:00Z');
+    const dow  = base.getUTCDay(); // 0 = Sunday
+    const sun  = new Date(base);
+    sun.setUTCDate(base.getUTCDate() - dow);
+    return sun.toISOString().slice(0, 10);
+  }, [today]);
+
+  // ── TODAY stats — used for the badge, filter tabs, and mini card display ──────
+  // Contracts:
+  //   caloriesLogged = null when no meal logged today (not 0)
+  //   waterMl        = null when no water logged today (not 0)
+  //   nutritionPct / waterPct = 0 when no log (drives the badge to חסר)
+  //   avgBadge = (nutritionPct + waterPct + workoutPct) / 3  — TODAY only
+
+  const traineeTodayStats = useMemo(() => {
     const s = {};
     trainees.forEach(t => {
       const e = t.user_email;
-      const m = allMeals.filter(meal => nutritionRecordMatchesTrainee(meal, t));
-      const w = allWater.filter(water => nutritionRecordMatchesTrainee(water, t));
-      const wo = allWorkouts.filter(w => w.trainee_email === e);
-      const cal = m.reduce((sum, x) => sum + (x.calories || 0), 0);
-      const waterMl = w.reduce((sum, x) => sum + (x.amount_ml || 0), 0);
+      const todayMeals = allMeals.filter(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
+      const todayWater = allWater.filter(w => nutritionRecordMatchesTrainee(w, t) && w.date === today);
+      const todayWorkout = allWorkouts.some(w => w.trainee_email === e && w.date === today);
+
+      const mealCount      = todayMeals.length;
+      const caloriesLogged = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
+      const proteinLogged  = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein  || 0), 0));
+      const waterMl        = todayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
+
+      const nutritionLogged = mealCount > 0;
+      const waterLogged     = todayWater.length > 0;
+      const calTarget   = t.target_calories || 2000;
+      const waterTarget = t.water_target_ml || 3000;
+
+      const nutritionPct = nutritionLogged ? Math.min(Math.round((caloriesLogged / calTarget)   * 100), 100) : 0;
+      const waterPct     = waterLogged     ? Math.min(Math.round((waterMl        / waterTarget) * 100), 100) : 0;
+      const workoutPct   = todayWorkout ? 100 : 0;
+
       s[e] = {
-        nutrition: Math.min(Math.round((cal / (t.target_calories || 2000)) * 100), 100),
-        water: Math.min(Math.round((waterMl / (t.water_target_ml || 3000)) * 100), 100),
-        workout: wo.length > 0 ? 100 : 0,
-        mealsCount: m.length,
-        calories: cal,
-        protein: Math.round(m.reduce((sum, x) => sum + (x.protein || 0), 0)),
-        targetCalories: t.target_calories || 2000,
+        mealCount,
+        caloriesLogged:  nutritionLogged ? caloriesLogged : null,
+        proteinLogged:   nutritionLogged ? proteinLogged  : null,
+        waterMl:         waterLogged     ? waterMl        : null,
+        calTarget,
+        waterTarget,
+        nutritionLogged,
+        waterLogged,
+        workoutDone: todayWorkout,
+        nutritionPct,
+        waterPct,
+        workoutPct,
+        avgBadge: Math.round((nutritionPct + waterPct + workoutPct) / 3),
       };
     });
     return s;
-  }, [trainees, allMeals, allWater, allWorkouts]);
+  }, [trainees, allMeals, allWater, allWorkouts, today]);
+
+  // ── THIS WEEK stats — labeled separately from TODAY; never mixed ───────────
+  // Denominator = logged days only (no phantom zero days).
+  // Week boundary = Sunday–Saturday Israel calendar (matches backend).
+
+  const traineeWeeklyStats = useMemo(() => {
+    const s = {};
+    trainees.forEach(t => {
+      const e = t.user_email;
+      const weekMeals    = allMeals.filter(m => nutritionRecordMatchesTrainee(m, t) && m.date >= israelWeekStartStr);
+      const weekWater    = allWater.filter(w => nutritionRecordMatchesTrainee(w, t) && w.date >= israelWeekStartStr);
+      const weekWorkouts = allWorkouts.filter(w => w.trainee_email === e && w.date >= israelWeekStartStr);
+
+      const loggedDays   = new Set(weekMeals.map(m => m.date)).size;
+      const totalCals    = weekMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
+      const totalProtein = Math.round(weekMeals.reduce((sum, m) => sum + (m.protein || 0), 0));
+      const totalCarbs   = Math.round(weekMeals.reduce((sum, m) => sum + (m.carbs   || 0), 0));
+      const totalFat     = Math.round(weekMeals.reduce((sum, m) => sum + (m.fat     || 0), 0));
+      const totalWaterMl = weekWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
+      const workoutsCompleted = new Set(weekWorkouts.map(w => w.date)).size;
+
+      const weekStartDate = new Date(israelWeekStartStr + 'T00:00:00Z');
+      const todayDate     = new Date(today + 'T00:00:00Z');
+      const elapsedDays   = Math.max(1, Math.floor((todayDate - weekStartDate) / 86400000) + 1);
+
+      s[e] = {
+        loggedDays,
+        elapsedDays,
+        totalCals,
+        totalProtein,
+        totalCarbs,
+        totalFat,
+        totalWaterMl,
+        workoutsCompleted,
+        // avg per LOGGED day — null when no days logged (not 0)
+        avgCalPerLoggedDay: loggedDays > 0 ? Math.round(totalCals / loggedDays) : null,
+      };
+    });
+    return s;
+  }, [trainees, allMeals, allWater, allWorkouts, israelWeekStartStr, today]);
 
   const filteredTrainees = useMemo(() => trainees.filter(t => {
     if (!t.full_name?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === 'all') return true;
-    const s = traineeStatuses[t.user_email];
-    const avg = ((s?.nutrition || 0) + (s?.water || 0) + (s?.workout || 0)) / 3;
+    const avg = traineeTodayStats[t.user_email]?.avgBadge ?? 0;
     if (filter === 'good') return avg >= 80;
     if (filter === 'partial') return avg >= 50 && avg < 80;
     if (filter === 'bad') return avg < 50;
     return true;
-  }), [trainees, search, filter, traineeStatuses]);
+  }), [trainees, search, filter, traineeTodayStats]);
 
   const stats = useMemo(() => {
     let good = 0, partial = 0, bad = 0;
     trainees.forEach(t => {
-      const s = traineeStatuses[t.user_email];
-      const avg = ((s?.nutrition || 0) + (s?.water || 0) + (s?.workout || 0)) / 3;
+      const avg = traineeTodayStats[t.user_email]?.avgBadge ?? 0;
       if (avg >= 80) good++; else if (avg >= 50) partial++; else bad++;
     });
     return { good, partial, bad, total: trainees.length };
-  }, [trainees, traineeStatuses]);
+  }, [trainees, traineeTodayStats]);
 
   // Today-specific activity counts
   const todayActivity = useMemo(() => {
@@ -1175,7 +1255,8 @@ export default function CoachDashboard() {
                 <TraineeMiniCard
                    key={trainee.id}
                    trainee={trainee}
-                   stats={traineeStatuses[trainee.user_email]}
+                   todayStats={traineeTodayStats[trainee.user_email]}
+                   weekStats={traineeWeeklyStats[trainee.user_email]}
                    selectMode={selectMode}
                    selected={selectedIds.includes(trainee.id)}
                    onSelect={() => toggleSelect(trainee.id)}
@@ -1183,7 +1264,7 @@ export default function CoachDashboard() {
                    onClick={() => setSelectedTrainee(trainee)}
                    notifStatus={{ remindersOn, mutedDays }}
                    firstMealDate={traineeFirstMeal?.created_at}
-                   meals={allMealsEver}
+                   meals={allMeals}
                    workouts={allWorkouts}
                  />
               );
