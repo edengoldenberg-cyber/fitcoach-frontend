@@ -37,10 +37,15 @@ import TraineePanelVisibilityDialog from '../components/coach/TraineePanelVisibi
 import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
 
 // ─── helpers ───────────────────────────────────────────────────────────────
-function getStatusBadge(pct) {
-  if (pct >= 80) return { label: 'מצוין', cls: 'bg-emerald-100 text-emerald-700' };
-  if (pct >= 50) return { label: 'חלקי', cls: 'bg-amber-100 text-amber-700' };
-  return { label: 'חסר', cls: 'bg-red-100 text-red-700' };
+// Accepts today_status.overall_badge strings from the backend.
+function getStatusBadge(badge) {
+  if (badge === 'on_track')  return { label: 'מצוין',         cls: 'bg-emerald-100 text-emerald-700' };
+  if (badge === 'partial')   return { label: 'חלקי',           cls: 'bg-amber-100  text-amber-700'   };
+  if (badge === 'behind')    return { label: 'בפיגור',         cls: 'bg-red-100    text-red-700'     };
+  if (badge === 'no_data')   return { label: 'לא תועד',        cls: 'bg-slate-100  text-slate-500'   };
+  if (badge === 'no_target') return { label: 'אין יעד',        cls: 'bg-slate-100  text-slate-400'   };
+  // neutral or undefined (loading, early morning)
+  return { label: 'מוקדם', cls: 'bg-slate-100 text-slate-400' };
 }
 
 // ─── MiniCard (in list) ─────────────────────────────────────────────────────
@@ -48,9 +53,8 @@ const DAY_LABELS_SHORT = { sunday: 'א', monday: 'ב', tuesday: 'ג', wednesday:
 
 function TraineeMiniCard({ trainee, todayStats, weekStats, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
   const initials = trainee.full_name?.split(' ').map(n => n[0]).join('') || '?';
-  // Badge is TODAY-only — never mixes historical data
-  const avg   = todayStats?.avgBadge ?? 0;
-  const badge = getStatusBadge(avg);
+  // Badge comes from backend today_status — time-aware, no invented defaults
+  const badge = getStatusBadge(todayStats?.overallBadge);
   const remindersOn = notifStatus?.remindersOn ?? true;
   const mutedDays = notifStatus?.mutedDays || [];
   const [sending, setSending] = useState(false);
@@ -140,7 +144,7 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, selected, selectMode,
             <Utensils className="w-3 h-3 text-emerald-500 flex-shrink-0" />
             {todayStats?.nutritionLogged ? (
               <span className="truncate">
-                {todayStats.mealCount} ארוחות · {todayStats.caloriesLogged}/{todayStats.calTarget} קל׳
+                {todayStats.mealCount} ארוחות · {todayStats.caloriesLogged}{todayStats.calTarget ? `/${todayStats.calTarget} קל׳` : ' קל׳'}
                 {todayStats.proteinLogged != null ? ` · חל׳ ${todayStats.proteinLogged}g` : ''}
               </span>
             ) : (
@@ -865,34 +869,55 @@ export default function CoachDashboard() {
     return sun.toISOString().slice(0, 10);
   }, [today]);
 
-  // ── TODAY stats — used for the badge, filter tabs, and mini card display ──────
+  // ── Backend weekly summary — authoritative TODAY badge source ──────────────
+  // today_status per trainee uses time-aware expected-progress windows and
+  // never invents default calorie/water targets. Refetched every 60 s so
+  // window transitions (e.g. breakfast → lunch) are reflected automatically.
+  const { data: weeklySummary } = useQuery({
+    queryKey: ['coachWeeklySummary', user?.email],
+    queryFn:  () => base44.functions.invoke('coachWeeklySummary', {}),
+    enabled:  !!user?.email,
+    staleTime:       60_000,
+    refetchInterval: 60_000,
+  });
+
+  const summaryByEmail = useMemo(() => {
+    const m = {};
+    (weeklySummary?.trainees || []).forEach(t => { m[t.trainee_email] = t; });
+    return m;
+  }, [weeklySummary]);
+
+  // ── TODAY stats — factual display data from local queries + authoritative
+  //   overallBadge from backend today_status (time-aware, no invented targets).
+  //
   // Contracts:
   //   caloriesLogged = null when no meal logged today (not 0)
   //   waterMl        = null when no water logged today (not 0)
-  //   nutritionPct / waterPct = 0 when no log (drives the badge to חסר)
-  //   avgBadge = (nutritionPct + waterPct + workoutPct) / 3  — TODAY only
+  //   calTarget      = configured target or null (never invented)
+  //   overallBadge   = badge string from backend today_status
 
   const traineeTodayStats = useMemo(() => {
     const s = {};
     trainees.forEach(t => {
       const e = t.user_email;
-      const todayMeals = allMeals.filter(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
-      const todayWater = allWater.filter(w => nutritionRecordMatchesTrainee(w, t) && w.date === today);
+      const todayMeals   = allMeals.filter(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
+      const todayWater   = allWater.filter(w => nutritionRecordMatchesTrainee(w, t) && w.date === today);
       const todayWorkout = allWorkouts.some(w => w.trainee_email === e && w.date === today);
 
       const mealCount      = todayMeals.length;
       const caloriesLogged = todayMeals.reduce((sum, m) => sum + (m.calories || 0), 0);
-      const proteinLogged  = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein  || 0), 0));
+      const proteinLogged  = Math.round(todayMeals.reduce((sum, m) => sum + (m.protein || 0), 0));
       const waterMl        = todayWater.reduce((sum, w) => sum + (w.amount_ml || 0), 0);
 
       const nutritionLogged = mealCount > 0;
       const waterLogged     = todayWater.length > 0;
-      const calTarget   = t.target_calories || 2000;
-      const waterTarget = t.water_target_ml || 3000;
+      // Show configured target; null if not set — no default invention for display
+      const calTarget   = t.target_calories   || null;
+      const waterTarget = t.water_target_ml   || null;
 
-      const nutritionPct = nutritionLogged ? Math.min(Math.round((caloriesLogged / calTarget)   * 100), 100) : 0;
-      const waterPct     = waterLogged     ? Math.min(Math.round((waterMl        / waterTarget) * 100), 100) : 0;
-      const workoutPct   = todayWorkout ? 100 : 0;
+      // Badge: from backend today_status (authoritative).
+      // Falls back to 'neutral' while the summary is still loading.
+      const overallBadge = summaryByEmail[e]?.today_status?.overall_badge ?? 'neutral';
 
       s[e] = {
         mealCount,
@@ -903,15 +928,12 @@ export default function CoachDashboard() {
         waterTarget,
         nutritionLogged,
         waterLogged,
-        workoutDone: todayWorkout,
-        nutritionPct,
-        waterPct,
-        workoutPct,
-        avgBadge: Math.round((nutritionPct + waterPct + workoutPct) / 3),
+        workoutDone:  todayWorkout,
+        overallBadge,
       };
     });
     return s;
-  }, [trainees, allMeals, allWater, allWorkouts, today]);
+  }, [trainees, allMeals, allWater, allWorkouts, today, summaryByEmail]);
 
   // ── THIS WEEK stats — labeled separately from TODAY; never mixed ───────────
   // Denominator = logged days only (no phantom zero days).
@@ -956,18 +978,22 @@ export default function CoachDashboard() {
   const filteredTrainees = useMemo(() => trainees.filter(t => {
     if (!t.full_name?.toLowerCase().includes(search.toLowerCase())) return false;
     if (filter === 'all') return true;
-    const avg = traineeTodayStats[t.user_email]?.avgBadge ?? 0;
-    if (filter === 'good') return avg >= 80;
-    if (filter === 'partial') return avg >= 50 && avg < 80;
-    if (filter === 'bad') return avg < 50;
+    const badge = traineeTodayStats[t.user_email]?.overallBadge;
+    if (filter === 'good')    return badge === 'on_track';
+    if (filter === 'partial') return badge === 'partial';
+    // 'bad' tab: trainees who should have logged but haven't (no_data) or are behind
+    if (filter === 'bad')     return badge === 'behind' || badge === 'no_data';
     return true;
   }), [trainees, search, filter, traineeTodayStats]);
 
   const stats = useMemo(() => {
     let good = 0, partial = 0, bad = 0;
     trainees.forEach(t => {
-      const avg = traineeTodayStats[t.user_email]?.avgBadge ?? 0;
-      if (avg >= 80) good++; else if (avg >= 50) partial++; else bad++;
+      const badge = traineeTodayStats[t.user_email]?.overallBadge;
+      if (badge === 'on_track')                    good++;
+      else if (badge === 'partial')                partial++;
+      else if (badge === 'behind' || badge === 'no_data') bad++;
+      // neutral / no_target / loading: not counted in any bucket (too early or no target)
     });
     return { good, partial, bad, total: trainees.length };
   }, [trainees, traineeTodayStats]);
