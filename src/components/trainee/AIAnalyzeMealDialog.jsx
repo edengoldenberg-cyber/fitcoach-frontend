@@ -1,10 +1,10 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { base44 } from '@/api/base44Client';
-import { AlertCircle, ChevronDown, ChevronUp, Loader2, Search, Pencil, RefreshCw, Camera, Upload, X, Copy } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronUp, ChevronRight, Loader2, Search, Pencil, RefreshCw, Camera, Upload, X, Copy } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { saveAIFoodCorrection, normalizeFoodName, applyCanonicalLock } from './nutritionLearning';
 import { toast } from 'sonner';
@@ -536,77 +536,135 @@ function buildClientFallbackMeal(input) {
 }
 
 // ─── ClarificationQueue component ─────────────────────────────────────────────
-// Renders ONE question at a time from the clarification queue.
-// After each answer the next unanswered question automatically becomes active.
-// All answers accumulate; re-analysis runs once at the end.
+// Deterministic one-question-at-a-time questionnaire.
+//
+// STATE MACHINE: all index/answer state lives in the PARENT (AIAnalyzeMealDialog).
+// This component is purely presentational — it receives the active question and
+// callbacks; it does NOT derive the active question internally.
+//
+// Key design invariants:
+//   • activeQuestion is passed explicitly — no internal find(first-unanswered) logic
+//   • Free-text answers require an explicit "המשך" tap — onChange does NOT advance
+//   • Custom-grams answers require an explicit "אישור" tap — onChange does NOT advance
+//   • Back button navigates to previous question without making any API call
+//   • Progress shows "שאלה N מתוך M" — never jumps or resets within a session
+//   • The modal/card dimensions do NOT change between question types
 
-function ClarificationQueue({ allQuestions, visibleQuestions, answers, onAnswer, onCustomGrams, onTextAnswer, onSubmit, allAnswered, getKey, isComplete, show, isProcessing = false, stableTotalCount = 0 }) {
-  if (!show || !allQuestions.length) return null;
+function ClarificationQueue({
+  activeQuestion,      // the question object currently shown (may be null when all done)
+  activeIndex,         // 0-based index of activeQuestion in the full ordered list
+  totalQuestions,      // total number of questions in session (stable)
+  canGoBack,           // whether a back button should be shown
+  onGoBack,            // () => void — navigate to previous question (no API call)
+  pendingText,         // controlled value for the free-text input
+  onPendingTextChange, // (value: string) => void
+  onConfirmText,       // (question) => void — confirm free-text and advance
+  onConfirmGrams,      // (question) => void — confirm custom grams and advance
+  answers,             // { [questionKey]: answerState } — all stored answers
+  onAnswer,            // (question, option) => void — option selected (auto-advances)
+  onCustomGrams,       // (question, gramsValue) => void — updates pending gram value
+  onSubmit,            // () => void — final refinement request
+  allAnswered,         // boolean — true when every required question has a valid answer
+  getKey,              // (question) => string — normalize question to stable key
+  isComplete,          // (answerState, question) => boolean
+  show,                // whether the queue should render at all
+  isProcessing = false, // true while the API reanalysis is in-flight
+  clarificationRef,    // ref to scroll into view on question change
+}) {
+  if (!show || totalQuestions === 0) return null;
 
-  // First unanswered visible question is the active one
-  const question = visibleQuestions.find(q => !isComplete(answers[getKey(q)], q));
+  const questionKey   = activeQuestion ? getKey(activeQuestion) : null;
+  const answerState   = questionKey ? (answers[questionKey] || {}) : {};
+  const storedAnswer  = answerState.answer || '';
+  const isCustomMode  = answerState._custom_grams_mode === true;
+  const opts          = activeQuestion?.options || [];
+  const isCountType   = ['count', 'count_pieces'].includes(activeQuestion?.measure_type);
+  // Compact row only when count options AND ≤4 real choices (prevents overflow on 320px)
+  const realOpts      = opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom');
+  const useCompactRow = isCountType && realOpts.length <= 4;
 
-  // Use stableTotalCount when available — prevents the progress counter from
-  // jumping when the server returns a different number of questions.
-  const totalInQueue = stableTotalCount > 0 ? Math.max(stableTotalCount, allQuestions.length) : allQuestions.length;
-  const answeredInQueue = allQuestions.filter(q => isComplete(answers[getKey(q)], q)).length;
-  const remaining = totalInQueue - answeredInQueue;
+  // Determine whether the free-text field currently holds the active (pending) value
+  const isOptionSelected = opts.some(o => String(o.label || o.value) === storedAnswer);
+  const textDisplayValue = isOptionSelected ? '' : (isCustomMode ? '' : pendingText);
 
-  const questionKey    = question ? getKey(question) : null;
-  const answerState    = questionKey ? (answers[questionKey] || {}) : {};
-  const currentAnswer  = answerState.answer || '';
-  const isCustomMode   = answerState._custom_grams_mode === true;
-  const opts           = question?.options || [];
-  const isCountType    = ['count', 'count_pieces'].includes(question?.measure_type);
-  const useCompactRow  = isCountType && opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom').length <= 5;
+  // Custom grams value in progress
+  const customGramsValue = answerState.grams ? String(answerState.grams) : '';
+  const canConfirmGrams  = isCustomMode && answerState.grams > 0;
+  const canConfirmText   = !isCustomMode && pendingText.trim().length > 0;
+
+  const allDone = activeQuestion == null && allAnswered;
 
   return (
-    <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-      {/* Progress header */}
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-amber-900">
-          {remaining === 1 ? 'עוד פרט אחד לדיוק:' : `נשארו ${remaining} פרטים לדיוק:`}
-        </p>
-        {totalInQueue > 1 && (
-          <p className="text-xs text-amber-500">{answeredInQueue}/{totalInQueue}</p>
+    <div
+      ref={clarificationRef}
+      className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 w-full min-w-0 box-border"
+    >
+      {/* ── Progress header ── */}
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        {canGoBack ? (
+          <button
+            type="button"
+            onClick={onGoBack}
+            className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 flex-shrink-0"
+            aria-label="חזרה לשאלה הקודמת"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+            חזרה
+          </button>
+        ) : (
+          <span />
         )}
+        <p className="text-xs text-amber-500 text-left flex-shrink-0 tabular-nums">
+          {activeIndex + 1} / {totalQuestions}
+        </p>
       </div>
 
-      {/* Active question card */}
-      {question && (
-        <div className="rounded-lg bg-white p-3 border border-amber-100 space-y-2">
-          <p className="text-sm font-semibold text-amber-900">{question.question}</p>
+      {/* ── Active question card ── */}
+      {activeQuestion && (
+        <div className="rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 box-border">
+          <p className="text-sm font-semibold text-amber-900 leading-snug">{activeQuestion.question}</p>
 
-          {/* Answer options */}
-          <div className={useCompactRow ? 'flex gap-1.5 flex-wrap' : 'grid grid-cols-2 gap-2'}>
-            {opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom').map((option, idx) => {
-              const selected = String(currentAnswer) === String(option.label || option.value) && !isCustomMode;
+          {/* Answer option buttons */}
+          <div
+            className={[
+              useCompactRow
+                ? 'flex flex-wrap gap-1.5'
+                : 'grid grid-cols-2 gap-2',
+              'w-full min-w-0',
+            ].join(' ')}
+          >
+            {realOpts.map((option, idx) => {
+              const selected = String(storedAnswer) === String(option.label || option.value) && !isCustomMode;
               return (
                 <button
-                  key={`${questionKey}-${idx}`}
+                  key={`${questionKey}-opt-${idx}`}
                   type="button"
-                  onClick={() => onAnswer(question, option)}
+                  onClick={() => onAnswer(activeQuestion, option)}
                   className={[
-                    'rounded-xl border text-sm font-medium transition-colors active:scale-95',
-                    useCompactRow ? 'flex-1 min-w-[44px] py-2.5 px-2' : 'py-3 px-2 w-full',
+                    'rounded-xl border text-sm font-medium transition-colors active:scale-95 min-w-0 overflow-hidden',
+                    useCompactRow
+                      ? 'px-2.5 py-2.5 text-center'
+                      : 'py-3 px-2 w-full text-center',
                     selected
                       ? 'bg-amber-300 border-amber-400 text-amber-950'
                       : 'bg-white border-amber-200 text-amber-800 hover:bg-amber-50',
                   ].join(' ')}
                 >
-                  {option.label || option.value}
+                  <span className="block truncate leading-tight">
+                    {option.label || option.value}
+                  </span>
                 </button>
               );
             })}
           </div>
 
-          {/* Custom grams toggle */}
+          {/* Custom-grams toggle button */}
           {opts.some(o => o.value === 'custom_grams' || o.value === 'more_custom') && (
             <button
               type="button"
-              onClick={() => onAnswer(question, { value: 'custom_grams', label: 'אני יודע את המשקל', grams: null })}
+              onClick={() => onAnswer(activeQuestion, { value: 'custom_grams', label: 'אני יודע את המשקל', grams: null })}
               className={[
-                'w-full rounded-xl border text-sm py-2.5 px-3 transition-colors',
+                'w-full rounded-xl border text-sm py-2.5 px-3 transition-colors min-w-0',
                 isCustomMode
                   ? 'bg-teal-100 border-teal-300 text-teal-900'
                   : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50',
@@ -616,40 +674,76 @@ function ClarificationQueue({ allQuestions, visibleQuestions, answers, onAnswer,
             </button>
           )}
 
-          {/* Gram input when custom mode active */}
+          {/* Custom-grams input + explicit confirm button */}
           {isCustomMode && (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 w-full min-w-0">
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 max="9999"
                 placeholder="כמה גרם?"
-                defaultValue={answerState.grams || ''}
-                onChange={e => onCustomGrams(question, e.target.value)}
-                className="flex-1 rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-300"
+                value={customGramsValue}
+                onChange={e => onCustomGrams(activeQuestion, e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && canConfirmGrams) { e.preventDefault(); onConfirmGrams(activeQuestion); } }}
+                className="min-w-0 flex-1 rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-300"
                 dir="rtl"
                 autoFocus
               />
               <span className="text-sm text-slate-500 flex-shrink-0">גרם</span>
+              <button
+                type="button"
+                disabled={!canConfirmGrams}
+                onClick={() => onConfirmGrams(activeQuestion)}
+                className="flex-shrink-0 rounded-lg px-3 py-2 text-sm font-medium text-white transition-colors disabled:opacity-40"
+                style={{ backgroundColor: canConfirmGrams ? '#79DBD6' : '#cbd5e1' }}
+              >
+                אישור
+              </button>
             </div>
           )}
 
-          {/* Free-text fallback */}
+          {/* Free-text input + explicit continue button.
+              IMPORTANT: onChange does NOT store the answer or advance the question.
+              Advancing only happens on explicit "המשך" tap or Enter key. */}
           {!isCustomMode && (
-            <input
-              type="text"
-              value={opts.some(o => (o.label || o.value) === currentAnswer) ? '' : currentAnswer}
-              onChange={e => onTextAnswer(question, e.target.value)}
-              placeholder="או כתוב תשובה אחרת..."
-              className="w-full rounded-md border border-amber-200 bg-white/60 px-3 py-1.5 text-xs text-right text-amber-900 placeholder:text-amber-300 focus:outline-none focus:ring-1 focus:ring-amber-300"
-              dir="rtl"
-            />
+            <div className="space-y-2 w-full min-w-0">
+              <input
+                type="text"
+                value={textDisplayValue}
+                onChange={e => onPendingTextChange(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && canConfirmText) {
+                    e.preventDefault();
+                    onConfirmText(activeQuestion);
+                  }
+                }}
+                placeholder="או כתוב תשובה אחרת..."
+                className="w-full min-w-0 box-border rounded-md border border-amber-200 bg-white/60 px-3 py-1.5 text-xs text-right text-amber-900 placeholder:text-amber-300 focus:outline-none focus:ring-1 focus:ring-amber-300"
+                dir="rtl"
+              />
+              {canConfirmText && (
+                <button
+                  type="button"
+                  onClick={() => onConfirmText(activeQuestion)}
+                  className="w-full rounded-xl border border-amber-300 bg-amber-100 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 transition-colors"
+                >
+                  המשך ←
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
 
-      {/* Inline processing state — shown when clarification reanalysis is in-flight.
-          The modal does NOT wipe; this spinner appears INSIDE the ClarificationQueue. */}
+      {/* ── All done state (user finished all questions, not yet submitted) ── */}
+      {allDone && !isProcessing && (
+        <div className="rounded-lg bg-white p-3 border border-amber-100 text-sm text-amber-700 text-center">
+          ✅ ענית על כל השאלות — לחץ על הכפתור למטה לחישוב מחדש
+        </div>
+      )}
+
+      {/* ── In-flight spinner ── */}
       {isProcessing && (
         <div className="flex items-center justify-center gap-2 py-2 text-sm text-amber-700">
           <Loader2 className="w-4 h-4 animate-spin" />
@@ -657,14 +751,18 @@ function ClarificationQueue({ allQuestions, visibleQuestions, answers, onAnswer,
         </div>
       )}
 
-      {/* Submit — only when all answered */}
+      {/* ── Submit — enabled only when every required question has a valid answer ── */}
       <Button
         onClick={onSubmit}
         disabled={!allAnswered || isProcessing}
-        className="w-full text-white font-medium"
+        className="w-full text-white font-medium min-w-0"
         style={{ backgroundColor: (allAnswered && !isProcessing) ? '#79DBD6' : '#cbd5e1' }}
       >
-        {isProcessing ? 'מחשב מחדש...' : allAnswered ? 'נתח מחדש לפי התשובות ←' : `ענה על ${remaining} שאלות נוספות`}
+        {isProcessing
+          ? 'מחשב מחדש...'
+          : allAnswered
+            ? 'נתח מחדש לפי התשובות ←'
+            : `ענה על ${totalQuestions - (activeIndex)} שאלות נוספות`}
       </Button>
     </div>
   );
@@ -687,6 +785,14 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   // Stable question count: set on first result, only allowed to grow.
   // Prevents the progress counter from jumping when the API returns different questions.
   const [clarificationTotalCount, setClarificationTotalCount] = useState(0);
+  // Deterministic question index — tracks position in the stable ordered question list.
+  // Replaces the old visibleQuestions.find(first-unanswered) anti-pattern.
+  const [clarificationIndex, setClarificationIndex] = useState(0);
+  // Pending free-text input — NOT committed to clarificationAnswers until confirmed.
+  // Decouples onChange from question advance (was advancing on first keystroke).
+  const [clarificationPendingText, setClarificationPendingText] = useState('');
+  // Ref for smooth scroll to question area on advance/back
+  const clarificationRef = useRef(null);
   const [photoUrl, setPhotoUrl] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -699,6 +805,39 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   const [isSaving, setIsSaving] = useState(false);
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+
+  // ── Clarification index management ───────────────────────────────────────────
+  // Reset the question index whenever the server returns a new/different question
+  // list (e.g., after reanalysis with new questions).  Uses a stable key derived
+  // from question IDs — avoids spurious resets on every render.
+  const clarificationQuestionsKey = useRef('');
+  useEffect(() => {
+    const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
+    const key = allQ.map(q => String(q.id ?? q.question ?? '')).join('|');
+    if (key && key !== clarificationQuestionsKey.current) {
+      clarificationQuestionsKey.current = key;
+      setClarificationIndex(0);
+      setClarificationPendingText('');
+    }
+  }, [result?.clarifying_questions]);
+
+  // Advance to the next eligible question after storing a new answer.
+  // newAnswers: the answers map AFTER the just-stored answer (not yet in state).
+  // currentIdx: snapshot of clarificationIndex at the time of the call (avoids stale closure).
+  const _advanceClarificationIndex = useCallback((newAnswers, currentIdx, allQ, depFn) => {
+    let next = currentIdx + 1;
+    while (next < allQ.length && !depFn(allQ[next], newAnswers, allQ)) {
+      next++;
+    }
+    if (next < allQ.length) {
+      setClarificationIndex(next);
+    }
+    setClarificationPendingText('');
+    // Scroll the question area into view after a short tick so layout has settled
+    setTimeout(() => {
+      clarificationRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 80);
+  }, []);
 
   const { data: user } = useQuery({
     queryKey: ['currentUser'],
@@ -1186,10 +1325,16 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     await handleAnalyze();
   };
 
+  // ── Clarification answer handlers ────────────────────────────────────────────
+  // After every non-custom option selection the index advances to the next eligible
+  // question.  Custom-grams and free-text require an explicit confirmation step.
+
   const handleClarificationAnswer = (question, option) => {
     const isCustom = option.value === 'custom_grams' || option.value === 'more_custom';
+    const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
 
     if (isCustom) {
+      // Enter custom-grams mode — do NOT advance yet; user must type grams then confirm.
       setClarificationAnswers(prev => ({
         ...prev,
         [getQuestionKey(question)]: {
@@ -1205,75 +1350,46 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       return;
     }
 
-    if (question.measure_type === 'count_pieces') {
-      // Step 1 of two-step protein: store resolved_count, grams stays null until size answered
-      const resolved_count = option.resolved_count ?? null;
-      setClarificationAnswers(prev => ({
-        ...prev,
-        [getQuestionKey(question)]: {
-          question:       question.question,
-          food_key:       question.food_key,
-          measure_type:   question.measure_type,
-          measure_class:  question.measure_class,
-          answer:         option.label || option.value,
-          grams:          null,          // not computable until size is selected
-          resolved_count,                // stored for size-step calculation
-          _custom_grams_mode: false,
-        },
-      }));
-      return;
-    }
+    let answerObj;
 
-    if (question.measure_type === 'size_pieces' || question.measure_type === 'piece_form') {
-      // Step 2 (size) or 1b (form) of protein two-step: compute grams = resolvedCount × unit_grams.
-      // piece_form: user selects "נתחים שלמים/קוביות קטנות/etc." which carries a unit_grams anchor.
-      //   This is the COMBINED form+size answer — resolvedCount × form.unit_grams gives total grams.
-      // size_pieces: user selects small/medium/large which carries unit_grams per piece.
-      // resolvedCount comes from: (a) parent count answer in state, or (b) text extraction.
+    if (question.measure_type === 'count_pieces') {
+      const resolved_count = option.resolved_count ?? null;
+      answerObj = {
+        question:       question.question,
+        food_key:       question.food_key,
+        measure_type:   question.measure_type,
+        measure_class:  question.measure_class,
+        answer:         option.label || option.value,
+        grams:          null,
+        resolved_count,
+        _custom_grams_mode: false,
+      };
+    } else if (question.measure_type === 'size_pieces' || question.measure_type === 'piece_form') {
       const parentCountAnswer = (() => {
-        // Find the count answer for the same food_key
         for (const [, ans] of Object.entries(clarificationAnswers)) {
-          if (ans.food_key === question.food_key && ans.measure_type === 'count_pieces') {
-            return ans;
-          }
+          if (ans.food_key === question.food_key && ans.measure_type === 'count_pieces') return ans;
         }
         return null;
       })();
-
-      const resolvedCount =
-        parentCountAnswer?.resolved_count ??
-        extractCountFromText(description);   // fallback: extract from original input text
-
-      const unitGrams = option.unit_grams ?? null;
-
-      // Compute deterministic grams — NO defaults if either value is unknown
-      const totalGrams = computeProteinGrams(resolvedCount, unitGrams);
-
-      const answerLabel = resolvedCount != null
+      const resolvedCount = parentCountAnswer?.resolved_count ?? extractCountFromText(description);
+      const unitGrams     = option.unit_grams ?? null;
+      const totalGrams    = computeProteinGrams(resolvedCount, unitGrams);
+      const answerLabel   = resolvedCount != null
         ? `${resolvedCount} × ${option.label} (≈${totalGrams ?? '?'} גרם)`
         : option.label;
-
-      setClarificationAnswers(prev => ({
-        ...prev,
-        [getQuestionKey(question)]: {
-          question:       question.question,
-          food_key:       question.food_key,
-          measure_type:   question.measure_type,
-          measure_class:  question.measure_class,
-          answer:         answerLabel,
-          grams:          totalGrams,    // null if count was not resolved
-          resolved_count: resolvedCount,
-          _custom_grams_mode: false,
-        },
-      }));
-      return;
-    }
-
-    // Standard single-step answer
-    const grams = option.grams ?? option.grams_equivalent ?? null;
-    setClarificationAnswers(prev => ({
-      ...prev,
-      [getQuestionKey(question)]: {
+      answerObj = {
+        question:       question.question,
+        food_key:       question.food_key,
+        measure_type:   question.measure_type,
+        measure_class:  question.measure_class,
+        answer:         answerLabel,
+        grams:          totalGrams,
+        resolved_count: resolvedCount,
+        _custom_grams_mode: false,
+      };
+    } else {
+      const grams = option.grams ?? option.grams_equivalent ?? null;
+      answerObj = {
         question:       question.question,
         food_key:       question.food_key,
         measure_type:   question.measure_type,
@@ -1281,10 +1397,18 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         answer:         option.label || option.value,
         grams,
         _custom_grams_mode: false,
-      },
-    }));
+      };
+    }
+
+    const newAnswers = { ...clarificationAnswers, [getQuestionKey(question)]: answerObj };
+    setClarificationAnswers(newAnswers);
+    // Advance index SYNCHRONOUSLY using the updated answers (avoids stale-closure issue)
+    _advanceClarificationIndex(newAnswers, clarificationIndex, allQ,
+      (q, ans, all) => isDependencySatisfied(q, ans, all));
   };
 
+  // Updates the pending gram value for a custom-grams answer.
+  // Does NOT advance; user must tap "אישור" to confirm.
   const handleClarificationCustomGrams = (question, gramsValue) => {
     const g = Number(gramsValue);
     setClarificationAnswers(prev => ({
@@ -1298,20 +1422,55 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     }));
   };
 
-  const handleClarificationTextAnswer = (question, value) => {
-    setClarificationAnswers(prev => ({
-      ...prev,
-      [getQuestionKey(question)]: {
-        question:       question.question,
-        food_key:       question.food_key,
-        measure_type:   question.measure_type,
-        measure_class:  question.measure_class,
-        answer:         value,
-        grams:          null,
-        _custom_grams_mode: false,
-      },
-    }));
+  // Confirms a custom-grams entry and advances to the next question.
+  const handleClarificationConfirmGrams = (question) => {
+    const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
+    const key  = getQuestionKey(question);
+    const cur  = clarificationAnswers[key] || {};
+    if (!cur.grams || cur.grams <= 0) return;
+    const newAnswers = { ...clarificationAnswers };
+    _advanceClarificationIndex(newAnswers, clarificationIndex, allQ,
+      (q, ans, all) => isDependencySatisfied(q, ans, all));
   };
+
+  // Updates the pending free-text value — does NOT store in clarificationAnswers
+  // and does NOT advance the question.  Only confirmed answers are stored.
+  const handleClarificationPendingTextChange = (value) => {
+    setClarificationPendingText(value);
+  };
+
+  // Confirms a free-text answer and advances.  Enter key and the "המשך" button
+  // both call this; it is identical behavior in both cases.
+  const handleClarificationConfirmText = (question) => {
+    const trimmed = clarificationPendingText.trim();
+    if (!trimmed) return;
+    const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
+    const answerObj = {
+      question:       question.question,
+      food_key:       question.food_key,
+      measure_type:   question.measure_type,
+      measure_class:  question.measure_class,
+      answer:         trimmed,
+      grams:          null,
+      _custom_grams_mode: false,
+    };
+    const newAnswers = { ...clarificationAnswers, [getQuestionKey(question)]: answerObj };
+    setClarificationAnswers(newAnswers);
+    _advanceClarificationIndex(newAnswers, clarificationIndex, allQ,
+      (q, ans, all) => isDependencySatisfied(q, ans, all));
+  };
+
+  // Go back to the previous question.  Makes zero API calls.
+  const handleClarificationGoBack = () => {
+    setClarificationIndex(prev => Math.max(0, prev - 1));
+    setClarificationPendingText('');
+    setTimeout(() => {
+      clarificationRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 60);
+  };
+
+  // Legacy alias (some code paths pass question as first arg; ignore it).
+  const handleClarificationTextAnswer = (_question, value) => handleClarificationPendingTextChange(value);
 
   // Build a structured per-ingredient gram map from resolved answers.
   // Only includes answers where grams are definitively known.
@@ -1487,28 +1646,38 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     return true;
   };
 
-  // Visible questions: apply dependency filter so size questions only show after count answered
-  const visibleClarificationQuestions = allClarificationQuestions.filter(q =>
+  // ── Derived clarification state ───────────────────────────────────────────────
+
+  // Active question: determined by the stable index (NOT by "find first unanswered").
+  // Clamped so it never goes out of bounds when the question list shrinks.
+  const _clampedIndex = Math.min(clarificationIndex, Math.max(0, allClarificationQuestions.length - 1));
+  const clarificationActiveQuestion = shouldShowClarificationQuestions
+    ? (allClarificationQuestions[_clampedIndex] ?? null)
+    : null;
+
+  // Eligible question count (dependency-satisfied) — stable per session.
+  const eligibleQuestions = allClarificationQuestions.filter(q =>
     isDependencySatisfied(q, clarificationAnswers, allClarificationQuestions)
   );
 
-  // All-answered: every question in the FULL queue must be complete (including dependent ones
-  // that became visible after count was answered). This ensures we never submit partial data.
-  const answeredClarificationCount = allClarificationQuestions.filter(q =>
-    isClarificationAnswerComplete(clarificationAnswers[getQuestionKey(q)], q)
-  ).length;
+  // All-answered: every eligible question must be complete.
   const allClarificationsAnswered = shouldShowClarificationQuestions &&
     allClarificationQuestions.length > 0 &&
     allClarificationQuestions.every(q =>
       isClarificationAnswerComplete(clarificationAnswers[getQuestionKey(q)], q) ||
       !isDependencySatisfied(q, clarificationAnswers, allClarificationQuestions)
     );
+
+  // Visible questions still exported for the legacy completeness gate used in save guard.
+  const visibleClarificationQuestions = eligibleQuestions;
+
   const showPipelineDebug = isNutritionAIDebugMode() && !photoUrl && result;
   const pipelineDebug = result?.debug_pipeline || result || {};
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md w-full max-h-[90vh] overflow-y-auto" dir="rtl">
+      {/* overflow-x-hidden prevents horizontal scroll on mobile when content briefly overflows */}
+      <DialogContent className="max-w-md w-full max-h-[90vh] overflow-y-auto overflow-x-hidden" dir="rtl">
         <DialogHeader>
           <DialogTitle className="text-lg font-bold flex items-center gap-2">
             <Search className="w-5 h-5 text-teal-500" />
@@ -1649,19 +1818,28 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
             )}
 
             <ClarificationQueue
-              allQuestions={allClarificationQuestions}
-              visibleQuestions={visibleClarificationQuestions}
+              activeQuestion={clarificationActiveQuestion}
+              activeIndex={_clampedIndex}
+              totalQuestions={Math.max(
+                allClarificationQuestions.length,
+                clarificationTotalCount
+              )}
+              canGoBack={_clampedIndex > 0}
+              onGoBack={handleClarificationGoBack}
+              pendingText={clarificationPendingText}
+              onPendingTextChange={handleClarificationPendingTextChange}
+              onConfirmText={handleClarificationConfirmText}
+              onConfirmGrams={handleClarificationConfirmGrams}
               answers={clarificationAnswers}
               onAnswer={handleClarificationAnswer}
               onCustomGrams={handleClarificationCustomGrams}
-              onTextAnswer={handleClarificationTextAnswer}
               onSubmit={handleSubmitClarifications}
               allAnswered={allClarificationsAnswered}
               getKey={getQuestionKey}
               isComplete={isClarificationAnswerComplete}
               show={shouldShowClarificationQuestions}
               isProcessing={isClarifying}
-              stableTotalCount={clarificationTotalCount}
+              clarificationRef={clarificationRef}
             />
 
             {/* Meal name */}
