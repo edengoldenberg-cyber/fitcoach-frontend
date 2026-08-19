@@ -21,6 +21,7 @@ import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import WhatsAppKillSwitch from '@/components/admin/WhatsAppKillSwitch';
+import AutomationControlCenter from '@/components/automation/AutomationControlCenter';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -140,10 +141,11 @@ function calcRisk(daysSince) {
 // ─── Sidebar Nav ──────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
-  { key: 'killswitch',   label: '🛑 כיבוי חירום',   icon: ShieldAlert, adminOnly: true },
-  { key: 'dashboard',    label: 'מרכז בקרה',       icon: LayoutDashboard },
-  { key: 'arbox-automations', label: 'אוטומציות Arbox', icon: Zap },
-  { key: 'automations',  label: 'אוטומציות',        icon: Zap },
+  { key: 'killswitch',        label: '🛑 כיבוי חירום',    icon: ShieldAlert, adminOnly: true },
+  { key: 'dashboard',         label: 'מרכז בקרה',        icon: LayoutDashboard },
+  { key: 'automation-center', label: 'מרכז אוטומציות',   icon: Layers },
+  { key: 'arbox-automations', label: 'אוטומציות Arbox',  icon: Zap },
+  { key: 'automations',       label: 'אוטומציות WhatsApp', icon: Zap },
   { key: 'queue',        label: 'תור הודעות',       icon: MessageSquare },
   { key: 'live',         label: 'פעילות חיה',       icon: Activity },
   { key: 'arbox',        label: 'Arbox',             icon: Database },
@@ -2694,6 +2696,19 @@ export default function MissionControl() {
     switch (activeSection) {
       case 'killswitch':        return user?.role === 'admin' ? <WhatsAppKillSwitch /> : null;
       case 'dashboard':         return <DashboardSection automations={automations} queueItems={queueItems} arboxStatus={arboxStatus} absenceData={absenceData} coachEmail={coachEmail} onRefresh={refresh} />;
+      case 'automation-center':  return (
+        <AutomationControlCenter
+          coachEmail={coachEmail}
+          onEditSystemC={(editData) => {
+            // Bridge to existing System C form dialog in this component
+            // If editing existing data, set it; otherwise open new form
+            // The AutomationsSection form dialog handles this via setEditing
+            setActiveSection('automations');
+            // Store pending edit in sessionStorage so AutomationsSection picks it up on next render
+            if (editData) sessionStorage.setItem('mc_pending_edit_auto', JSON.stringify(editData));
+          }}
+        />
+      );
       case 'arbox-automations': return <ArboxAutomationsSection coachEmail={coachEmail} />;
       case 'automations':       return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'queue':       return <QueueSection queueItems={queueItems} onRefresh={refresh} />;
