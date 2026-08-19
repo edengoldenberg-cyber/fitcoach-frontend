@@ -1224,9 +1224,12 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       return;
     }
 
-    if (question.measure_type === 'size_pieces') {
-      // Step 2 of two-step protein: compute grams = resolvedCount × unit_grams
-      // resolvedCount comes from: (a) parent answer in state, or (b) text extraction
+    if (question.measure_type === 'size_pieces' || question.measure_type === 'piece_form') {
+      // Step 2 (size) or 1b (form) of protein two-step: compute grams = resolvedCount × unit_grams.
+      // piece_form: user selects "נתחים שלמים/קוביות קטנות/etc." which carries a unit_grams anchor.
+      //   This is the COMBINED form+size answer — resolvedCount × form.unit_grams gives total grams.
+      // size_pieces: user selects small/medium/large which carries unit_grams per piece.
+      // resolvedCount comes from: (a) parent count answer in state, or (b) text extraction.
       const parentCountAnswer = (() => {
         // Find the count answer for the same food_key
         for (const [, ans] of Object.entries(clarificationAnswers)) {
@@ -1477,8 +1480,8 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     // Count-step (step 1 of protein): complete as soon as any non-custom answer is selected
     // grams is intentionally null here — that's OK
     if (question?.measure_type === 'count_pieces' && !answerState._custom_grams_mode) return true;
-    // Size-step (step 2 of protein): complete only when grams are computed
-    if (question?.measure_type === 'size_pieces') {
+    // Size-step (step 2) or form-step (step 1b): complete only when grams are computed
+    if (question?.measure_type === 'size_pieces' || question?.measure_type === 'piece_form') {
       return answerState.grams !== null && answerState.grams > 0;
     }
     return true;
