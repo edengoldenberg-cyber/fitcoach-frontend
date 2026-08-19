@@ -8,6 +8,19 @@ import { AlertCircle, ChevronDown, ChevronUp, Loader2, Search, Pencil, RefreshCw
 import { useQuery } from '@tanstack/react-query';
 import { saveAIFoodCorrection, normalizeFoodName, applyCanonicalLock } from './nutritionLearning';
 import { toast } from 'sonner';
+import {
+  buildFoodClarifications,
+  buildFoodAwareClarification,
+  textHasQuantityForFood,
+  textHasCountForFood,
+  textHasSizeForFood,
+  extractCountFromText,
+  extractSizeFromText,
+  computeProteinGrams,
+  inferMeasureClass,
+  inferFoodKeyFromQuestionText,
+  formatAnswerForAI,
+} from '@/components/shared/foodMeasurementConfig';
 
 const MEAL_TYPES = [
   { value: 'breakfast', label: '🌅 ארוחת בוקר' },
@@ -112,17 +125,24 @@ function normalizeEnrichedMealResult(data) {
     // The AI frequently returns questions with empty text or no options; those are unusable.
     // Normalize options: AI returns strings like ["50 גרם","100 גרם"] but the UI expects
     // objects with {label, value}. Convert strings → {label: opt, value: opt}.
+    // Also map grams_equivalent → grams so both sources use the same field name.
     clarifying_questions: (data.clarifying_questions || []).filter(
       q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
     ).map(q => ({
       ...q,
-      options: q.options.map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+      options: q.options.map(opt => {
+        if (typeof opt === 'string') return { label: opt, value: opt };
+        return { ...opt, grams: opt.grams || opt.grams_equivalent || null };
+      }),
     })),
     questions: (data.clarifying_questions || []).filter(
       q => q?.question && String(q.question).trim() && Array.isArray(q.options) && q.options.length > 0
     ).map(q => ({
       ...q,
-      options: q.options.map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
+      options: q.options.map(opt => {
+        if (typeof opt === 'string') return { label: opt, value: opt };
+        return { ...opt, grams: opt.grams || opt.grams_equivalent || null };
+      }),
     })),
     debugLogId: data.debugLogId,
     wrapper_used: !!data.wrapper_used || !!data.safe_wrapper,
@@ -138,12 +158,14 @@ function normalizeEnrichedMealResult(data) {
 function normalizeAnalysisResult(data, input) {
   const enrichedResult = normalizeEnrichedMealResult(data);
   if (enrichedResult?.ingredients?.length) {
-    // If AI returned ingredients but no valid questions and confidence is not high,
-    // generate client-side clarification questions so they render with proper options.
-    if (enrichedResult.clarifying_questions.length === 0 && enrichedResult.confidence !== 'high') {
-      const clientQuestions = getSmartQuestions(data, input, []);
-      enrichedResult.clarifying_questions = clientQuestions;
-      enrichedResult.questions = clientQuestions;
+    // ALWAYS merge client-side food-aware questions with AI questions when not high confidence.
+    // Previously only merged when AI returned ZERO questions — this was the root cause of the
+    // production failure where AI returned one size question but rice/potato got nothing.
+    // Now: client questions always come first; AI questions used as additional fallback.
+    if (enrichedResult.confidence !== 'high') {
+      const merged = getSmartQuestions(data, input, enrichedResult.clarifying_questions);
+      enrichedResult.clarifying_questions = merged;
+      enrichedResult.questions = merged;
     }
     return enrichedResult;
   }
@@ -179,38 +201,46 @@ function normalizeAnalysisResult(data, input) {
 
 function getSmartQuestions(data, input, fallbackQuestions = []) {
   const confidence = ['high', 'medium', 'low'].includes(data?.confidence) ? data.confidence : 'low';
-  // Normalize options here too — AI returns string arrays, UI needs {label,value} objects.
-  // This is the fallback path; normalizeEnrichedMealResult handles the primary path.
+  if (confidence === 'high') return [];
+  if (isGoodEnoughClientEstimate(input, data)) return [];
+
   const normalizeOpts = q => ({
     ...q,
     options: (q.options || []).map(opt => typeof opt === 'string' ? { label: opt, value: opt } : opt),
   });
+  // AI questions from either data.clarifying_questions or the passed fallbackQuestions
   const rawQuestions = (Array.isArray(data?.clarifying_questions) && data.clarifying_questions.length > 0
     ? data.clarifying_questions
     : fallbackQuestions
   ).map(normalizeOpts);
-  const mealText = String(input || '').toLowerCase();
+
   const highImpactQuestions = buildClientHighImpactQuestions(input);
-  const hasExplicitQuantity = /\d+|חצי|כף|כפית|כוס|פרוס|משולש|גרם|מנה/.test(mealText);
-  if (isGoodEnoughClientEstimate(input, data)) return [];
+  const hasExplicitQuantity = /\d+|חצי|כף|כפית|כוס|פרוס|משולש|גרם|מנה/.test(String(input || '').toLowerCase());
 
   const seen = new Set();
   const unique = [...highImpactQuestions, ...rawQuestions]
     .filter(q => q?.question)
     .filter(q => !isClientVagueQuestion(q))
     .filter(q => {
-      const key = String(q.id || q.question).toLowerCase().replace(/\s+/g, '_');
-      if (seen.has(key)) return false;
-      seen.add(key);
+      // For dedup, resolve food_key: use explicit field first, then infer from question text
+      // (AI questions lack food_key; inferring lets them compete with client questions correctly)
+      const resolvedFoodKey = q.food_key || inferFoodKeyFromQuestionText(q);
+      const mc = q.measure_class || inferMeasureClass(q);
+      // Dedup key: food_key + measure_class — different measure_classes (count vs size) for
+      // the same food are allowed; same food + same class → keep first (client wins)
+      const dedupKey = resolvedFoodKey
+        ? `${resolvedFoodKey}_${mc}`
+        : String(q.id || q.question).toLowerCase().replace(/\s+/g, '_');
+      if (seen.has(dedupKey)) return false;
+      seen.add(dedupKey);
       return true;
     })
-    .filter(q => questionPriority(q, hasExplicitQuantity) < 90)
-    .sort((a, b) => questionPriority(a, hasExplicitQuantity) - questionPriority(b, hasExplicitQuantity));
+    .filter(q => questionPriority(q) < 90)
+    .sort((a, b) => questionPriority(a) - questionPriority(b));
 
-  if (confidence === 'high') return [];
-  if (confidence === 'medium') return unique.slice(0, 2);
-  if (confidence === 'low') return unique.slice(0, 3);
-  return unique.slice(0, 3);
+  // No slice cap — all necessary questions must be queued for multi-food meals.
+  // One-at-a-time UI ensures the user isn't overwhelmed.
+  return unique;
 }
 
 function isGoodEnoughClientEstimate(input, data) {
@@ -228,34 +258,98 @@ function buildClientHighImpactQuestions(input) {
   const text = String(input || '').toLowerCase();
   const questions = [];
 
-  // Omelette/egg: ask oil amount when NOT explicitly "without oil".
-  // "עם שמן" (with oil) still needs quantity → do NOT suppress on its presence.
-  if (/חביתה|אומלט|omelet/.test(text) && !/ביצה\s*קשה|קשה|מבושל|בלי שמן|ללא שמן|ללא חמאה|בלי חמאה/.test(text)) {
+  // ── Omelette: ask oil amount when NOT explicitly "without oil" ─────────────
+  if (/חביתה|אומלט|omelet/i.test(text) &&
+      !/ביצה\s*קשה|קשה|מבושל|בלי שמן|ללא שמן|ללא חמאה|בלי חמאה/.test(text)) {
     const hasOilAmount = /כפית\s+שמן|כף\s+שמן|כפית\s+חמאה|כף\s+חמאה/.test(text);
     if (!hasOilAmount) {
-      questions.push({ id: 'egg_oil_fat', question: 'כמה שמן/חמאה השתמשת בחביתה?', options: [{ label: 'בלי', value: 'none' }, { label: 'כפית', value: 'tsp_oil' }, { label: 'כף', value: 'tbsp_oil' }, { label: 'חמאה', value: 'butter' }] });
+      questions.push({
+        id: 'egg_oil_fat',
+        question: 'כמה שמן/חמאה השתמשת?',
+        measure_class: 'preparation',
+        options: [
+          { label: 'בלי',         value: 'none',     grams: 0  },
+          { label: 'כפית',        value: 'tsp_oil',  grams: 4  },
+          { label: 'כף',          value: 'tbsp_oil', grams: 14 },
+          { label: 'חמאה (כף)',   value: 'butter',   grams: 14 },
+        ],
+      });
     }
   }
+
+  // ── Tuna in oil ────────────────────────────────────────────────────────────
   if (/טונה/.test(text) && /בשמן/.test(text) && !/סוננ|סיננ/.test(text)) {
-    questions.push({ id: 'tuna_oil_drained', question: 'הטונה סוננה מהשמן?', options: [{ label: 'כן, סוננה', value: 'drained' }, { label: 'חלקית', value: 'partial' }, { label: 'לא', value: 'with_oil' }] });
+    questions.push({
+      id: 'tuna_oil_drained',
+      question: 'הטונה סוננה מהשמן?',
+      measure_class: 'preparation',
+      options: [
+        { label: 'כן, סוננה', value: 'drained',  grams: null },
+        { label: 'חלקית',     value: 'partial',  grams: null },
+        { label: 'לא',        value: 'with_oil', grams: null },
+      ],
+    });
   }
-  if (/מיונז/.test(text) && !/כפית|כף|לייט|דל/.test(text)) {
-    questions.push({ id: 'mayo_amount', question: 'כמה מיונז היה בערך?', options: [{ label: 'כפית', value: 'tsp' }, { label: 'כף', value: 'tbsp' }, { label: 'יותר', value: 'more' }] });
+
+  // ── Coffee additions ───────────────────────────────────────────────────────
+  if (/קפה|coffee/i.test(text) && !/סוכר|ללא סוכר|בלי סוכר|חלב|דל|רגיל/.test(text)) {
+    questions.push({
+      id: 'coffee_additions',
+      question: 'הקפה היה עם תוספות?',
+      measure_class: 'preparation',
+      options: [
+        { label: 'בלי',      value: 'plain',  grams: null },
+        { label: 'עם חלב',   value: 'milk',   grams: null },
+        { label: 'עם סוכר',  value: 'sugar',  grams: null },
+        { label: 'חלב + סוכר', value: 'both', grams: null },
+      ],
+    });
   }
-  if (/קפה|coffee/.test(text) && !/סוכר|ללא סוכר|בלי סוכר|חלב|דל|רגיל/.test(text)) {
-    questions.push({ id: 'coffee_additions', question: 'הקפה היה עם סוכר או חלב?', options: [{ label: 'בלי תוספות', value: 'plain' }, { label: 'עם חלב', value: 'milk' }, { label: 'עם סוכר', value: 'sugar' }, { label: 'שניהם', value: 'both' }] });
+
+  // ── Pasta sauce type ───────────────────────────────────────────────────────
+  if (/פסטה|pasta/i.test(text) && /רוטב/.test(text) &&
+      !/שמנת|עגבניות|פסטו|בולונז|קרמי/.test(text)) {
+    questions.push({
+      id: 'pasta_sauce',
+      question: 'מה סוג הרוטב?',
+      measure_class: 'type',
+      options: [
+        { label: 'עגבניות', value: 'tomato',    grams: null },
+        { label: 'שמנת',    value: 'cream',     grams: null },
+        { label: 'שמן זית', value: 'olive_oil', grams: null },
+        { label: 'פסטו',    value: 'pesto',     grams: null },
+      ],
+    });
   }
-  if (/לחם|חלה|לחמנ/.test(text) && !/פרוס|אישית|לחמנייה|לחמניה|גרם|\d/.test(text)) {
-    questions.push({ id: 'bread_size', question: 'כמה לחם היה?', options: [{ label: 'פרוסה', value: '1_slice' }, { label: '2 פרוסות', value: '2_slices' }, { label: 'לחמנייה', value: 'roll' }] });
+
+  // ── Food-category-aware questions (using new two-step system) ─────────────
+  const FOOD_TOKENS = [
+    'תפוח', 'בננה', 'אגס', 'מנגו', 'אפרסק', 'שזיף',
+    'ביצה', 'ביצים',
+    'לחם', 'חלה', 'לחמנייה', 'לחמניה', 'פיתה',
+    'אורז', 'פסטה', 'קינואה', 'בורגול', 'כוסמת',
+    'טחינה', 'חומוס', 'מיונז', 'אבוקדו',
+    'חזה עוף', 'פרגית', 'שניצל', 'קציצה', 'סלמון',
+    'פיצה', 'סושי', 'מאקי',
+    'יוגורט', 'קוטג', 'גבינה לבנה',
+    'אגוזים', 'שקדים', 'קשיו',
+  ];
+
+  // Dedup key: food_key + measure_class — allows count and size to coexist for same food
+  const seenDedup = new Set(questions.map(q => `${q.food_key || q.id}_${q.measure_class || 'general'}`));
+
+  for (const token of FOOD_TOKENS) {
+    if (!text.includes(token)) continue;
+    // buildFoodClarifications returns 0, 1, or 2 questions for this food
+    const clarifications = buildFoodClarifications(token, input);
+    for (const q of clarifications) {
+      const dedupKey = `${q.food_key || q.id}_${q.measure_class || 'general'}`;
+      if (seenDedup.has(dedupKey)) continue;
+      seenDedup.add(dedupKey);
+      questions.push(q);
+    }
   }
-  // Tahini: ask amount when not quantified
-  if (/טחינה/.test(text) && !/כפית|כף|גרם|\d/.test(text)) {
-    questions.push({ id: 'tahini_amount', question: 'כמה טחינה היה בערך?', options: [{ label: 'כפית', value: 'tsp' }, { label: 'כף', value: 'tbsp' }, { label: '2 כפות', value: '2_tbsp' }] });
-  }
-  // Pasta sauce: ask type when ambiguous
-  if (/פסטה|pasta/.test(text) && /רוטב/.test(text) && !/שמנת|עגבניות|פסטו|בולונז|קרמי/.test(text)) {
-    questions.push({ id: 'pasta_sauce', question: 'מה סוג הרוטב בפסטה?', options: [{ label: 'עגבניות', value: 'tomato' }, { label: 'שמנת', value: 'cream' }, { label: 'שמן זית', value: 'olive_oil' }, { label: 'פסטו', value: 'pesto' }] });
-  }
+
   return questions;
 }
 
@@ -264,14 +358,25 @@ function isClientVagueQuestion(question) {
   return /מה גודל המנה|אפשר עוד פרטים|מה בדיוק אכלת|איזה סוג אוכל|ספר לי עוד|גודל המנה\??$/.test(text);
 }
 
-function questionPriority(question, hasExplicitQuantity) {
-  const text = `${question?.id || ''} ${question?.question || ''}`.toLowerCase();
-  if (/כמות|כמה|גודל|מנה|portion|size|יחיד|פרוס|משולש|גרם/.test(text)) return hasExplicitQuantity ? 35 : 1;
-  if (/שמן|רוטב|מטוגן|טיגון|fry|oil|sauce|חמאה|מיונז/.test(text)) return 2;
-  if (/אורז|פסטה|לחם|פחמימה|carb|תפוח אדמה|בטטה/.test(text)) return 3;
-  if (/חלבון|עוף|בשר|דג|טונה|ביצה|protein/.test(text)) return 4;
-  if (/תוספת|גבינה|אגוז|טחינה|אבוקדו/.test(text)) return 5;
-  if (/מותג|סוג לחם|ירק|ירקות|קישוט|תבלין|זיתים|עגבניה|מלפפון|brand|garnish/.test(text)) return 99;
+function questionPriority(question) {
+  // Priority based on measure_type/measure_class — lower = asked first.
+  // Count-step questions must precede size-step questions for the same food.
+  const mt = question?.measure_type || '';
+  const mc = question?.measure_class || '';
+
+  // Step 1: count of pieces (proteins, potato) — always first
+  if (mt === 'count_pieces') return 1;
+  // Household quantity questions (rice, tahini, eggs, bread, pizza, sushi…)
+  if (['count', 'volume', 'spoons', 'portion', 'container', 'handful'].includes(mt)) return 2;
+  // Preparation questions (oil in omelette, tuna draining)
+  if (mc === 'preparation') return 3;
+  // Food type questions (pasta sauce, cheese type)
+  if (mc === 'type') return 4;
+  // Step 2: piece size (proteins, potato) — always after count for same food
+  if (mt === 'size_pieces') return 5;
+  // Size questions for whole fruits / single-dimension foods
+  if (mt === 'size') return 6;
+  // Vague/general AI questions (no typed measure_type) — last
   return 20;
 }
 
@@ -430,6 +535,141 @@ function buildClientFallbackMeal(input) {
   };
 }
 
+// ─── ClarificationQueue component ─────────────────────────────────────────────
+// Renders ONE question at a time from the clarification queue.
+// After each answer the next unanswered question automatically becomes active.
+// All answers accumulate; re-analysis runs once at the end.
+
+function ClarificationQueue({ allQuestions, visibleQuestions, answers, onAnswer, onCustomGrams, onTextAnswer, onSubmit, allAnswered, getKey, isComplete, show, isProcessing = false, stableTotalCount = 0 }) {
+  if (!show || !allQuestions.length) return null;
+
+  // First unanswered visible question is the active one
+  const question = visibleQuestions.find(q => !isComplete(answers[getKey(q)], q));
+
+  // Use stableTotalCount when available — prevents the progress counter from
+  // jumping when the server returns a different number of questions.
+  const totalInQueue = stableTotalCount > 0 ? Math.max(stableTotalCount, allQuestions.length) : allQuestions.length;
+  const answeredInQueue = allQuestions.filter(q => isComplete(answers[getKey(q)], q)).length;
+  const remaining = totalInQueue - answeredInQueue;
+
+  const questionKey    = question ? getKey(question) : null;
+  const answerState    = questionKey ? (answers[questionKey] || {}) : {};
+  const currentAnswer  = answerState.answer || '';
+  const isCustomMode   = answerState._custom_grams_mode === true;
+  const opts           = question?.options || [];
+  const isCountType    = ['count', 'count_pieces'].includes(question?.measure_type);
+  const useCompactRow  = isCountType && opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom').length <= 5;
+
+  return (
+    <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+      {/* Progress header */}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-amber-900">
+          {remaining === 1 ? 'עוד פרט אחד לדיוק:' : `נשארו ${remaining} פרטים לדיוק:`}
+        </p>
+        {totalInQueue > 1 && (
+          <p className="text-xs text-amber-500">{answeredInQueue}/{totalInQueue}</p>
+        )}
+      </div>
+
+      {/* Active question card */}
+      {question && (
+        <div className="rounded-lg bg-white p-3 border border-amber-100 space-y-2">
+          <p className="text-sm font-semibold text-amber-900">{question.question}</p>
+
+          {/* Answer options */}
+          <div className={useCompactRow ? 'flex gap-1.5 flex-wrap' : 'grid grid-cols-2 gap-2'}>
+            {opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom').map((option, idx) => {
+              const selected = String(currentAnswer) === String(option.label || option.value) && !isCustomMode;
+              return (
+                <button
+                  key={`${questionKey}-${idx}`}
+                  type="button"
+                  onClick={() => onAnswer(question, option)}
+                  className={[
+                    'rounded-xl border text-sm font-medium transition-colors active:scale-95',
+                    useCompactRow ? 'flex-1 min-w-[44px] py-2.5 px-2' : 'py-3 px-2 w-full',
+                    selected
+                      ? 'bg-amber-300 border-amber-400 text-amber-950'
+                      : 'bg-white border-amber-200 text-amber-800 hover:bg-amber-50',
+                  ].join(' ')}
+                >
+                  {option.label || option.value}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Custom grams toggle */}
+          {opts.some(o => o.value === 'custom_grams' || o.value === 'more_custom') && (
+            <button
+              type="button"
+              onClick={() => onAnswer(question, { value: 'custom_grams', label: 'אני יודע את המשקל', grams: null })}
+              className={[
+                'w-full rounded-xl border text-sm py-2.5 px-3 transition-colors',
+                isCustomMode
+                  ? 'bg-teal-100 border-teal-300 text-teal-900'
+                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50',
+              ].join(' ')}
+            >
+              אני יודע את המשקל
+            </button>
+          )}
+
+          {/* Gram input when custom mode active */}
+          {isCustomMode && (
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="number"
+                min="1"
+                max="9999"
+                placeholder="כמה גרם?"
+                defaultValue={answerState.grams || ''}
+                onChange={e => onCustomGrams(question, e.target.value)}
+                className="flex-1 rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm text-right focus:outline-none focus:ring-2 focus:ring-teal-300"
+                dir="rtl"
+                autoFocus
+              />
+              <span className="text-sm text-slate-500 flex-shrink-0">גרם</span>
+            </div>
+          )}
+
+          {/* Free-text fallback */}
+          {!isCustomMode && (
+            <input
+              type="text"
+              value={opts.some(o => (o.label || o.value) === currentAnswer) ? '' : currentAnswer}
+              onChange={e => onTextAnswer(question, e.target.value)}
+              placeholder="או כתוב תשובה אחרת..."
+              className="w-full rounded-md border border-amber-200 bg-white/60 px-3 py-1.5 text-xs text-right text-amber-900 placeholder:text-amber-300 focus:outline-none focus:ring-1 focus:ring-amber-300"
+              dir="rtl"
+            />
+          )}
+        </div>
+      )}
+
+      {/* Inline processing state — shown when clarification reanalysis is in-flight.
+          The modal does NOT wipe; this spinner appears INSIDE the ClarificationQueue. */}
+      {isProcessing && (
+        <div className="flex items-center justify-center gap-2 py-2 text-sm text-amber-700">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>מעבד תשובות ומחשב מחדש...</span>
+        </div>
+      )}
+
+      {/* Submit — only when all answered */}
+      <Button
+        onClick={onSubmit}
+        disabled={!allAnswered || isProcessing}
+        className="w-full text-white font-medium"
+        style={{ backgroundColor: (allAnswered && !isProcessing) ? '#79DBD6' : '#cbd5e1' }}
+      >
+        {isProcessing ? 'מחשב מחדש...' : allAnswered ? 'נתח מחדש לפי התשובות ←' : `ענה על ${remaining} שאלות נוספות`}
+      </Button>
+    </div>
+  );
+}
+
 export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync, selectedDate, defaultMealType }) {
   const [step, setStep] = useState('input'); // input | analyzing | result | edit | manual
   const [description, setDescription] = useState('');
@@ -441,6 +681,12 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   const [feedbackText, setFeedbackText] = useState('');
   const [showFeedback, setShowFeedback] = useState(false);
   const [clarificationAnswers, setClarificationAnswers] = useState({});
+  // Separate clarification processing state — NEVER uses setStep('analyzing').
+  // Keeps the result view stable while a clarification reanalysis is in flight.
+  const [isClarifying, setIsClarifying] = useState(false);
+  // Stable question count: set on first result, only allowed to grow.
+  // Prevents the progress counter from jumping when the API returns different questions.
+  const [clarificationTotalCount, setClarificationTotalCount] = useState(0);
   const [photoUrl, setPhotoUrl] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -510,7 +756,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     if (galleryInputRef.current) galleryInputRef.current.value = '';
   };
 
-  const handleAnalyze = async (answersOverride = clarificationAnswers) => {
+  const handleAnalyze = async (answersOverride = clarificationAnswers, structuredAnswers = null) => {
     const mealDescription = description.trim() || (photoUrl ? 'נתח את הארוחה בתמונה' : '');
     if (!mealDescription) return;
     const safeAnswersOverride = answersOverride?.nativeEvent ? clarificationAnswers : answersOverride;
@@ -521,6 +767,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         meal_text: mealDescription,
         image_url: photoUrl || undefined,
         user_answers: Object.keys(safeAnswersOverride || {}).length ? safeAnswersOverride : undefined,
+        structured_answers: structuredAnswers || undefined,
         user_notes: feedbackText || undefined,
       });
       const rawData = res?.data?.response ?? res?.data;
@@ -557,6 +804,10 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       setManualProtein(String(Math.round(data?.total_protein || 0)));
       setManualCarbs(String(Math.round(data?.total_carbs || 0)));
       setManualFat(String(Math.round(data?.total_fat || 0)));
+      // Reset clarification session tracking for a brand new initial analysis
+      const qCount = Array.isArray(data?.clarifying_questions) ? data.clarifying_questions.length : 0;
+      setClarificationTotalCount(qCount);
+      setClarificationAnswers({});
       setStep('result');
     } catch (err) {
       console.warn('[AI_NUTRITION_UI_TRACE] fallback_activation:', err?.response?.data || err?.message);
@@ -916,6 +1167,8 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     setFeedbackText('');
     setShowFeedback(false);
     setClarificationAnswers({});
+    setIsClarifying(false);
+    setClarificationTotalCount(0);
     setPhotoUrl(null);
     setPhotoPreview(null);
     setLearningSaved(false);
@@ -934,14 +1187,111 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   };
 
   const handleClarificationAnswer = (question, option) => {
+    const isCustom = option.value === 'custom_grams' || option.value === 'more_custom';
+
+    if (isCustom) {
+      setClarificationAnswers(prev => ({
+        ...prev,
+        [getQuestionKey(question)]: {
+          question:      question.question,
+          food_key:      question.food_key,
+          measure_type:  question.measure_type,
+          measure_class: question.measure_class,
+          answer:        option.value,
+          grams:         null,
+          _custom_grams_mode: true,
+        },
+      }));
+      return;
+    }
+
+    if (question.measure_type === 'count_pieces') {
+      // Step 1 of two-step protein: store resolved_count, grams stays null until size answered
+      const resolved_count = option.resolved_count ?? null;
+      setClarificationAnswers(prev => ({
+        ...prev,
+        [getQuestionKey(question)]: {
+          question:       question.question,
+          food_key:       question.food_key,
+          measure_type:   question.measure_type,
+          measure_class:  question.measure_class,
+          answer:         option.label || option.value,
+          grams:          null,          // not computable until size is selected
+          resolved_count,                // stored for size-step calculation
+          _custom_grams_mode: false,
+        },
+      }));
+      return;
+    }
+
+    if (question.measure_type === 'size_pieces') {
+      // Step 2 of two-step protein: compute grams = resolvedCount × unit_grams
+      // resolvedCount comes from: (a) parent answer in state, or (b) text extraction
+      const parentCountAnswer = (() => {
+        // Find the count answer for the same food_key
+        for (const [, ans] of Object.entries(clarificationAnswers)) {
+          if (ans.food_key === question.food_key && ans.measure_type === 'count_pieces') {
+            return ans;
+          }
+        }
+        return null;
+      })();
+
+      const resolvedCount =
+        parentCountAnswer?.resolved_count ??
+        extractCountFromText(description);   // fallback: extract from original input text
+
+      const unitGrams = option.unit_grams ?? null;
+
+      // Compute deterministic grams — NO defaults if either value is unknown
+      const totalGrams = computeProteinGrams(resolvedCount, unitGrams);
+
+      const answerLabel = resolvedCount != null
+        ? `${resolvedCount} × ${option.label} (≈${totalGrams ?? '?'} גרם)`
+        : option.label;
+
+      setClarificationAnswers(prev => ({
+        ...prev,
+        [getQuestionKey(question)]: {
+          question:       question.question,
+          food_key:       question.food_key,
+          measure_type:   question.measure_type,
+          measure_class:  question.measure_class,
+          answer:         answerLabel,
+          grams:          totalGrams,    // null if count was not resolved
+          resolved_count: resolvedCount,
+          _custom_grams_mode: false,
+        },
+      }));
+      return;
+    }
+
+    // Standard single-step answer
+    const grams = option.grams ?? option.grams_equivalent ?? null;
     setClarificationAnswers(prev => ({
       ...prev,
       [getQuestionKey(question)]: {
-        question: question.question,
-        food_key: question.food_key,
-        answer: option.value || option.label,
-        grams: option.grams || null,
-      }
+        question:       question.question,
+        food_key:       question.food_key,
+        measure_type:   question.measure_type,
+        measure_class:  question.measure_class,
+        answer:         option.label || option.value,
+        grams,
+        _custom_grams_mode: false,
+      },
+    }));
+  };
+
+  const handleClarificationCustomGrams = (question, gramsValue) => {
+    const g = Number(gramsValue);
+    setClarificationAnswers(prev => ({
+      ...prev,
+      [getQuestionKey(question)]: {
+        ...prev[getQuestionKey(question)],
+        answer:  g > 0 ? `${g} גרם` : 'custom_grams',
+        grams:   g > 0 ? g : null,
+        _custom_grams_mode: true,
+      },
     }));
   };
 
@@ -949,16 +1299,125 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     setClarificationAnswers(prev => ({
       ...prev,
       [getQuestionKey(question)]: {
-        question: question.question,
-        food_key: question.food_key,
-        answer: value,
-        grams: null,
-      }
+        question:       question.question,
+        food_key:       question.food_key,
+        measure_type:   question.measure_type,
+        measure_class:  question.measure_class,
+        answer:         value,
+        grams:          null,
+        _custom_grams_mode: false,
+      },
     }));
   };
 
+  // Build a structured per-ingredient gram map from resolved answers.
+  // Only includes answers where grams are definitively known.
+  const buildStructuredAnswers = (answers) => {
+    const structured = {};
+    for (const ans of Object.values(answers)) {
+      const key = ans.food_key;
+      if (!key || ans.grams == null) continue;
+      // Size answers overwrite count answers for the same food (size answer has the final grams)
+      if (!structured[key] || ans.measure_class === 'size') {
+        structured[key] = { grams: ans.grams, label: ans.answer };
+      }
+    }
+    return Object.keys(structured).length > 0 ? structured : null;
+  };
+
+  // Merges a refined API result with the previous result to prevent ingredient loss.
+  // If the refined result is missing ingredients that were in the original, they are
+  // carried forward so the user never sees a meal shrink due to an AI omission.
+  const mergeRefinedResult = (previousResult, refinedResult) => {
+    const prevIngs = Array.isArray(previousResult?.ingredients) ? previousResult.ingredients : [];
+    const newIngs  = Array.isArray(refinedResult?.ingredients)  ? refinedResult.ingredients  : [];
+    if (!prevIngs.length) return refinedResult;
+
+    const normName = n => (n || '').toLowerCase().trim().replace(/\s+/g, ' ');
+
+    // Find ingredients in the previous result that are absent from the refined result.
+    const missingIngs = prevIngs.filter(pi =>
+      !newIngs.some(ni =>
+        normName(ni.name) === normName(pi.name) ||
+        normName(ni.name).includes(normName(pi.name)) ||
+        normName(pi.name).includes(normName(ni.name))
+      )
+    );
+
+    if (!missingIngs.length) return refinedResult; // nothing lost — accept as-is
+
+    // One or more original ingredients were dropped by the AI.
+    // Merge them back: refined foods are authoritative, originals fill the gap.
+    const merged = [...newIngs, ...missingIngs];
+    const totals = sumIngredients(merged);
+    return {
+      ...refinedResult,
+      ingredients: merged,
+      foods: merged,
+      total_calories: totals.calories,
+      total_protein:  totals.protein,
+      total_carbs:    totals.carbs,
+      total_fat:      totals.fat,
+      items_count:    merged.length,
+      _merged_missing: missingIngs.map(i => i.name),
+    };
+  };
+
+  // Dedicated clarification submit — DOES NOT call setStep('analyzing').
+  // The modal stays visible and stable; only an inline spinner appears inside
+  // the ClarificationQueue. Answers accumulate in state and are submitted once.
   const handleSubmitClarifications = async () => {
-    await handleAnalyze(clarificationAnswers);
+    if (isClarifying) return; // prevent double-submit
+    const structured = buildStructuredAnswers(clarificationAnswers);
+    const mealText = description.trim() || (photoUrl ? 'נתח את הארוחה בתמונה' : '');
+    if (!mealText) return;
+
+    setIsClarifying(true);
+    setError(null);
+    try {
+      const res = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
+        meal_text: mealText,
+        image_url: photoUrl || undefined,
+        user_answers: Object.keys(clarificationAnswers).length ? clarificationAnswers : undefined,
+        structured_answers: structured || undefined,
+        user_notes: feedbackText || undefined,
+      });
+      const rawData = res?.data?.response ?? res?.data;
+      const data = normalizeAnalysisResult(rawData, mealText);
+
+      // Apply canonical lock for personal foods
+      if (data.ingredients?.length && personalFoods?.length) {
+        data.ingredients = applyCanonicalLock(data.ingredients, personalFoods);
+        data.foods = data.ingredients;
+        const t = sumIngredients(data.ingredients);
+        data.total_calories = t.calories;
+        data.total_protein  = t.protein;
+        data.total_carbs    = t.carbs;
+        data.total_fat      = t.fat;
+      }
+
+      // Structural guard: merge back any ingredients the AI dropped.
+      // This prevents the meal from shrinking to 1 food when the AI focused
+      // only on the ingredient being clarified and omitted others.
+      const safeData = mergeRefinedResult(result, data);
+
+      // Update result without changing step — modal stays visible and stable.
+      setResult(safeData);
+      setEditIngredients(safeData?.ingredients?.map(i => ({ ...i })) || []);
+      setLearningSaved(false);
+
+      // Grow question count only — never let it shrink (prevents progress reset).
+      const newQCount = Array.isArray(safeData?.clarifying_questions) ? safeData.clarifying_questions.length : 0;
+      setClarificationTotalCount(prev => Math.max(prev, newQCount));
+
+      if (safeData._merged_missing?.length) {
+        console.warn('[CLARIFICATION] AI dropped ingredients, merged back:', safeData._merged_missing);
+      }
+    } catch (err) {
+      setError('לא ניתן לחשב מחדש כרגע — ניתן לשמור את הניתוח הקיים.');
+    } finally {
+      setIsClarifying(false);
+    }
   };
 
   const goManual = () => {
@@ -983,8 +1442,64 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   const confidence = result ? CONFIDENCE_LABELS[displayConfidenceKey] || CONFIDENCE_LABELS.medium : null;
   const allClarificationQuestions = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
   const shouldShowClarificationQuestions = allClarificationQuestions.length > 0 && result?.confidence !== 'high';
-  const answeredClarificationCount = allClarificationQuestions.filter(q => String(clarificationAnswers[getQuestionKey(q)]?.answer || '').trim()).length;
-  const allClarificationsAnswered = shouldShowClarificationQuestions && answeredClarificationCount >= Math.min(1, allClarificationQuestions.length);
+  // A question with depends_on is visible only when:
+  //   (a) its parent (same food_key, count_pieces) is answered with a non-custom value, OR
+  //   (b) the parent question is absent from the current set (count came from input text)
+  //       AND the count is reliably resolvable from input text.
+  const isDependencySatisfied = (question, answers, allQuestions) => {
+    if (!question.depends_on) return true;  // no dependency — always visible
+    const { parent_measure_type, exclude_values = [] } = question.depends_on;
+    // Find the parent question in the current set
+    const parentQ = allQuestions.find(pq =>
+      pq.food_key === question.food_key && pq.measure_type === parent_measure_type
+    );
+    if (!parentQ) {
+      // Parent question absent → count came from input text.
+      // Dependency satisfied only when text extraction actually succeeded.
+      return extractCountFromText(description) !== null;
+    }
+    // Parent exists — check if it has been answered with a non-excluded value
+    const parentAns = answers[getQuestionKey(parentQ)];
+    if (!parentAns) return false;
+    const parentValue = parentAns.answer || '';
+    if (exclude_values.some(v => parentAns.value === v || parentValue === v)) return false;
+    // Also check: if parent is in custom_grams mode with no grams yet → not satisfied
+    if (parentAns._custom_grams_mode && !parentAns.grams) return false;
+    return true;
+  };
+
+  const isClarificationAnswerComplete = (answerState, question) => {
+    if (!answerState) return false;
+    const answer = String(answerState.answer || '').trim();
+    if (!answer) return false;
+    // custom_grams mode: incomplete until a positive gram value is typed
+    if (answerState._custom_grams_mode && (!answerState.grams || answerState.grams <= 0)) return false;
+    // Count-step (step 1 of protein): complete as soon as any non-custom answer is selected
+    // grams is intentionally null here — that's OK
+    if (question?.measure_type === 'count_pieces' && !answerState._custom_grams_mode) return true;
+    // Size-step (step 2 of protein): complete only when grams are computed
+    if (question?.measure_type === 'size_pieces') {
+      return answerState.grams !== null && answerState.grams > 0;
+    }
+    return true;
+  };
+
+  // Visible questions: apply dependency filter so size questions only show after count answered
+  const visibleClarificationQuestions = allClarificationQuestions.filter(q =>
+    isDependencySatisfied(q, clarificationAnswers, allClarificationQuestions)
+  );
+
+  // All-answered: every question in the FULL queue must be complete (including dependent ones
+  // that became visible after count was answered). This ensures we never submit partial data.
+  const answeredClarificationCount = allClarificationQuestions.filter(q =>
+    isClarificationAnswerComplete(clarificationAnswers[getQuestionKey(q)], q)
+  ).length;
+  const allClarificationsAnswered = shouldShowClarificationQuestions &&
+    allClarificationQuestions.length > 0 &&
+    allClarificationQuestions.every(q =>
+      isClarificationAnswerComplete(clarificationAnswers[getQuestionKey(q)], q) ||
+      !isDependencySatisfied(q, clarificationAnswers, allClarificationQuestions)
+    );
   const showPipelineDebug = isNutritionAIDebugMode() && !photoUrl && result;
   const pipelineDebug = result?.debug_pipeline || result || {};
 
@@ -1130,57 +1645,21 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
               </div>
             )}
 
-            {/* Clarifying questions */}
-            {shouldShowClarificationQuestions && (
-              <div className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                <div className="space-y-1">
-                  <p className="text-sm font-bold text-amber-900">רוצה לדייק? ענה על כל השאלות ואז ננתח מחדש:</p>
-                  <p className="text-xs text-amber-700">נענו {answeredClarificationCount} מתוך {allClarificationQuestions.length}</p>
-                </div>
-                {allClarificationQuestions.map((question, questionIndex) => {
-                  const questionKey = getQuestionKey(question);
-                  const currentAnswer = clarificationAnswers[questionKey]?.answer || '';
-                  return (
-                    <div key={question.id || questionIndex} className="space-y-2 rounded-lg bg-white/70 p-2 border border-amber-100">
-                      <p className="text-sm text-amber-900">{question.question}</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(question.options || []).map((option, optionIndex) => {
-                          const optionValue = option.value || option.label;
-                          const selected = String(currentAnswer) === String(optionValue);
-                          return (
-                            <Button
-                              key={`${question.id || questionIndex}-${optionIndex}`}
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleClarificationAnswer(question, option)}
-                              className={`h-8 border-amber-300 text-xs ${selected ? 'bg-amber-200 text-amber-950' : 'bg-white text-amber-800 hover:bg-amber-100'}`}
-                            >
-                              {option.label || option.value}
-                            </Button>
-                          );
-                        })}
-                      </div>
-                      <input
-                        type="text"
-                        value={currentAnswer}
-                        onChange={e => handleClarificationTextAnswer(question, e.target.value)}
-                        placeholder="או כתוב תשובה אחרת..."
-                        className="w-full rounded-md border border-amber-200 bg-white px-3 py-2 text-sm text-right text-amber-950 placeholder:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-200"
-                        dir="rtl"
-                      />
-                    </div>
-                  );
-                })}
-                <Button
-                  onClick={handleSubmitClarifications}
-                  disabled={!allClarificationsAnswered}
-                  className="w-full text-white"
-                  style={{ backgroundColor: allClarificationsAnswered ? '#79DBD6' : '#cbd5e1' }}
-                >
-                  {allClarificationsAnswered ? 'נתח מחדש לפי התשובות' : 'ענה על לפחות שאלה אחת'}
-                </Button>
-              </div>
-            )}
+            <ClarificationQueue
+              allQuestions={allClarificationQuestions}
+              visibleQuestions={visibleClarificationQuestions}
+              answers={clarificationAnswers}
+              onAnswer={handleClarificationAnswer}
+              onCustomGrams={handleClarificationCustomGrams}
+              onTextAnswer={handleClarificationTextAnswer}
+              onSubmit={handleSubmitClarifications}
+              allAnswered={allClarificationsAnswered}
+              getKey={getQuestionKey}
+              isComplete={isClarificationAnswerComplete}
+              show={shouldShowClarificationQuestions}
+              isProcessing={isClarifying}
+              stableTotalCount={clarificationTotalCount}
+            />
 
             {/* Meal name */}
             <h3 className="text-lg font-bold text-slate-800">{result.meal_name}</h3>
@@ -1348,12 +1827,18 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
             {/* Actions */}
             <div className="flex gap-2 pt-1">
               {resultHasNutrition && (
-                <Button onClick={handleSave} disabled={isSaving} className="flex-1 text-white" style={{ backgroundColor: isSaving ? '#a7f3d0' : '#79DBD6' }}>
-                  {isSaving ? 'שומר...' : 'הוסף ליומן'}
+                <Button
+                  onClick={handleSave}
+                  disabled={isSaving || isClarifying || shouldShowClarificationQuestions}
+                  className="flex-1 text-white"
+                  style={{ backgroundColor: (isSaving || isClarifying || shouldShowClarificationQuestions) ? '#a7f3d0' : '#79DBD6' }}
+                  title={shouldShowClarificationQuestions ? 'ענה על שאלות הדיוק לפני השמירה' : ''}
+                >
+                  {isSaving ? 'שומר...' : isClarifying ? 'מעבד...' : shouldShowClarificationQuestions ? 'ענה על שאלות הדיוק תחילה' : 'הוסף ליומן'}
                 </Button>
               )}
               {resultHasNutrition && (
-                <Button variant="outline" onClick={goEdit} className="flex-shrink-0">
+                <Button variant="outline" onClick={goEdit} className="flex-shrink-0" disabled={isClarifying}>
                   <Pencil className="w-4 h-4 ml-1" />
                   ערוך כמויות
                 </Button>

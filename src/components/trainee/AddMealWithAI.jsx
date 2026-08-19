@@ -261,33 +261,56 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
     setAnalyzedItems(analyzedItems.filter((_, i) => i !== index));
   };
 
-  const handleClarificationAnswer = async (question, option) => {
-    const nextAnswers = {
-      ...clarificationAnswers,
+  // Store the answer locally — do NOT fire a network request on every button click.
+  // A single request is fired only when the user explicitly submits all answers.
+  const handleClarificationAnswer = (question, option) => {
+    setClarificationAnswers(prev => ({
+      ...prev,
       [question.id]: {
         question: question.question,
         food_key: question.food_key,
         answer: option.value || option.label,
-        grams: option.grams || null
-      }
-    };
+        grams: option.grams || null,
+      },
+    }));
+  };
 
-    setClarificationAnswers(nextAnswers);
+  // Submit all accumulated answers in one request.
+  // Original ingredients are preserved even if the AI returns fewer items.
+  const handleSubmitAllClarifications = async () => {
+    if (isRecalculating) return;
     setIsRecalculating(true);
+    const answers = clarificationAnswers;
     try {
       const response = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
         meal_text: freeText,
-        user_answers: nextAnswers
+        user_answers: answers,
       });
       const result = response?.data?.response ?? response?.data;
       const learnedItems = applyCanonicalLock(result.items || [], personalFoods);
+
+      // Structural guard: if AI returned fewer items than we currently have,
+      // keep the originals and only update/add what the AI returned.
+      const normName = n => (n || '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const prevItems = analyzedItems;
+      const newItemMap = new Map(learnedItems.map(i => [normName(i.name), i]));
+      const mergedItems = prevItems.map(pi => {
+        const refined = newItemMap.get(normName(pi.name));
+        return refined ? { ...refined, grams: refined.grams || refined.amount || pi.grams } : pi;
+      });
+      // Add brand-new items from AI (foods the AI added that weren't in original)
+      for (const ni of learnedItems) {
+        const already = prevItems.some(pi => normName(pi.name) === normName(ni.name));
+        if (!already) mergedItems.push({ ...ni, grams: ni.grams || ni.amount || 100 });
+      }
+
       setMealName(result.meal_name || mealName);
       setConfidence(result.confidence || 'medium');
       setUncertaintyScore(result.uncertainty_score ?? null);
       setAnalysisNotes(result.notes || 'הארוחה חושבה מחדש לפי התשובות שלך');
       setClarifyingQuestions(
         (result.clarifying_questions || [])
-          .filter(q => !nextAnswers[q.id])
+          .filter(q => !answers[q.id])
           .map(q => ({
             ...q,
             options: (q.options || []).map(opt =>
@@ -297,7 +320,7 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
           .slice(0, 3)
       );
       setOriginalAiItems((result.items || []).map(item => ({ ...item, grams: item.grams || 100 })));
-      setAnalyzedItems(learnedItems.map(item => ({ ...item, grams: item.grams || 100 })));
+      setAnalyzedItems(mergedItems);
     } catch (err) {
       setError('לא הצלחתי לחשב מחדש כרגע — אפשר עדיין לערוך ידנית ולשמור.');
     }
@@ -513,25 +536,43 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
                 <h4 className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
                   <HelpCircle className="w-4 h-4 text-amber-600" /> שאלות קצרות לשיפור הדיוק
                 </h4>
-                {clarifyingQuestions.map((question) => (
-                  <div key={question.id} className="p-3 border border-amber-200 bg-amber-50 rounded-xl">
-                    <p className="text-sm font-medium text-amber-900 mb-2">{question.question}</p>
-                    <div className="flex flex-wrap gap-2">
-                      {(question.options || []).map((option, idx) => (
-                        <Button
-                          key={`${question.id}-${idx}`}
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleClarificationAnswer(question, option)}
-                          disabled={isRecalculating}
-                          className="h-8 bg-white border-amber-300 text-amber-800 hover:bg-amber-100"
-                        >
-                          {option.label || option.value}
-                        </Button>
-                      ))}
+                {clarifyingQuestions.map((question) => {
+                  const answered = clarificationAnswers[question.id];
+                  return (
+                    <div key={question.id} className={`p-3 border rounded-xl ${answered ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}>
+                      <p className="text-sm font-medium text-amber-900 mb-2">{question.question}</p>
+                      {answered ? (
+                        <p className="text-xs text-green-700 font-medium">✓ {answered.answer}</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {(question.options || []).map((option, idx) => (
+                            <Button
+                              key={`${question.id}-${idx}`}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleClarificationAnswer(question, option)}
+                              disabled={isRecalculating}
+                              className="h-8 bg-white border-amber-300 text-amber-800 hover:bg-amber-100"
+                            >
+                              {option.label || option.value}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
+                {/* Submit all answers in one request */}
+                {Object.keys(clarificationAnswers).length > 0 && (
+                  <Button
+                    onClick={handleSubmitAllClarifications}
+                    disabled={isRecalculating}
+                    className="w-full text-white"
+                    style={{ backgroundColor: isRecalculating ? '#cbd5e1' : '#79DBD6' }}
+                  >
+                    {isRecalculating ? <><Loader2 className="w-3 h-3 animate-spin ml-1" />מחשב מחדש...</> : 'נתח מחדש לפי התשובות ←'}
+                  </Button>
+                )}
               </div>
             )}
 
@@ -601,10 +642,14 @@ export default function AddMealWithAI({ open, onClose, onSave, onSaveAsync, trai
             )}
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setStep('input')} disabled={isSaving} className="flex-1">← ערוך</Button>
-              <Button onClick={handleSave} disabled={isSaving} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
+              <Button variant="outline" onClick={() => setStep('input')} disabled={isSaving || isRecalculating} className="flex-1">← ערוך</Button>
+              <Button
+                onClick={handleSave}
+                disabled={isSaving || isRecalculating || clarifyingQuestions.some(q => !clarificationAnswers[q.id])}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+              >
                 {isSaving ? <Loader2 className="w-4 h-4 ml-1 animate-spin" /> : <CheckCircle className="w-4 h-4 ml-1" />}
-                {isSaving ? 'שמור ארוחה' : 'שומר...'}
+                {isSaving ? 'שומר...' : isRecalculating ? 'מחשב...' : clarifyingQuestions.some(q => !clarificationAnswers[q.id]) ? 'ענה על שאלות תחילה' : 'שמור ארוחה'}
               </Button>
             </div>
           </div>
