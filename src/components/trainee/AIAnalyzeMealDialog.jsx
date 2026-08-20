@@ -597,6 +597,7 @@ function ClarificationQueue({
   return (
     <div
       ref={clarificationRef}
+      data-testid="clarification-queue"
       className="space-y-3 rounded-xl border border-amber-200 bg-amber-50 p-3 w-full min-w-0 box-border"
     >
       {/* ── Progress header ── */}
@@ -605,6 +606,7 @@ function ClarificationQueue({
           <button
             type="button"
             onClick={onGoBack}
+            data-testid="clarification-back"
             className="flex items-center gap-1 text-xs text-amber-600 hover:text-amber-800 flex-shrink-0"
             aria-label="חזרה לשאלה הקודמת"
           >
@@ -614,15 +616,26 @@ function ClarificationQueue({
         ) : (
           <span />
         )}
-        <p className="text-xs text-amber-500 text-left flex-shrink-0 tabular-nums">
+        <p
+          data-testid="clarification-progress"
+          className="text-xs text-amber-500 text-left flex-shrink-0 tabular-nums"
+        >
           {activeIndex + 1} / {totalQuestions}
         </p>
       </div>
 
       {/* ── Active question card ── */}
       {activeQuestion && (
-        <div className="rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 box-border">
-          <p className="text-sm font-semibold text-amber-900 leading-snug">{activeQuestion.question}</p>
+        <div
+          data-testid="clarification-question-card"
+          className="rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 box-border"
+        >
+          <p
+            data-testid="clarification-question"
+            className="text-sm font-semibold text-amber-900 leading-snug"
+          >
+            {activeQuestion.question}
+          </p>
 
           {/* Answer option buttons */}
           <div
@@ -640,6 +653,8 @@ function ClarificationQueue({
                   key={`${questionKey}-opt-${idx}`}
                   type="button"
                   onClick={() => onAnswer(activeQuestion, option)}
+                  data-testid={`clarification-option-${idx}`}
+                  data-selected={selected ? 'true' : 'false'}
                   className={[
                     'rounded-xl border text-sm font-medium transition-colors active:scale-95 min-w-0 overflow-hidden',
                     useCompactRow
@@ -710,6 +725,7 @@ function ClarificationQueue({
             <div className="space-y-2 w-full min-w-0">
               <input
                 type="text"
+                data-testid="clarification-free-text"
                 value={textDisplayValue}
                 onChange={e => onPendingTextChange(e.target.value)}
                 onKeyDown={e => {
@@ -725,6 +741,7 @@ function ClarificationQueue({
               {canConfirmText && (
                 <button
                   type="button"
+                  data-testid="clarification-continue"
                   onClick={() => onConfirmText(activeQuestion)}
                   className="w-full rounded-xl border border-amber-300 bg-amber-100 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 transition-colors"
                 >
@@ -753,6 +770,7 @@ function ClarificationQueue({
 
       {/* ── Submit — enabled only when every required question has a valid answer ── */}
       <Button
+        data-testid="clarification-submit"
         onClick={onSubmit}
         disabled={!allAnswered || isProcessing}
         className="w-full text-white font-medium min-w-0"

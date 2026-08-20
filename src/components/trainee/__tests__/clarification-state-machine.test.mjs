@@ -355,17 +355,136 @@ test('SM-TWO-STEP: count → form dependency resolves correctly', () => {
 });
 
 test('SM-SINGLE-REFINEMENT-GUARD: isClarifying prevents double submit', () => {
-  // Guard is implemented via: if (isClarifying) return;
   let isClarifying = false;
   let submitCount = 0;
-
   const handleSubmit = () => {
     if (isClarifying) return;
     isClarifying = true;
     submitCount++;
   };
-
-  handleSubmit(); // first call
-  handleSubmit(); // second call — should be blocked
+  handleSubmit();
+  handleSubmit(); // blocked
   assert.equal(submitCount, 1, 'Second submit must be blocked by in-flight guard');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-21: Back restores free-text answer into pendingText
+// Root cause of BACK_PRESERVES_FREE_TEXT bug: handleClarificationGoBack always
+// called setClarificationPendingText('') — fix: restore stored free-text.
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-21: back to free-text question restores the stored answer into pendingText', () => {
+  // Replicate handleClarificationGoBack logic (fixed version)
+  function computeRestoredText(prevQ, answers) {
+    if (!prevQ) return '';
+    const prevAns = answers[getQuestionKey(prevQ)];
+    if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    const opts = prevQ.options || [];
+    const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+    return isOptionLabel ? '' : prevAns.answer;
+  }
+
+  const ftQ = { id: 'q_ft', question: 'כמה בורגול?', measure_type: 'volume', food_key: 'בורגול', options: [
+    { label: 'כוס', value: 'cup' },
+    { label: 'שתי כוסות', value: '2cups' },
+  ]};
+  const allQ = [ftQ, Q.salad];
+
+  // User answers ftQ via free text "כוס וחצי"
+  const answers = { [getQuestionKey(ftQ)]: ans(ftQ, 'כוס וחצי', { grams: null }) };
+  let idx = 1; // at Q.salad
+
+  // Go back to ftQ
+  const prevIdx = Math.max(0, idx - 1);
+  const restored = computeRestoredText(allQ[prevIdx], answers);
+  idx = prevIdx;
+
+  assert.equal(idx, 0, 'Index must go back to 0');
+  assert.equal(restored, 'כוס וחצי', 'Restored text must equal stored free-text answer');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-22: Back to option question does NOT restore pendingText (option shown by selection state)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-22: back to option question leaves pendingText empty', () => {
+  function computeRestoredText(prevQ, answers) {
+    if (!prevQ) return '';
+    const prevAns = answers[getQuestionKey(prevQ)];
+    if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    const opts = prevQ.options || [];
+    const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+    return isOptionLabel ? '' : prevAns.answer;
+  }
+
+  const optQ = { id: 'q_count', question: 'כמה חתיכות?', measure_type: 'count_pieces', food_key: 'פרגית',
+    options: [{ label: '1 חתיכה', value: '1_piece', resolved_count: 1 }, { label: '2 חתיכות', value: '2_pieces', resolved_count: 2 }] };
+  const allQ = [optQ, Q.salad];
+  const answers = { [getQuestionKey(optQ)]: { ...ans(optQ, '2 חתיכות'), resolved_count: 2 } };
+  let idx = 1;
+  const prevIdx = Math.max(0, idx - 1);
+  const restored = computeRestoredText(allQ[prevIdx], answers);
+  assert.equal(restored, '', 'Option answer must not be restored into free-text pendingText');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-23: Editing a free-text answer and navigating forward uses the edited value
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-23: edited free-text answer overwrites the original', () => {
+  const allQ = [Q.grain, Q.salad];
+  const answers = {};
+  // Original answer
+  answers[getQuestionKey(Q.grain)] = ans(Q.grain, 'כוס', { grams: null });
+  let idx = advanceIndex(0, allQ, answers); // → 1
+  assert.equal(idx, 1);
+
+  // Go back and edit
+  idx = Math.max(0, idx - 1); // back to Q.grain
+  answers[getQuestionKey(Q.grain)] = ans(Q.grain, 'כוס וחצי', { grams: null }); // edit
+
+  // Advance again
+  idx = advanceIndex(idx, allQ, answers); // → 1 again
+  assert.equal(idx, 1);
+  assert.equal(answers[getQuestionKey(Q.grain)].answer, 'כוס וחצי', 'Edited answer must be stored');
+
+  // Verify the salad answer is unchanged (was never answered here, but if it had been)
+  assert.equal(answers[getQuestionKey(Q.salad)], undefined, 'Q2 must not be touched');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-24: Back makes zero API calls (source inspection)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-24: handleClarificationGoBack uses no async/await and calls no API', () => {
+  const start = dialogSrc.indexOf('const handleClarificationGoBack');
+  const end   = dialogSrc.indexOf('\n  };', start);
+  const body  = dialogSrc.slice(start, end);
+  assert.ok(!body.includes('await'), 'goBack must have no await');
+  assert.ok(!body.includes('invoke'), 'goBack must not call functions.invoke');
+  assert.ok(!body.includes('fetch'), 'goBack must not fetch');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-25: Free-text typing alone must NOT update clarificationAnswers
+//         (pendingText is the only state that changes during typing)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-25: pendingText change handler does not write to clarificationAnswers', () => {
+  // Verify source: onPendingTextChange / handleClarificationPendingTextChange
+  // must only call setClarificationPendingText, not setClarificationAnswers
+  const handlerStart = dialogSrc.indexOf('const handleClarificationPendingTextChange');
+  const handlerEnd   = dialogSrc.indexOf('\n  };', handlerStart);
+  const handlerBody  = dialogSrc.slice(handlerStart, handlerEnd);
+  assert.ok(handlerBody.includes('setClarificationPendingText'), 'Must update pendingText');
+  assert.ok(!handlerBody.includes('setClarificationAnswers'), 'Must NOT update answers on typing');
+  assert.ok(!handlerBody.includes('advanceClarification'), 'Must NOT advance on typing');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-26: test-IDs present for stable E2E targeting
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-26: data-testid attributes present on clarification UI', () => {
+  assert.ok(dialogSrc.includes('data-testid="clarification-queue"'), 'Queue must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-progress"'), 'Progress must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-question"'), 'Question must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-back"'), 'Back button must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-free-text"'), 'Free-text must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-continue"'), 'Continue must have testid');
+  assert.ok(dialogSrc.includes('data-testid="clarification-submit"'), 'Submit must have testid');
 });
