@@ -1020,7 +1020,12 @@ export function inferFoodKeyFromQuestionText(question) {
     (question?.question || '') + ' ' +
     (question?.options || []).map(o => o.label || o.value || '').join(' ')
   ).toLowerCase();
-  if (/עוף|פרגית|שניצל|אנטריקוט|סטייק/.test(text)) return 'חזה עוף';
+  // More specific patterns first to avoid overly broad matches
+  if (/פרגית/.test(text)) return 'פרגית';
+  if (/חזה\s*עוף/.test(text)) return 'חזה עוף';
+  if (/שניצל/.test(text)) return 'שניצל';
+  if (/קציצ/.test(text)) return 'קציצה';
+  if (/עוף|אנטריקוט|סטייק/.test(text)) return 'חזה עוף';
   if (/סלמון|ברמונדי|טילפיה|דניס|לברק/.test(text)) return 'סלמון';
   if (/אורז/.test(text)) return 'אורז';
   if (/בטטה/.test(text)) return 'בטטה';
