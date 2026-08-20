@@ -410,6 +410,24 @@ function getQuestionKey(question) {
   return String(question?.id || question?.question || '').toLowerCase().replace(/\s+/g, '_');
 }
 
+// Extract total grams from a free-text clarification answer.
+// "4 חתיכות של 100 גרם"  → 400
+// "3 נתחים בערך 80 גרם"  → 240
+// "250 גרם"              → 250
+// Returns null when no parseable quantity is found.
+function parseFreeTextGrams(text) {
+  const t = String(text || '');
+  const countUnit = t.match(/(\d+)\s*(?:חתיכות?|נתחים?|יחידות?|קציצות?)[^0-9]{0,30}?(\d+)\s*גרם/);
+  if (countUnit) {
+    const count = parseInt(countUnit[1], 10);
+    const unitG = parseInt(countUnit[2], 10);
+    if (count > 0 && unitG > 0) return count * unitG;
+  }
+  const direct = t.match(/(\d+)\s*גרם/);
+  if (direct) return parseInt(direct[1], 10);
+  return null;
+}
+
 function getVisibleClarificationQuestions(result, answers) {
   const answered = new Set(Object.keys(answers || {}).map(k => String(k).toLowerCase().replace(/\s+/g, '_')));
   const questions = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
@@ -878,9 +896,9 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     while (next < allQ.length && !depFn(allQ[next], newAnswers, allQ)) {
       next++;
     }
-    if (next < allQ.length) {
-      setClarificationIndex(next);
-    }
+    // Always update — even when next >= allQ.length (the "all done" sentinel value).
+    // Without this, the last question would remain active and allClarificationsAnswered stays false.
+    setClarificationIndex(next);
     setClarificationPendingText('');
     // Scroll the question area into view after a short tick so layout has settled
     setTimeout(() => {
@@ -1494,13 +1512,14 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     const trimmed = clarificationPendingText.trim();
     if (!trimmed) return;
     const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
+    const parsedGrams = parseFreeTextGrams(trimmed);
     const answerObj = {
       question:       question.question,
       food_key:       question.food_key,
       measure_type:   question.measure_type,
       measure_class:  question.measure_class,
       answer:         trimmed,
-      grams:          null,
+      grams:          parsedGrams,   // deterministic from text; null when unparseable
       _custom_grams_mode: false,
       _is_free_text:  true,  // mark so goBack can restore even if text matches an option label
     };
@@ -1738,6 +1757,9 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     if (!answer) return false;
     // custom_grams mode: incomplete until a positive gram value is typed
     if (answerState._custom_grams_mode && (!answerState.grams || answerState.grams <= 0)) return false;
+    // Free-text confirmed answer is a first-class answer — complete whenever non-empty text exists,
+    // regardless of question type. Grams may be null (unparseable text) or positive (parsed).
+    if (answerState._is_free_text) return true;
     // Count-step (step 1 of protein): complete as soon as any non-custom answer is selected
     // grams is intentionally null here — that's OK
     if (question?.measure_type === 'count_pieces' && !answerState._custom_grams_mode) return true;
@@ -1750,11 +1772,12 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
 
   // ── Derived clarification state ───────────────────────────────────────────────
 
-  // Active question: determined by the stable index (NOT by "find first unanswered").
-  // Clamped so it never goes out of bounds when the question list shrinks.
+  // Active question: null when clarificationIndex >= allClarificationQuestions.length ("all done").
+  // _clampedIndex is kept for progress/back-button display only — it clamps to valid range.
+  // clarificationActiveQuestion uses the raw index so it can be null at the "all done" sentinel.
   const _clampedIndex = Math.min(clarificationIndex, Math.max(0, allClarificationQuestions.length - 1));
   const clarificationActiveQuestion = shouldShowClarificationQuestions
-    ? (allClarificationQuestions[_clampedIndex] ?? null)
+    ? (allClarificationQuestions[clarificationIndex] ?? null)
     : null;
 
   // Eligible question count (dependency-satisfied) — stable per session.

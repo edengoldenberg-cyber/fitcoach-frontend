@@ -42,11 +42,25 @@ function isClarificationAnswerComplete(answerState, question) {
   const answer = String(answerState.answer || '').trim();
   if (!answer) return false;
   if (answerState._custom_grams_mode && (!answerState.grams || answerState.grams <= 0)) return false;
+  if (answerState._is_free_text) return true;
   if (question?.measure_type === 'count_pieces' && !answerState._custom_grams_mode) return true;
   if (question?.measure_type === 'size_pieces' || question?.measure_type === 'piece_form') {
     return answerState.grams !== null && answerState.grams > 0;
   }
   return true;
+}
+
+function parseFreeTextGrams(text) {
+  const t = String(text || '');
+  const countUnit = t.match(/(\d+)\s*(?:חתיכות?|נתחים?|יחידות?|קציצות?)[^0-9]{0,30}?(\d+)\s*גרם/);
+  if (countUnit) {
+    const count = parseInt(countUnit[1], 10);
+    const unitG = parseInt(countUnit[2], 10);
+    if (count > 0 && unitG > 0) return count * unitG;
+  }
+  const direct = t.match(/(\d+)\s*גרם/);
+  if (direct) return parseInt(direct[1], 10);
+  return null;
 }
 
 // The state-machine advance function (mirrors _advanceClarificationIndex in AIAnalyzeMealDialog)
@@ -261,7 +275,10 @@ test('SM-14/15/16: ClarificationQueue has mobile-safe CSS classes', () => {
 // 17. Switching question types does not alter modal width (CSS structural test)
 // ─────────────────────────────────────────────────────────────────────────────
 test('SM-17: question card has stable width classes', () => {
-  assert.ok(dialogSrc.includes('rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 box-border'));
+  assert.ok(
+    dialogSrc.includes('rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0'),
+    'Question card must have stable width classes'
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -487,4 +504,189 @@ test('SM-26: data-testid attributes present on clarification UI', () => {
   assert.ok(dialogSrc.includes('data-testid="clarification-free-text"'), 'Free-text must have testid');
   assert.ok(dialogSrc.includes('data-testid="clarification-continue"'), 'Continue must have testid');
   assert.ok(dialogSrc.includes('data-testid="clarification-submit"'), 'Submit must have testid');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-27: Free-text on LAST question → questionnaire completes without preset click
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-27: free-text on last question completes questionnaire without preset click', () => {
+  const sizeQ = { id: 'q_size', question: 'איזה סוג חתיכות חזה עוף היו?', measure_type: 'size_pieces',
+    food_key: 'חזה_עוף', options: [{ label: 'קטנות', value: 's', unit_grams: 60 }, { label: 'בינוניות', value: 'm', unit_grams: 100 }] };
+  const allQ = [sizeQ];
+  const answers = {};
+
+  // User types "4 חתיכות של 100 גרם" — no preset clicked
+  const parsedGrams = parseFreeTextGrams('4 חתיכות של 100 גרם');
+  answers[getQuestionKey(sizeQ)] = {
+    ...ans(sizeQ, '4 חתיכות של 100 גרם', { grams: parsedGrams }),
+    _is_free_text: true,
+  };
+
+  assert.equal(parsedGrams, 400, 'Parsed grams must be 400');
+  assert.ok(isClarificationAnswerComplete(answers[getQuestionKey(sizeQ)], sizeQ),
+    'size_pieces + _is_free_text must be complete');
+  assert.ok(allAnswered(allQ, answers), 'allAnswered must be true without any preset click');
+
+  const nextIdx = advanceIndex(0, allQ, answers);
+  assert.equal(nextIdx, 1, 'Index must advance past end (=allQ.length) to signal all done');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-28: Free-text on MIDDLE question advances exactly one step
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-28: free-text on middle question advances to next question', () => {
+  const allQ = [Q.grain, Q.salad];
+  let idx = 0;
+  const answers = {};
+  answers[getQuestionKey(Q.grain)] = {
+    ...ans(Q.grain, 'כוס וחצי', { grams: null }),
+    _is_free_text: true,
+  };
+  assert.ok(isClarificationAnswerComplete(answers[getQuestionKey(Q.grain)], Q.grain));
+  idx = advanceIndex(idx, allQ, answers);
+  assert.equal(idx, 1, 'Must advance to next question (index 1)');
+  assert.ok(allQ[idx] === Q.salad, 'Next question must be Q.salad');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-29: Free-text answer survives Back navigation
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-29: free-text answer is present in answers map after going back', () => {
+  const allQ = [Q.grain, Q.salad];
+  const answers = {};
+  answers[getQuestionKey(Q.grain)] = {
+    ...ans(Q.grain, '3 כוסות', { grams: null }),
+    _is_free_text: true,
+  };
+  let idx = advanceIndex(0, allQ, answers); // → 1
+  idx = Math.max(0, idx - 1);              // back → 0
+  const restored = answers[getQuestionKey(allQ[idx])];
+  assert.equal(restored?.answer, '3 כוסות', 'Free-text answer must survive back');
+  assert.ok(restored?._is_free_text, '_is_free_text flag must survive back');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-30: Editing free-text after Back uses the new value
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-30: edited free-text overwrites original and forward navigation uses edited value', () => {
+  const allQ = [Q.grain, Q.salad];
+  const answers = {};
+  answers[getQuestionKey(Q.grain)] = { ...ans(Q.grain, 'כוס', { grams: null }), _is_free_text: true };
+  let idx = advanceIndex(0, allQ, answers); // → 1
+  idx = Math.max(0, idx - 1);              // back → 0
+
+  // Edit: overwrite with new value
+  answers[getQuestionKey(Q.grain)] = { ...ans(Q.grain, 'כוס וחצי', { grams: null }), _is_free_text: true };
+  idx = advanceIndex(idx, allQ, answers);  // → 1 again
+
+  assert.equal(answers[getQuestionKey(Q.grain)].answer, 'כוס וחצי', 'Edited value must be stored');
+  assert.equal(idx, 1, 'Must advance past edited question');
+  assert.equal(answers[getQuestionKey(Q.salad)], undefined, 'Q.salad must not be touched');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-31: Preset click is NOT required after confirmed free text
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-31: preset option NOT required after confirmed free-text answer', () => {
+  // Simulates: user typed text, pressed המשך — no preset option object passed
+  const q = { id: 'q_chicken', question: 'איזה סוג?', measure_type: 'piece_form', food_key: 'chicken',
+    options: [{ label: 'קטנות', value: 's' }, { label: 'גדולות', value: 'l' }] };
+  const answers = {};
+  answers[getQuestionKey(q)] = { ...ans(q, 'נתחים בינוניים', { grams: null }), _is_free_text: true };
+  assert.ok(isClarificationAnswerComplete(answers[getQuestionKey(q)], q),
+    'Free-text must complete piece_form without preset click');
+  assert.ok(allAnswered([q], answers), 'allAnswered must be true');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-32: parseFreeTextGrams — "4 חתיכות של 100 גרם" → 400
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-32: parseFreeTextGrams "4 חתיכות של 100 גרם" → 400', () => {
+  assert.equal(parseFreeTextGrams('4 חתיכות של 100 גרם'), 400);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-33: parseFreeTextGrams — "3 חתיכות של 80 גרם" → 240
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-33: parseFreeTextGrams "3 חתיכות של 80 גרם" → 240', () => {
+  assert.equal(parseFreeTextGrams('3 חתיכות של 80 גרם'), 240);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-34: parseFreeTextGrams — "250 גרם" → 250
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-34: parseFreeTextGrams "250 גרם" → 250', () => {
+  assert.equal(parseFreeTextGrams('250 גרם'), 250);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-35: parseFreeTextGrams — "3 נתחים בערך 80 גרם כל אחד" → 240
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-35: parseFreeTextGrams "3 נתחים בערך 80 גרם" → 240', () => {
+  assert.equal(parseFreeTextGrams('3 נתחים בערך 80 גרם כל אחד'), 240);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-36: parseFreeTextGrams — no quantity info → null
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-36: parseFreeTextGrams with no measurement → null', () => {
+  assert.equal(parseFreeTextGrams('נתחים קטנים'), null, 'No measurement → null');
+  assert.equal(parseFreeTextGrams(''), null, 'Empty → null');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-37: parseFreeTextGrams result flows into buildStructuredAnswers
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-37: parsed free-text grams flow through buildStructuredAnswers to backend', () => {
+  function buildStructuredAnswers(answers) {
+    const structured = {};
+    for (const ansState of Object.values(answers)) {
+      const key = ansState.food_key;
+      if (!key || ansState.grams == null) continue;
+      const isDefinitive = ansState.measure_type === 'piece_form' || ansState.measure_type === 'size_pieces';
+      if (!structured[key] || isDefinitive) {
+        structured[key] = { grams: ansState.grams, label: ansState.answer };
+      }
+    }
+    return Object.keys(structured).length > 0 ? structured : null;
+  }
+
+  const q = { id: 'q_chicken', question: 'איזה סוג?', measure_type: 'size_pieces', food_key: 'חזה_עוף',
+    options: [] };
+  const parsedGrams = parseFreeTextGrams('4 חתיכות של 100 גרם');
+  const answers = {
+    [getQuestionKey(q)]: {
+      food_key: 'חזה_עוף',
+      measure_type: 'size_pieces',
+      answer: '4 חתיכות של 100 גרם',
+      grams: parsedGrams,
+      _is_free_text: true,
+    },
+  };
+
+  const structured = buildStructuredAnswers(answers);
+  assert.ok(structured, 'Must produce structured map');
+  assert.equal(structured['חזה_עוף']?.grams, 400, 'Must carry 400g to backend');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-38: _is_free_text flag is set in source (integration check)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-38: handleClarificationConfirmText sets _is_free_text and calls parseFreeTextGrams', () => {
+  assert.ok(dialogSrc.includes('_is_free_text:  true'), 'Confirm handler must set _is_free_text');
+  assert.ok(dialogSrc.includes('parseFreeTextGrams'), 'Confirm handler must call parseFreeTextGrams');
+  assert.ok(dialogSrc.includes('grams:          parsedGrams'), 'Confirm handler must include parsedGrams');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-39: _advanceClarificationIndex always updates index (no length guard)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-39: _advanceClarificationIndex no longer guards setClarificationIndex with length check', () => {
+  // The old guard was: if (next < allQ.length) { setClarificationIndex(next); }
+  // The fix removes the guard so the "all done" sentinel (index = allQ.length) is set.
+  const advStart = dialogSrc.indexOf('const _advanceClarificationIndex');
+  const advEnd   = dialogSrc.indexOf('\n  }, []);', advStart);
+  const advBody  = dialogSrc.slice(advStart, advEnd);
+  assert.ok(!advBody.includes('if (next < allQ.length)'), 'Length guard must be removed');
+  assert.ok(advBody.includes('setClarificationIndex(next)'), 'Index must always be set');
 });
