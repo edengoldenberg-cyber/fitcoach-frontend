@@ -221,6 +221,7 @@ function getSmartQuestions(data, input, fallbackQuestions = []) {
   const unique = [...highImpactQuestions, ...rawQuestions]
     .filter(q => q?.question)
     .filter(q => !isClientVagueQuestion(q))
+    .filter(q => !isGroundMeatPieceQuestion(q, input))
     .filter(q => {
       // For dedup, resolve food_key: use explicit field first, then infer from question text
       // (AI questions lack food_key; inferring lets them compete with client questions correctly)
@@ -327,9 +328,13 @@ function buildClientHighImpactQuestions(input) {
     'תפוח', 'בננה', 'אגס', 'מנגו', 'אפרסק', 'שזיף',
     'ביצה', 'ביצים',
     'לחם', 'חלה', 'לחמנייה', 'לחמניה', 'פיתה',
-    'אורז', 'פסטה', 'קינואה', 'בורגול', 'כוסמת',
+    // Grains — order: multi-word before single-word to avoid substring conflicts
+    'אורז', 'פתיתים', 'פסטה', 'ספגטי', 'מקרוני', 'קינואה', 'בורגול', 'כוסמת', 'קוסקוס', 'גריסים',
     'טחינה', 'חומוס', 'מיונז', 'אבוקדו',
+    // Piece proteins (NOT ground/minced)
     'חזה עוף', 'פרגית', 'שניצל', 'קציצה', 'סלמון',
+    // Ground/loose meats — matched before bare "בשר" to get full token
+    'בשר טחון', 'עוף טחון', 'הודו טחון',
     'פיצה', 'סושי', 'מאקי',
     'יוגורט', 'קוטג', 'גבינה לבנה',
     'אגוזים', 'שקדים', 'קשיו',
@@ -358,6 +363,25 @@ function isClientVagueQuestion(question) {
   return /מה גודל המנה|אפשר עוד פרטים|מה בדיוק אכלת|איזה סוג אוכל|ספר לי עוד|גודל המנה\??$/.test(text);
 }
 
+// Suppress AI-generated piece-count/piece-form questions for ground/minced meat.
+// The AI prompt instructs asking "כמה חתיכות" / "איזה סוג חתיכות" for all meat,
+// but ground meat (טחון/קצוץ) must NEVER get piece questions — only weight/volume.
+function isGroundMeatPieceQuestion(question, mealInputText = '') {
+  const qText = String(question?.question || '').toLowerCase();
+  const mealText = String(mealInputText || '').toLowerCase();
+  // Only suppress piece questions, not volume/weight questions
+  const isPieceQuestion = /חתיכות|סוג חתיכות|כמה חתיכות|גודל החתיכ/.test(qText);
+  if (!isPieceQuestion) return false;
+  // Check if the meal contains ground/minced meat
+  const hasGroundMeat = /טחון|טחונה|קצוץ|קצוצה/.test(mealText);
+  if (!hasGroundMeat) return false;
+  // Check if the question is about a ground-meat food (has food_key with טחון, or question text references it)
+  const foodKey = String(question?.food_key || '').toLowerCase();
+  const isAboutGroundMeat = /טחון|טחונה|קצוץ|קצוצה/.test(foodKey) ||
+    /טחון|טחונה|קצוץ|קצוצה/.test(qText);
+  return isAboutGroundMeat;
+}
+
 function questionPriority(question) {
   // Priority based on measure_type/measure_class — lower = asked first.
   // Count-step questions must precede size-step questions for the same food.
@@ -366,8 +390,8 @@ function questionPriority(question) {
 
   // Step 1: count of pieces (proteins, potato) — always first
   if (mt === 'count_pieces') return 1;
-  // Household quantity questions (rice, tahini, eggs, bread, pizza, sushi…)
-  if (['count', 'volume', 'spoons', 'portion', 'container', 'handful'].includes(mt)) return 2;
+  // Household quantity questions (rice, tahini, eggs, bread, pizza, sushi, ground meat…)
+  if (['count', 'volume', 'spoons', 'portion', 'container', 'handful', 'weight_or_portion'].includes(mt)) return 2;
   // Preparation questions (oil in omelette, tuna draining)
   if (mc === 'preparation') return 3;
   // Food type questions (pasta sauce, cheese type)
@@ -1603,9 +1627,27 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       }
 
       // Structural guard: merge back any ingredients the AI dropped.
-      // This prevents the meal from shrinking to 1 food when the AI focused
-      // only on the ingredient being clarified and omitted others.
       const safeData = mergeRefinedResult(result, data);
+
+      // SESSION DEDUP: remove any question whose semantic key was already answered in
+      // this session. Prevents the regenerated client-side question list from creating
+      // a "second round" of questions the user has already answered.
+      // Backend resolvedByAnswers handles its own filtering; this covers client-side
+      // questions (buildClientHighImpactQuestions) that don't know about answered keys.
+      if (Array.isArray(safeData.clarifying_questions) && safeData.clarifying_questions.length > 0) {
+        const answeredKeys = new Set(
+          Object.keys(clarificationAnswers).map(k => String(k).toLowerCase().replace(/\s+/g, '_'))
+        );
+        const filtered = safeData.clarifying_questions.filter(q => {
+          const key = getQuestionKey(q);
+          return !answeredKeys.has(key);
+        });
+        safeData.clarifying_questions = filtered;
+        safeData.questions = filtered;
+        if (filtered.length < safeData.clarifying_questions?.length) {
+          console.log('[CLARIFICATION-DEDUP] filtered out already-answered questions after reanalysis');
+        }
+      }
 
       // Update result without changing step — modal stays visible and stable.
       setResult(safeData);

@@ -14,31 +14,108 @@
  * Use simple substring/start-of-word patterns instead.
  */
 
-// ─── Gram constants (frozen — do not change in this file) ────────────────────
-// These match the values used in the rest of the codebase.
-
+// ─── Gram constants ───────────────────────────────────────────────────────────
 const G = {
-  EGG:          55,   // whole egg
-  BREAD_SLICE:  30,   // one bread slice
-  PITA:         80,   // one pita
-  ROLL:         70,   // one roll
-  TABLESPOON:   15,   // כף (water/generic)
-  TEASPOON:      5,   // כפית (water/generic)
-  // Cooked rice per tablespoon = 15g (same as generic tablespoon)
+  EGG:          55,
+  BREAD_SLICE:  30,
+  PITA:         80,
+  ROLL:         70,
+  TABLESPOON:   15,   // generic water-volume tablespoon (~15ml)
+  TEASPOON:      5,
   RICE_TBSP:    15,
-  RICE_CUP:    200,   // כוס אורז מבושל — unchanged from prior implementation
-  // Protein piece sizes — identical to backend prompt: קטן~100 / בינוני~150 / גדול~200
+  RICE_CUP:    200,
   PROTEIN_SMALL:  100,
   PROTEIN_MEDIUM: 150,
   PROTEIN_LARGE:  200,
-  // Fish — same values as prior implementation (not changed)
   FISH_SMALL:  100,
   FISH_MEDIUM: 150,
   FISH_LARGE:  200,
-  // Pizza slice / sushi piece
   PIZZA_SLICE:    100,
   SUSHI_PIECE:     25,
 };
+
+// ─── Household Measure Registry ───────────────────────────────────────────────
+// One tablespoon (כף אוכל, ~15ml) weight in grams for each food in cooked/as-eaten state.
+// Cup (כוס) weight in grams for each food in cooked/as-eaten state.
+// These are authoritative values for deterministic conversions.
+// The AI cannot override amounts derived from these once the user confirms a unit.
+//
+// All weights are for the COOKED / PREPARED / AS-EATEN state unless otherwise noted.
+// Never use dry/raw values for meal diary entries.
+export const HOUSEHOLD_MEASURE_REGISTRY = {
+  // ── Cooked grains ────────────────────────────────────────────────────────
+  'אורז':     { tablespoon_g: 15, cup_g: 200,  preparation: 'cooked', category: 'grain' },
+  'פתיתים':   { tablespoon_g: 14, cup_g: 180,  preparation: 'cooked', category: 'grain' },
+  'בורגול':   { tablespoon_g: 14, cup_g: 185,  preparation: 'cooked', category: 'grain' },
+  'קוסקוס':   { tablespoon_g: 13, cup_g: 175,  preparation: 'cooked', category: 'grain' },
+  'קינואה':   { tablespoon_g: 14, cup_g: 185,  preparation: 'cooked', category: 'grain' },
+  'פסטה':     { tablespoon_g: 12, cup_g: 160,  preparation: 'cooked', category: 'grain' },
+  'ספגטי':    { tablespoon_g: 12, cup_g: 160,  preparation: 'cooked', category: 'grain' },
+  'מקרוני':   { tablespoon_g: 13, cup_g: 165,  preparation: 'cooked', category: 'grain' },
+  'גריסים':   { tablespoon_g: 15, cup_g: 200,  preparation: 'cooked', category: 'grain' },
+  'כוסמת':    { tablespoon_g: 13, cup_g: 185,  preparation: 'cooked', category: 'grain' },
+  "ורמיצ'לי": { tablespoon_g: 12, cup_g: 155,  preparation: 'cooked', category: 'grain' },
+  'פירה':     { tablespoon_g: 18, cup_g: 240,  preparation: 'cooked', category: 'grain' },
+  'שיבולת שועל': { tablespoon_g: 14, cup_g: 175, preparation: 'cooked', category: 'grain' },
+  // ── Spreads & condiments ─────────────────────────────────────────────────
+  'טחינה':    { tablespoon_g: 15, teaspoon_g: 5,  category: 'spread' },
+  'חומוס':    { tablespoon_g: 15, teaspoon_g: 5,  category: 'spread' },
+  'מיונז':    { tablespoon_g: 14, teaspoon_g: 5,  category: 'spread' },
+  'חמאת בוטנים': { tablespoon_g: 16, teaspoon_g: 5, category: 'spread' },
+  'ריבה':     { tablespoon_g: 20, teaspoon_g: 7,  category: 'spread' },
+  // ── Oils & fats ──────────────────────────────────────────────────────────
+  'שמן':      { tablespoon_g: 13, teaspoon_g: 4,  category: 'oil' },
+  'חמאה':     { tablespoon_g: 14, teaspoon_g: 5,  category: 'oil' },
+  // ── Dairy ────────────────────────────────────────────────────────────────
+  'גבינה לבנה': { tablespoon_g: 20, cup_g: 240,  category: 'dairy' },
+  "קוטג'":    { tablespoon_g: 20, cup_g: 230,  category: 'dairy' },
+  // ── Legumes (cooked) ─────────────────────────────────────────────────────
+  'עדשים':    { tablespoon_g: 15, cup_g: 200,  preparation: 'cooked', category: 'legume' },
+  'שעועית':   { tablespoon_g: 15, cup_g: 180,  preparation: 'cooked', category: 'legume' },
+  'חומוס גרגרים': { tablespoon_g: 14, cup_g: 165, preparation: 'cooked', category: 'legume' },
+  'תירס':     { tablespoon_g: 14, cup_g: 160,  preparation: 'cooked', category: 'legume' },
+  'אפונה':    { tablespoon_g: 10, cup_g: 145,  preparation: 'cooked', category: 'legume' },
+};
+
+/**
+ * Look up tablespoon weight for a food by matching the registry keys against the food name.
+ * Returns the per-tablespoon gram weight or the default (15g) if not found.
+ */
+export function getTablespoonGrams(foodName) {
+  const lower = (foodName || '').toLowerCase();
+  for (const [key, profile] of Object.entries(HOUSEHOLD_MEASURE_REGISTRY)) {
+    if (lower.includes(key)) return profile.tablespoon_g;
+  }
+  return 15; // generic default
+}
+
+/**
+ * Look up cup weight for a food. Returns grams for 1 standard measuring cup (~240ml fill).
+ */
+export function getCupGrams(foodName) {
+  const lower = (foodName || '').toLowerCase();
+  for (const [key, profile] of Object.entries(HOUSEHOLD_MEASURE_REGISTRY)) {
+    if (lower.includes(key) && profile.cup_g) return profile.cup_g;
+  }
+  return 185; // generic cooked-grain default
+}
+
+/**
+ * Build food-specific grain options for the volume question.
+ * Returns an array of { label, value, grams } based on the food's registry profile.
+ */
+export function buildGrainOptions(foodName) {
+  const tbsp    = getTablespoonGrams(foodName);
+  const cup     = getCupGrams(foodName);
+  const halfCup = Math.round(cup * 0.5);
+  const cup15   = Math.round(cup * 1.5);
+  return [
+    { label: `3 כפות (~${3 * tbsp} גרם)`,   value: 'three_tbsp',  grams: 3 * tbsp },
+    { label: `חצי כוס (~${halfCup} גרם)`,   value: 'half_cup',    grams: halfCup  },
+    { label: `כוס (~${cup} גרם)`,            value: '1_cup',       grams: cup      },
+    { label: `כוס וחצי (~${cup15} גרם)`,    value: '1.5_cup',     grams: cup15    },
+  ];
+}
 
 // ─── Category definitions ─────────────────────────────────────────────────────
 // measure_class: 'quantity' | 'size' — used as dedup key alongside food_key.
@@ -197,18 +274,38 @@ export const FOOD_MEASURE_CATEGORIES = [
     ],
   },
 
-  // ── Other grains ────────────────────────────────────────────────────────────
+  // ── Other grains (food-specific weights via HOUSEHOLD_MEASURE_REGISTRY) ────────
   {
     id: 'cooked_grains_volume',
     measure_class: 'quantity',
     measure_type: 'volume',
     skipIfQuantityKnown: true,
-    patterns: [/קינואה/, /כוסמת/, /בורגול/, /קוסקוס/],
+    patterns: [/קינואה/, /כוסמת/, /בורגול/, /קוסקוס/, /פתיתים/, /ורמיצ'לי/, /פירה/, /גריסים/],
     question: 'כמה {food} היה?',
+    // Options are dynamically generated per-food via buildGrainOptions().
+    // These static values serve as a fallback only; buildFoodClarifications() replaces them.
     options: [
-      { label: '4 כפות',  value: '4_tbsp',  grams: 60  },
-      { label: 'חצי כוס', value: 'half_cup', grams: 100 },
-      { label: 'כוס',     value: '1_cup',   grams: 200 },
+      { label: '3 כפות',  value: 'three_tbsp', grams: 42 },
+      { label: 'חצי כוס', value: 'half_cup',   grams: 93 },
+      { label: 'כוס',     value: '1_cup',       grams: 185 },
+      { label: 'כוס וחצי', value: '1.5_cup',   grams: 278 },
+    ],
+    _useFoodSpecificOptions: true,
+  },
+
+  // ── Loose / ground meat — NEVER piece questions ──────────────────────────────
+  {
+    id: 'loose_ground_meat',
+    measure_class: 'quantity',
+    measure_type: 'weight_or_portion',
+    skipIfQuantityKnown: true,
+    patterns: [/טחון/, /טחונה/, /קצוץ/, /קצוצה/],
+    question: 'כמה {food} אכלת?',
+    options: [
+      { label: 'מנה קטנה (~80 גרם)',     value: 'small',        grams: 80  },
+      { label: 'מנה בינונית (~130 גרם)', value: 'medium',       grams: 130 },
+      { label: 'מנה גדולה (~200 גרם)',   value: 'large',        grams: 200 },
+      { label: 'אני יודע את המשקל',      value: 'custom_grams', grams: null },
     ],
   },
 
@@ -803,6 +900,13 @@ export function buildFoodClarifications(foodName, inputText) {
   const cat = cats[0];
   const skipFn = cat.skipIfQuantityKnown ? textHasQuantityForFood : null;
   if (skipFn && skipFn(inputText)) return [];
+
+  // For grains: substitute food-specific household measure options
+  if (cat._useFoodSpecificOptions) {
+    const q = makeQuestion(cat, foodName);
+    q.options = buildGrainOptions(foodName);
+    return [q];
+  }
 
   return [makeQuestion(cat, foodName)];
 }
