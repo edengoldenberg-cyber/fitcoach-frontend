@@ -911,50 +911,49 @@ export function buildFoodClarifications(foodName, inputText) {
   return [makeQuestion(cat, foodName)];
 }
 
-/** Build the 0-3 questions for a protein food based on resolution state. */
+/** Build the 0-2 questions for a protein food based on resolution state.
+ *
+ * Minimum sufficient fact set: count + form (form options have unit_grams → total = count × unit_grams).
+ * Do NOT ask size as a 3rd question — it is redundant when form already provides unit_grams.
+ * This reduces the maximum from 3 questions (count+form+size) to 2 (count+form).
+ */
 function buildProteinClarifications(foodName, cats, res) {
   const countCat = cats.find(c => c.measure_type === 'count_pieces');
   const formCat  = cats.find(c => c.measure_type === 'piece_form');
   const sizeCat  = cats.find(c => c.measure_type === 'size_pieces');
-  if (!countCat || !sizeCat) return [];
+  if (!countCat) return [];
 
   const countKnown = res.count !== null;
   const sizeKnown  = res.size  !== null;
-  // Form is considered known when: (a) text has explicit form indicator like "נתחים",
-  // (b) size is explicitly known (implies a whole-piece context), or (c) no form category.
-  // When count is from text and neither form nor size is clear, ask form before size.
-  const formKnown  = sizeKnown || !formCat;
 
-  if (countKnown && sizeKnown) return [];  // both resolved — nothing to ask
+  if (countKnown && sizeKnown) return [];
 
   if (countKnown && !sizeKnown) {
-    if (formCat && !formKnown) {
-      // Count extracted from text but form is ambiguous ("5 חתיכות" without type context):
-      // ask form question (with unit_grams anchors) instead of the generic size question.
-      // Form answer provides: resolvedCount × unit_grams → deterministic total grams.
-      return [makeQuestion(formCat, foodName, { noDepends: true })];
-    }
-    // Count extracted from text and form implied → ask size only, no dependency needed
-    return [makeQuestion(sizeCat, foodName, { noDepends: true })];
+    // Count known from text — ask form (with unit_grams, no dependency needed)
+    if (formCat) return [makeQuestion(formCat, foodName, { noDepends: true })];
+    if (sizeCat) return [makeQuestion(sizeCat, foodName, { noDepends: true })];
+    return [];
   }
 
   if (!countKnown && sizeKnown) {
-    // Size extracted from text: ask count only
     return [makeQuestion(countCat, foodName)];
   }
 
-  // Neither known: ask count first, form/size appears after count is answered
+  // Neither known: count first, then form (form has unit_grams → size not needed separately)
   if (formCat) {
     return [
       makeQuestion(countCat, foodName),
-      makeQuestion(formCat,  foodName),   // has depends_on; appears after count answered
-      makeQuestion(sizeCat,  foodName),   // has depends_on; appears after count answered
+      makeQuestion(formCat,  foodName),  // depends_on count; appears after count answered
     ];
   }
-  return [
-    makeQuestion(countCat, foodName),
-    makeQuestion(sizeCat,  foodName),   // has depends_on; UI hides until count answered
-  ];
+  // Fallback when no form category: count + size
+  if (sizeCat) {
+    return [
+      makeQuestion(countCat, foodName),
+      makeQuestion(sizeCat,  foodName),
+    ];
+  }
+  return [makeQuestion(countCat, foodName)];
 }
 
 /** Build a single question object from a category and food name. */

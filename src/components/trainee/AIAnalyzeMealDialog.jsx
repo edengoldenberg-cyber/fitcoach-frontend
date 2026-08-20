@@ -217,23 +217,25 @@ function getSmartQuestions(data, input, fallbackQuestions = []) {
   const highImpactQuestions = buildClientHighImpactQuestions(input);
   const hasExplicitQuantity = /\d+|חצי|כף|כפית|כוס|פרוס|משולש|גרם|מנה/.test(String(input || '').toLowerCase());
 
-  const seen = new Set();
+  const seen = new Set();       // food_key + measure_class dedup
+  const seenSem = new Set();   // food_key:measure_type dedup (finer-grained)
   const unique = [...highImpactQuestions, ...rawQuestions]
     .filter(q => q?.question)
     .filter(q => !isClientVagueQuestion(q))
     .filter(q => !isGroundMeatPieceQuestion(q, input))
     .filter(q => {
-      // For dedup, resolve food_key: use explicit field first, then infer from question text
-      // (AI questions lack food_key; inferring lets them compete with client questions correctly)
       const resolvedFoodKey = q.food_key || inferFoodKeyFromQuestionText(q);
       const mc = q.measure_class || inferMeasureClass(q);
-      // Dedup key: food_key + measure_class — different measure_classes (count vs size) for
-      // the same food are allowed; same food + same class → keep first (client wins)
+      // Primary dedup: food_key + measure_class
       const dedupKey = resolvedFoodKey
         ? `${resolvedFoodKey}_${mc}`
         : String(q.id || q.question).toLowerCase().replace(/\s+/g, '_');
-      if (seen.has(dedupKey)) return false;
+      // Secondary dedup: food_key:measure_type (prevents duplicate semantic dimensions
+      // from slipping through when measure_class is different between client and gate)
+      const semKey = q.food_key && q.measure_type ? `${q.food_key}:${q.measure_type}` : null;
+      if (seen.has(dedupKey) || (semKey && seenSem.has(semKey))) return false;
       seen.add(dedupKey);
+      if (semKey) seenSem.add(semKey);
       return true;
     })
     .filter(q => questionPriority(q) < 90)
@@ -1547,8 +1549,13 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     for (const ans of Object.values(answers)) {
       const key = ans.food_key;
       if (!key || ans.grams == null) continue;
-      // Size answers overwrite count answers for the same food (size answer has the final grams)
-      if (!structured[key] || ans.measure_class === 'size') {
+      // For the same food_key, prefer answers that carry definitive total grams:
+      //   piece_form / size_pieces: total = count × unit_grams (most precise)
+      //   other answers with grams: e.g. grain volume, salad portion
+      // If two answers for the same food exist, keep the one with definitive total grams.
+      // piece_form/size_pieces answers store total grams (count×unit_grams); prefer them.
+      const isDefinitive = ans.measure_type === 'piece_form' || ans.measure_type === 'size_pieces';
+      if (!structured[key] || isDefinitive) {
         structured[key] = { grams: ans.grams, label: ans.answer };
       }
     }
@@ -1629,23 +1636,32 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       // Structural guard: merge back any ingredients the AI dropped.
       const safeData = mergeRefinedResult(result, data);
 
-      // SESSION DEDUP: remove any question whose semantic key was already answered in
-      // this session. Prevents the regenerated client-side question list from creating
-      // a "second round" of questions the user has already answered.
-      // Backend resolvedByAnswers handles its own filtering; this covers client-side
-      // questions (buildClientHighImpactQuestions) that don't know about answered keys.
+      // SESSION DEDUP: remove any question whose key (by ID or semantic food_key:measure_type)
+      // was already answered in this session. Prevents regenerated client-side questions from
+      // creating a second round of already-answered dimensions.
       if (Array.isArray(safeData.clarifying_questions) && safeData.clarifying_questions.length > 0) {
         const answeredKeys = new Set(
           Object.keys(clarificationAnswers).map(k => String(k).toLowerCase().replace(/\s+/g, '_'))
         );
+        // Also build a semantic key set from answered facts: food_key:measure_type
+        const answeredSemKeys = new Set(
+          Object.values(clarificationAnswers)
+            .filter(ans => ans?.food_key && ans?.measure_type)
+            .map(ans => `${ans.food_key}:${ans.measure_type}`)
+        );
+        const prevLen = safeData.clarifying_questions.length;
         const filtered = safeData.clarifying_questions.filter(q => {
           const key = getQuestionKey(q);
-          return !answeredKeys.has(key);
+          if (answeredKeys.has(key)) return false;
+          // Semantic match: food_key:measure_type covers same dimension asked under a different id
+          const semKey = q.food_key && q.measure_type ? `${q.food_key}:${q.measure_type}` : null;
+          if (semKey && answeredSemKeys.has(semKey)) return false;
+          return true;
         });
         safeData.clarifying_questions = filtered;
         safeData.questions = filtered;
-        if (filtered.length < safeData.clarifying_questions?.length) {
-          console.log('[CLARIFICATION-DEDUP] filtered out already-answered questions after reanalysis');
+        if (filtered.length < prevLen) {
+          console.log(`[CLARIFICATION-DEDUP] filtered ${prevLen - filtered.length} already-answered question(s)`);
         }
       }
 
