@@ -1461,9 +1461,24 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   };
 
   // Go back to the previous question.  Makes zero API calls.
+  // Restores the previous question's free-text answer into pendingText so the
+  // field is populated when the user returns to it.
   const handleClarificationGoBack = () => {
-    setClarificationIndex(prev => Math.max(0, prev - 1));
-    setClarificationPendingText('');
+    const allQ = Array.isArray(result?.clarifying_questions) ? result.clarifying_questions : [];
+    const prevIdx = Math.max(0, clarificationIndex - 1);
+    const prevQ   = allQ[prevIdx];
+    let restoredText = '';
+    if (prevQ) {
+      const prevAns = clarificationAnswers[getQuestionKey(prevQ)];
+      if (prevAns && !prevAns._custom_grams_mode && prevAns.answer) {
+        // Restore only if the stored answer was typed (not an option label)
+        const opts = prevQ.options || [];
+        const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+        if (!isOptionLabel) restoredText = prevAns.answer;
+      }
+    }
+    setClarificationIndex(prevIdx);
+    setClarificationPendingText(restoredText);
     setTimeout(() => {
       clarificationRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }, 60);
