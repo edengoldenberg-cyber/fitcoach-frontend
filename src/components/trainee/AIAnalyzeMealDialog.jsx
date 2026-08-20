@@ -583,9 +583,13 @@ function ClarificationQueue({
   const realOpts      = opts.filter(o => o.value !== 'custom_grams' && o.value !== 'more_custom');
   const useCompactRow = isCountType && realOpts.length <= 4;
 
-  // Determine whether the free-text field currently holds the active (pending) value
-  const isOptionSelected = opts.some(o => String(o.label || o.value) === storedAnswer);
-  const textDisplayValue = isOptionSelected ? '' : (isCustomMode ? '' : pendingText);
+  // pendingText is the authoritative display value for the free-text input.
+  // The old isOptionSelected guard was wrong: when the stored free-text answer matches
+  // an option label (e.g., user typed "כוס" for בורגול which also has a "כוס" option),
+  // it would blank the field even though the user had typed that value explicitly.
+  // pendingText is already '' when an option was clicked (cleared by _advanceClarificationIndex),
+  // so no guard is needed here.
+  const textDisplayValue = isCustomMode ? '' : pendingText;
 
   // Custom grams value in progress
   const customGramsValue = answerState.grams ? String(answerState.grams) : '';
@@ -628,11 +632,12 @@ function ClarificationQueue({
       {activeQuestion && (
         <div
           data-testid="clarification-question-card"
-          className="rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 box-border"
+          className="rounded-lg bg-white p-3 border border-amber-100 space-y-3 w-full min-w-0 max-w-full box-border"
         >
           <p
             data-testid="clarification-question"
-            className="text-sm font-semibold text-amber-900 leading-snug"
+            className="text-sm font-semibold text-amber-900 leading-snug break-words"
+            style={{ overflowWrap: 'anywhere' }}
           >
             {activeQuestion.question}
           </p>
@@ -743,7 +748,7 @@ function ClarificationQueue({
                   type="button"
                   data-testid="clarification-continue"
                   onClick={() => onConfirmText(activeQuestion)}
-                  className="w-full rounded-xl border border-amber-300 bg-amber-100 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 transition-colors"
+                  className="w-full min-w-0 rounded-xl border border-amber-300 bg-amber-100 py-2 text-sm font-medium text-amber-900 hover:bg-amber-200 transition-colors"
                 >
                   המשך ←
                 </button>
@@ -1471,6 +1476,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       answer:         trimmed,
       grams:          null,
       _custom_grams_mode: false,
+      _is_free_text:  true,  // mark so goBack can restore even if text matches an option label
     };
     const newAnswers = { ...clarificationAnswers, [getQuestionKey(question)]: answerObj };
     setClarificationAnswers(newAnswers);
@@ -1489,10 +1495,15 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     if (prevQ) {
       const prevAns = clarificationAnswers[getQuestionKey(prevQ)];
       if (prevAns && !prevAns._custom_grams_mode && prevAns.answer) {
-        // Restore only if the stored answer was typed (not an option label)
-        const opts = prevQ.options || [];
-        const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
-        if (!isOptionLabel) restoredText = prevAns.answer;
+        if (prevAns._is_free_text) {
+          // Explicitly typed free-text — always restore regardless of whether the
+          // text happens to match one of the option labels (e.g. "כוס" for בורגול).
+          restoredText = prevAns.answer;
+        } else {
+          const opts = prevQ.options || [];
+          const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+          if (!isOptionLabel) restoredText = prevAns.answer;
+        }
       }
     }
     setClarificationIndex(prevIdx);
@@ -1823,20 +1834,20 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
 
         {/* STEP: RESULT */}
         {step === 'result' && result && (
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0 w-full">
             {/* Input echo */}
-            <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 flex gap-2 items-start">
+            <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-600 flex gap-2 items-start min-w-0 overflow-hidden">
               {photoPreview && <img src={photoPreview} alt="" className="h-10 w-10 object-cover rounded flex-shrink-0" />}
-              <span><span className="font-medium text-slate-700">הזנת: </span>{description}</span>
+              <span className="min-w-0 overflow-hidden"><span className="font-medium text-slate-700">הזנת: </span>{description}</span>
             </div>
 
             {/* Confidence badge */}
             {confidence && (
-              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium ${confidence.color}`}>
-                <span>{confidence.emoji}</span>
-                <span>{confidence.label}</span>
+              <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium min-w-0 w-full overflow-hidden ${confidence.color}`}>
+                <span className="flex-shrink-0">{confidence.emoji}</span>
+                <span className="flex-shrink-0">{confidence.label}</span>
                 {result.uncertainty_note && (
-                  <span className="font-normal text-xs mr-auto">{result.uncertainty_note}</span>
+                  <span className="font-normal text-xs min-w-0 overflow-hidden break-words">{result.uncertainty_note}</span>
                 )}
               </div>
             )}
