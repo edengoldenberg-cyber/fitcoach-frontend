@@ -696,7 +696,14 @@ function ClarificationQueue({
             ].join(' ')}
           >
             {realOpts.map((option, idx) => {
-              const selected = String(storedAnswer) === String(option.label || option.value) && !isCustomMode;
+              // Use selected_option_value when present (set by size_pieces/piece_form answers
+              // where the stored `answer` is a computed label like "2 × medium (≈300g)" that
+              // does not match any button label). Fall back to direct answer comparison.
+              const selected = !isCustomMode && (
+                answerState.selected_option_value != null
+                  ? String(answerState.selected_option_value) === String(option.value)
+                  : String(storedAnswer) === String(option.label || option.value)
+              );
               return (
                 <button
                   key={`${questionKey}-opt-${idx}`}
@@ -1445,14 +1452,16 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         ? `${resolvedCount} × ${option.label} (≈${totalGrams ?? '?'} גרם)`
         : option.label;
       answerObj = {
-        question:       question.question,
-        food_key:       question.food_key,
-        measure_type:   question.measure_type,
-        measure_class:  question.measure_class,
-        answer:         answerLabel,
-        grams:          totalGrams,
-        resolved_count: resolvedCount,
-        _custom_grams_mode: false,
+        question:              question.question,
+        food_key:              question.food_key,
+        measure_type:          question.measure_type,
+        measure_class:         question.measure_class,
+        answer:                answerLabel,
+        selected_option_value: option.value,   // preserved for button highlight on Back
+        selected_option_label: option.label,   // preserved for button highlight on Back
+        grams:                 totalGrams,
+        resolved_count:        resolvedCount,
+        _custom_grams_mode:    false,
       };
     } else {
       const grams = option.grams ?? option.grams_equivalent ?? null;
@@ -1544,6 +1553,11 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
           // Explicitly typed free-text — always restore regardless of whether the
           // text happens to match one of the option labels (e.g. "כוס" for בורגול).
           restoredText = prevAns.answer;
+        } else if (prevAns.selected_option_value != null) {
+          // Proper option selection stored (size_pieces/piece_form with computed label).
+          // Button highlight handles restoration — do not push the computed label into
+          // the free-text field.
+          restoredText = '';
         } else {
           const opts = prevQ.options || [];
           const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));

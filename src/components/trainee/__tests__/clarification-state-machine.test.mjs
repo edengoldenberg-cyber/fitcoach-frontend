@@ -390,11 +390,13 @@ test('SM-SINGLE-REFINEMENT-GUARD: isClarifying prevents double submit', () => {
 // called setClarificationPendingText('') — fix: restore stored free-text.
 // ─────────────────────────────────────────────────────────────────────────────
 test('SM-21: back to free-text question restores the stored answer into pendingText', () => {
-  // Replicate handleClarificationGoBack logic (fixed version)
+  // Replicate handleClarificationGoBack logic (current version)
   function computeRestoredText(prevQ, answers) {
     if (!prevQ) return '';
     const prevAns = answers[getQuestionKey(prevQ)];
     if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    if (prevAns._is_free_text) return prevAns.answer;
+    if (prevAns.selected_option_value != null) return ''; // button highlight handles it
     const opts = prevQ.options || [];
     const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
     return isOptionLabel ? '' : prevAns.answer;
@@ -427,6 +429,8 @@ test('SM-22: back to option question leaves pendingText empty', () => {
     if (!prevQ) return '';
     const prevAns = answers[getQuestionKey(prevQ)];
     if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    if (prevAns._is_free_text) return prevAns.answer;
+    if (prevAns.selected_option_value != null) return '';
     const opts = prevQ.options || [];
     const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
     return isOptionLabel ? '' : prevAns.answer;
@@ -689,4 +693,149 @@ test('SM-39: _advanceClarificationIndex no longer guards setClarificationIndex w
   const advBody  = dialogSrc.slice(advStart, advEnd);
   assert.ok(!advBody.includes('if (next < allQ.length)'), 'Length guard must be removed');
   assert.ok(advBody.includes('setClarificationIndex(next)'), 'Index must always be set');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-40: size_pieces answer stores selected_option_value + selected_option_label
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-40: size_pieces answerObj includes selected_option_value and selected_option_label', () => {
+  // Simulate the answer object produced by handleClarificationAnswer for size_pieces
+  const option = { label: 'נתחים שלמים (~150 גרם)', value: 'whole_medium', unit_grams: 150 };
+  const resolvedCount = 2;
+  const totalGrams = resolvedCount * option.unit_grams; // 300
+  const answerLabel = `${resolvedCount} × ${option.label} (≈${totalGrams} גרם)`;
+  const answerObj = {
+    answer:                answerLabel,
+    selected_option_value: option.value,
+    selected_option_label: option.label,
+    grams:                 totalGrams,
+    resolved_count:        resolvedCount,
+    _custom_grams_mode:    false,
+  };
+  assert.equal(answerObj.selected_option_value, 'whole_medium');
+  assert.equal(answerObj.selected_option_label, 'נתחים שלמים (~150 גרם)');
+  assert.equal(answerObj.grams, 300);
+  assert.ok(answerObj.answer.includes('×'), 'Computed label must contain ×');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-41: Back to size_pieces question — button highlighted, NOT free-text
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-41: back to size_pieces question: selected_option_value triggers highlight, no free-text', () => {
+  function computeRestoredText(prevQ, prevAns) {
+    if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    if (prevAns._is_free_text) return prevAns.answer;
+    if (prevAns.selected_option_value != null) return ''; // button highlight, no free-text restore
+    const opts = prevQ.options || [];
+    const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+    return isOptionLabel ? '' : prevAns.answer;
+  }
+  function isButtonSelected(option, answerState) {
+    if (answerState._custom_grams_mode) return false;
+    if (answerState.selected_option_value != null)
+      return String(answerState.selected_option_value) === String(option.value);
+    return String(answerState.answer) === String(option.label || option.value);
+  }
+
+  const sizeQ = { id: 'q_size', question: 'איזה סוג?', measure_type: 'size_pieces', food_key: 'פרגית',
+    options: [
+      { label: 'קטנות (~60 גרם)', value: 'small' },
+      { label: 'בינוניות (~100 גרם)', value: 'medium' },
+      { label: 'גדולות (~150 גרם)', value: 'large' },
+    ]};
+
+  // Stored answer from clicking "בינוניות" with resolvedCount=3
+  const storedAns = {
+    answer:                '3 × בינוניות (~100 גרם) (≈300 גרם)',
+    selected_option_value: 'medium',
+    selected_option_label: 'בינוניות (~100 גרם)',
+    grams:                 300,
+    resolved_count:        3,
+    _custom_grams_mode:    false,
+  };
+
+  // computeRestoredText must return '' — no free-text restore
+  const restored = computeRestoredText(sizeQ, storedAns);
+  assert.equal(restored, '', 'size_pieces back must NOT restore computed label to free-text');
+
+  // Button selection must work via selected_option_value
+  assert.ok(!isButtonSelected(sizeQ.options[0], storedAns), 'small must NOT be selected');
+  assert.ok( isButtonSelected(sizeQ.options[1], storedAns), 'medium must be selected');
+  assert.ok(!isButtonSelected(sizeQ.options[2], storedAns), 'large must NOT be selected');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-42: Free-text edit persistence — edit "כוס" to "כוס וחצי" → Back → "כוס וחצי"
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-42: edited free-text answer persists after second Back', () => {
+  const allQ = [Q.grain, Q.salad];
+  const answers = {};
+
+  // First answer: "כוס"
+  answers[getQuestionKey(Q.grain)] = { ...ans(Q.grain, 'כוס', { grams: null }), _is_free_text: true };
+  let idx = advanceIndex(0, allQ, answers); // → 1
+  assert.equal(idx, 1);
+
+  // Go back
+  idx = Math.max(0, idx - 1); // → 0
+  assert.equal(answers[getQuestionKey(Q.grain)].answer, 'כוס', 'First answer must be "כוס"');
+
+  // Edit to "כוס וחצי"
+  answers[getQuestionKey(Q.grain)] = { ...ans(Q.grain, 'כוס וחצי', { grams: null }), _is_free_text: true };
+  idx = advanceIndex(idx, allQ, answers); // → 1 again
+  assert.equal(idx, 1);
+
+  // Go back again
+  idx = Math.max(0, idx - 1); // → 0
+  assert.equal(answers[getQuestionKey(Q.grain)].answer, 'כוס וחצי', 'Edited value must be "כוס וחצי" not "כוס"');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-43: size_pieces without selected_option_value (legacy) → old behavior preserved
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-43: size_pieces answer without selected_option_value falls back to isOptionLabel check', () => {
+  function computeRestoredText(prevQ, prevAns) {
+    if (!prevAns || prevAns._custom_grams_mode || !prevAns.answer) return '';
+    if (prevAns._is_free_text) return prevAns.answer;
+    if (prevAns.selected_option_value != null) return '';
+    const opts = prevQ.options || [];
+    const isOptionLabel = opts.some(o => String(o.label || o.value) === String(prevAns.answer));
+    return isOptionLabel ? '' : prevAns.answer;
+  }
+
+  const sizeQ = { id: 'q_size', question: 'איזה סוג?', measure_type: 'size_pieces', food_key: 'פרגית',
+    options: [{ label: 'קטנות', value: 'small' }, { label: 'גדולות', value: 'large' }] };
+
+  // Legacy-format answer without selected_option_value
+  const legacyAns = { answer: '2 × גדולות (≈300 גרם)', grams: 300, _custom_grams_mode: false };
+  // "2 × גדולות (≈300 גרם)" does not match any option label → restored to free-text
+  const restored = computeRestoredText(sizeQ, legacyAns);
+  assert.equal(restored, '2 × גדולות (≈300 גרם)', 'Legacy answer without selected_option_value falls back to isOptionLabel path');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-44: selected_option_value in source (integration check)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-44: handleClarificationAnswer for size_pieces stores selected_option_value', () => {
+  assert.ok(dialogSrc.includes('selected_option_value: option.value'), 'size_pieces answerObj must store selected_option_value');
+  assert.ok(dialogSrc.includes('selected_option_label: option.label'), 'size_pieces answerObj must store selected_option_label');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-45: button selected check uses selected_option_value when present (source check)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-45: ClarificationQueue button selected check uses selected_option_value', () => {
+  assert.ok(dialogSrc.includes('answerState.selected_option_value != null'), 'Button selected check must use selected_option_value');
+  assert.ok(dialogSrc.includes('String(answerState.selected_option_value) === String(option.value)'), 'Must compare by option value not answer string');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SM-46: goBack with selected_option_value returns empty pendingText (source check)
+// ─────────────────────────────────────────────────────────────────────────────
+test('SM-46: handleClarificationGoBack returns empty string when selected_option_value is set', () => {
+  const goBackStart = dialogSrc.indexOf('const handleClarificationGoBack');
+  const goBackEnd   = dialogSrc.indexOf('\n  };', goBackStart);
+  const goBackBody  = dialogSrc.slice(goBackStart, goBackEnd);
+  assert.ok(goBackBody.includes('selected_option_value'), 'goBack must check selected_option_value');
+  assert.ok(goBackBody.includes("restoredText = ''"), 'goBack must set empty text for option answers');
 });
