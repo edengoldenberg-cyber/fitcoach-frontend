@@ -22,6 +22,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import WhatsAppKillSwitch from '@/components/admin/WhatsAppKillSwitch';
 import AutomationControlCenter from '@/components/automation/AutomationControlCenter';
+import ReminderCenterTab from '@/components/mission-control/ReminderCenterTab';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -144,7 +145,7 @@ const NAV_ITEMS = [
   { key: 'killswitch',        label: '🛑 כיבוי חירום',    icon: ShieldAlert, adminOnly: true },
   { key: 'dashboard',         label: 'מרכז בקרה',        icon: LayoutDashboard },
   { key: 'automation-center', label: 'מרכז אוטומציות',   icon: Layers },
-  { key: 'arbox-automations', label: 'אוטומציות Arbox',  icon: Zap },
+  { key: 'arbox-automations', label: 'מנהל אוטומציות',   icon: Bell },
   { key: 'automations',       label: 'אוטומציות WhatsApp', icon: Zap },
   { key: 'queue',        label: 'תור הודעות',       icon: MessageSquare },
   { key: 'live',         label: 'פעילות חיה',       icon: Activity },
@@ -2709,7 +2710,7 @@ export default function MissionControl() {
           }}
         />
       );
-      case 'arbox-automations': return <ArboxAutomationsSection coachEmail={coachEmail} />;
+      case 'arbox-automations': return <ReminderCenterTab coachEmail={coachEmail} />;
       case 'automations':       return <AutomationsSection automations={automations} queueStatsMap={queueStatsMap} coachEmail={coachEmail} onRefresh={refresh} />;
       case 'queue':       return <QueueSection queueItems={queueItems} onRefresh={refresh} />;
       case 'live':        return <LiveSection queueItems={queueItems} />;

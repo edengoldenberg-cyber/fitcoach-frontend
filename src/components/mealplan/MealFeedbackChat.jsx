@@ -59,6 +59,13 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   const suppressTimer  = useRef(null);
   const submitting     = useRef(false);
   const createPollRef  = useRef(null);
+  // Tracks request sequence — lets us detect stale responses from superseded requests.
+  const reqSeq         = useRef(0);
+  // Mirrors loading state as a ref so send() always reads the live value,
+  // not the stale-closure value captured at the previous render.
+  const loadingRef     = useRef(false);
+  // AbortController for the current in-flight request — replaced on every send().
+  const activeAbortRef = useRef(null);
 
   // localStorage key for job resume — tied to the source plan
   const JOB_LS_KEY = planId ? `mfcCreateJob_${planId}` : null;
@@ -68,7 +75,14 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
   };
 
   // Cleanup on unmount
-  useEffect(() => () => { stopCreatePoll(); clearTimeout(suppressTimer.current); }, []);
+  useEffect(() => () => {
+    stopCreatePoll();
+    clearTimeout(suppressTimer.current);
+    if (activeAbortRef.current) {
+      try { activeAbortRef.current.abort(); } catch { /* ignore */ }
+      activeAbortRef.current = null;
+    }
+  }, []);
 
   // Meal-editing event broadcast (unchanged)
   useEffect(() => {
@@ -317,7 +331,9 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
 
   // ── Main send — thin dispatcher: backend classifies, frontend executes ───────
   const send = async () => {
-    if (!text.trim() || loading) return;
+    // Use the ref (not the stale-closure state value) to guard against the race
+    // where React hasn't re-rendered between setLoading(false) and the next click.
+    if (!text.trim() || loadingRef.current) return;
 
     if (CALORIE_TARGET_CHOICE_UI) {
       const intent = detectCalorieTargetIntent(text.trim());
@@ -329,21 +345,59 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
     }
 
     if (submitting.current) return;
+
+    // Increment sequence counter — lets us detect and discard stale callbacks.
+    const seq = ++reqSeq.current;
+
+    // Abort any previous in-flight HTTP request and create a fresh controller.
+    if (activeAbortRef.current) {
+      try { activeAbortRef.current.abort(); } catch { /* ignore */ }
+    }
+    const controller = new AbortController();
+    activeAbortRef.current = controller;
+
     submitting.current = true;
+    loadingRef.current = true;
     setLoading(true);
     setStatus(null);
 
+    console.log(`[MFC] #${seq} START planId=${planId} dayIndex=${dayIndex || 0}`);
+    const t0 = Date.now();
+
+    // Frontend hard timeout (90 s) — always rejects regardless of seq so that
+    // finally always runs and the UI is never left stuck.
+    let frontendTimeoutId;
+    const frontendTimeout = new Promise((_, reject) => {
+      frontendTimeoutId = setTimeout(() => {
+        console.warn(`[MFC] #${seq} frontend timeout after 90s (reqSeq=${reqSeq.current})`);
+        reject(Object.assign(new Error('FRONTEND_TIMEOUT'), { isFrontendTimeout: true }));
+      }, 90_000);
+    });
+
     let startedAsync = false;
     try {
-      const res = await base44.functions.invoke('routeMealFeedback', {
-        plan_id:   planId,
-        feedback:  text.trim(),
-        day_index: dayIndex || 0,
-      });
+      const res = await Promise.race([
+        base44.functions.invoke('routeMealFeedback', {
+          plan_id:   planId,
+          feedback:  text.trim(),
+          day_index: dayIndex || 0,
+        }, { signal: controller.signal }),
+        frontendTimeout,
+      ]);
+
+      const dur = Date.now() - t0;
+      console.log(`[MFC] #${seq} response ${dur}ms action=${res?.action} ok=${res?.ok} traceId=${res?.traceId || res?.data?.traceId || 'n/a'} currentSeq=${reqSeq.current}`);
+
+      // Discard state updates if a newer request has already taken over,
+      // but still fall through to finally so loading always resets.
+      if (reqSeq.current !== seq) {
+        console.warn(`[MFC] #${seq} stale — discarding response (active seq=${reqSeq.current})`);
+        return;
+      }
 
       if (res.ok === false) {
         setStatus({ type: 'error', message: res.safe_error || res.error || 'שגיאה פנימית — נסה שוב.' });
-        console.error('[MFC] routeMealFeedback error', { action: res.action, error_code: res.error_code });
+        console.error(`[MFC] #${seq} server error`, { action: res.action, error_code: res.error_code, traceId: res.traceId });
         return;
       }
 
@@ -364,6 +418,7 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
         setCreateJobMode('adapt');
         setUiState('createLoading');
         startedAsync = true;
+        // loading + submitting are cleared by the polling useEffect on job completion/failure.
         return;
       }
 
@@ -376,6 +431,12 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
 
           let refreshOk = false;
           try { if (onPlanUpdated) await onPlanUpdated(); refreshOk = true; } catch {}
+
+          // Re-check after async refresh — discard state updates only, not loading reset.
+          if (reqSeq.current !== seq) {
+            console.warn(`[MFC] #${seq} stale after refresh (active seq=${reqSeq.current})`);
+            return;
+          }
 
           if (!refreshOk) {
             setStatus({ type: 'error', message: 'התפריט נשמר, אך המסך לא התרענן. אנא טעינה מחדש.' });
@@ -393,12 +454,31 @@ export default function MealFeedbackChat({ planId, dayIndex, onPlanUpdated, onDa
       setStatus({ type: 'error', message: 'תגובה לא צפויה מהשרת — נסה שוב.' });
 
     } catch (err) {
-      console.error('[MFC] routeMealFeedback failed:', err.message);
-      setStatus({ type: 'error', message: 'שגיאה זמנית — נסה שוב.' });
+      const isStale = reqSeq.current !== seq;
+      if (err.name === 'AbortError') {
+        console.log(`[MFC] #${seq} aborted (isStale=${isStale})`);
+        // Aborted by a newer request — suppress error display
+      } else if (err.isFrontendTimeout) {
+        console.warn(`[MFC] #${seq} frontend timeout (isStale=${isStale})`);
+        if (!isStale) {
+          setStatus({ type: 'error', message: 'הבקשה ארכה יותר מדי — נסה שוב. הפעולה לא בוצעה.' });
+        }
+      } else {
+        console.error(`[MFC] #${seq} failed: ${err.message} (isStale=${isStale})`);
+        if (!isStale) {
+          setStatus({ type: 'error', message: 'שגיאה זמנית — נסה שוב.' });
+        }
+      }
     } finally {
+      clearTimeout(frontendTimeoutId);
+      if (activeAbortRef.current === controller) activeAbortRef.current = null;
+      // Always reset — never leave UI stuck regardless of request sequence.
+      // For async jobs (startedAsync=true) the polling useEffect owns the reset.
       if (!startedAsync) {
+        loadingRef.current = false;
         setLoading(false);
         submitting.current = false;
+        console.log(`[MFC] #${seq} cleanup done (activeSeq=${reqSeq.current})`);
       }
     }
   };
