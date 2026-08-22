@@ -166,6 +166,21 @@ export default function NutritionLog() {
     retry: 1,
   });
 
+  // Fetch active meal plan to get authoritative calorie/macro targets.
+  // trainee.target_calories can be stale (e.g. old plan); plan.total_calories is canonical.
+  const { data: activePlan } = useQuery({
+    queryKey: ['activePlan_nutrlog', trainee?.id],
+    queryFn: async () => {
+      if (!trainee?.id) return null;
+      try {
+        const plans = await base44.entities.PersonalMealPlan.filter({ trainee_id: trainee.id, is_active: true });
+        return plans?.[0] || null;
+      } catch { return null; }
+    },
+    enabled: !!trainee?.id,
+    staleTime: 30_000,
+  });
+
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(selectedDate, { weekStartsOn: 0 });
 
@@ -627,11 +642,14 @@ export default function NutritionLog() {
     });
   }, [meals, weekDays]);
 
+  // Authoritative target: active plan > trainee profile > default.
+  // PersonalMealPlan.total_calories is always up-to-date; trainee.target_calories
+  // is a denormalised copy that may lag behind the current plan.
   const targets = {
-    calories: safeNumber(trainee?.target_calories, 2000),
-    protein: safeNumber(trainee?.target_protein, 150),
-    carbs: safeNumber(trainee?.target_carbs, 200),
-    fat: safeNumber(trainee?.target_fat, 70),
+    calories: safeNumber(activePlan?.total_calories || trainee?.target_calories, 2000),
+    protein:  safeNumber(activePlan?.total_protein  || trainee?.target_protein,  150),
+    carbs:    safeNumber(activePlan?.total_carbs    || trainee?.target_carbs,    200),
+    fat:      safeNumber(activePlan?.total_fat      || trainee?.target_fat,      70),
   };
 
   // Loading state

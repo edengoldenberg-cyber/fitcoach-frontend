@@ -43,7 +43,7 @@ function _notifySessionExpired() {
 
 // ─── Core fetch helper ───────────────────────────────────────────────────────
 
-async function apiFetch(method, path, body = null, extraHeaders = {}) {
+async function apiFetch(method, path, body = null, extraHeaders = {}, signal = null) {
   const url = path.startsWith('http') ? path : `${API_BASE}${path}`;
 
   const headers = {
@@ -60,6 +60,7 @@ async function apiFetch(method, path, body = null, extraHeaders = {}) {
     headers,
     credentials: 'include', // send/receive httpOnly refresh cookie
     body: body != null ? JSON.stringify(body) : undefined,
+    ...(signal ? { signal } : {}),
   });
 
   // Auto-refresh on 401
@@ -276,8 +277,8 @@ const entities = new Proxy({}, {
 // ─── functions ───────────────────────────────────────────────────────────────
 
 const functions = {
-  invoke: (name, data = {}) =>
-    apiFetch('POST', `/api/functions/${name}`, data),
+  invoke: (name, data = {}, opts = {}) =>
+    apiFetch('POST', `/api/functions/${name}`, data, {}, opts.signal || null),
 
   fetch: (path, init = {}) =>
     fetch(`${API_BASE}${path}`, { ...init, credentials: 'include' }),
@@ -298,8 +299,8 @@ const asServiceRole = {
   },
   get functions() {
     return {
-      invoke: (name, data = {}) =>
-        apiFetch('POST', `/api/functions/${name}`, data, SERVICE_HEADER),
+      invoke: (name, data = {}, opts = {}) =>
+        apiFetch('POST', `/api/functions/${name}`, data, SERVICE_HEADER, opts.signal || null),
     };
   },
   get integrations() { return {}; },
