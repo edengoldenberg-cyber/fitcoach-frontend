@@ -17,10 +17,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const lastScannedRef = useRef({ barcode: null, timestamp: 0 });
   const [scannedOnce, setScannedOnce] = useState(false);
   
-  const [mode, setMode] = useState('choose'); // 'choose', 'camera', 'image', 'manual', 'result', 'debug'
+  const [mode, setMode] = useState('choose'); // 'choose','camera','image','manual','result','learn-product','confirm-product','debug'
   const [loading, setLoading] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState(null);
   const [productData, setProductData] = useState(null);
+  const [productSource, setProductSource] = useState(null); // 'fitcoach_db' | 'openfoodfacts' | null
+  // Product learning flow state
+  const [learnStep, setLearnStep] = useState('choose'); // 'choose' | 'extracting' | 'manual-entry'
+  const [confirmProduct, setConfirmProduct] = useState(null); // product data to confirm before saving
   const [error, setError] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
@@ -87,6 +91,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setError(null);
       setScannedBarcode(null);
       setProductData(null);
+      setProductSource(null);
+      setLearnStep('choose');
+      setConfirmProduct(null);
       setManualBarcode('');
       setImagePreview(null);
       setCameraActive(false);
@@ -262,14 +269,56 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     }
   };
 
-  // סריקה מתמונה
+  // סריקה מתמונה — if in learn-product mode, calls AI for label extraction instead of barcode decode
   const handleImageCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // ── LEARN-PRODUCT PATH: extract nutrition label via AI ───────────────────
+    if (mode === 'learn-product' || learnStep === 'extracting') {
+      setMode('learn-product');
+      setLearnStep('extracting');
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise((res, rej) => {
+          reader.onload = ev => res(ev.target.result);
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        // Call meal photo analysis — the updated prompt has label-priority built in
+        const aiRes = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
+          meal_text: `תווית תזונה של מוצר ארוז (ברקוד: ${scannedBarcode || 'לא ידוע'})`,
+          image_url: base64,
+        });
+        const items = aiRes?.data?.items || aiRes?.items || [];
+        const first = items[0];
+        if (first && first.calories > 0) {
+          const grams = first.amount || 100;
+          setConfirmProduct({
+            barcode:         scannedBarcode || '',
+            name:            first.name || '',
+            brand:           '',
+            kcal_per_100:    grams > 0 ? Math.round((first.calories / grams) * 100) : '',
+            protein_per_100: grams > 0 ? Math.round(((first.protein  || 0) / grams) * 1000) / 10 : '',
+            carbs_per_100:   grams > 0 ? Math.round(((first.carbs    || 0) / grams) * 1000) / 10 : '',
+            fat_per_100:     grams > 0 ? Math.round(((first.fat      || 0) / grams) * 1000) / 10 : '',
+            serving_size_g:  grams !== 100 ? grams : '',
+          });
+          setMode('confirm-product');
+        } else {
+          setLearnStep('failed');
+        }
+      } catch (aiErr) {
+        console.error('[BarcodeScanner] Label AI error:', aiErr);
+        setLearnStep('failed');
+      }
+      e.target.value = '';
+      return;
+    }
+
     try {
       addLog('info', 'barcode', 'image capture started', { fileSize: file.size, fileType: file.type });
-      
+
       setMode('image');
       setError(null);
       setLoading(true);
@@ -348,101 +397,28 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     await searchProduct(cleanBarcode);
   };
 
-  // חיפוש מוצר
+  // חיפוש מוצר — uses lookupBarcode (FitCoach DB first, then OpenFoodFacts)
   const searchProduct = async (barcode) => {
     setLoading(true);
     setError(null);
-    console.log('[BarcodeScanner] Searching product for barcode:', barcode);
-    
     addLog('info', 'barcode', 'search product', { barcode });
 
     try {
-      // בדיקה מיידית במאגר המקומי (NutritionLog API)
-      console.log('[BarcodeScanner] GET /barcode/' + barcode);
-      const localItems = await base44.entities.FoodItem.filter({ 
-        barcodes: barcode 
-      });
-      console.log('[BarcodeScanner] Local items found:', localItems.length, localItems);
-      
-      addLog('info', 'barcode', 'local search complete', { 
-        foundCount: localItems.length,
-        hasItems: localItems.length > 0 
-      });
-      
-      if (localItems.length > 0) {
-        const item = localItems[0];
-        
-        // בדיקת איכות נתונים
-        const hasAllMacros = 
-          typeof item.per100_kcal === 'number' && item.per100_kcal > 0 &&
-          typeof item.per100_protein === 'number' && item.per100_protein >= 0 &&
-          typeof item.per100_carbs === 'number' && item.per100_carbs >= 0 &&
-          typeof item.per100_fat === 'number' && item.per100_fat >= 0;
+      const result = await base44.functions.invoke('lookupBarcode', { barcode });
+      const { product, source } = result?.data || {};
 
-        console.log('[BarcodeScanner] Local item macros check:', { hasAllMacros, item });
-
-        if (hasAllMacros) {
-          // מוצר נמצא - פתח מסך המוצר
-          const product = {
-            name: item.name_he || item.name,
-            barcode: barcode,
-            calories: item.per100_kcal,
-            protein: item.per100_protein,
-            carbs: item.per100_carbs,
-            fat: item.per100_fat,
-            serving_weight: item.serving_grams || 100
-          };
-          console.log('[BarcodeScanner] Product found in local database, opening product screen');
-          
-          addLog('success', 'barcode', 'product found in database', { 
-            productName: product.name,
-            barcode 
-          });
-          
-          setProductData(product);
-          setMode('result');
-          setLoading(false);
-          return;
-        }
+      if (product && product.kcal_per_100 > 0) {
+        addLog('success', 'barcode', 'product_found', { productName: product.name, source });
+        setProductData(product);
+        setProductSource(source);
+        setMode('result');
+      } else {
+        addLog('warn', 'barcode', 'product not found', { barcode });
+        setMode('not-found');
       }
-
-      // מוצר לא נמצא במאגר המקומי — ננסה Open Food Facts
-      console.log('[BarcodeScanner] Product not found locally, trying OpenFoodFacts...');
-      addLog('info', 'barcode', 'trying_open_food_facts', { barcode });
-
-      try {
-        const offResult = await base44.functions.invoke('searchOpenFoodFacts', { barcode });
-        if (offResult?.data?.success && offResult?.data?.product) {
-          const p = offResult.data.product;
-          const product = {
-            name: p.name,
-            barcode,
-            calories: p.calories,
-            protein: p.protein,
-            carbs: p.carbs,
-            fat: p.fat,
-            serving_weight: p.serving_weight || 100,
-            source: 'OpenFoodFacts',
-          };
-          addLog('success', 'barcode', 'product_found_openfoodfacts', { productName: product.name, barcode });
-          setProductData(product);
-          setMode('result');
-          setLoading(false);
-          return;
-        }
-      } catch (offErr) {
-        console.error('[BarcodeScanner] OpenFoodFacts error:', offErr);
-      }
-
-      addLog('warn', 'barcode', 'product not found', { barcode });
-      
-      setLoading(false);
-      setError(`מוצר לא נמצא (ברקוד: ${barcode})\n\nהמוצר לא קיים במאגר.\nניתן להזין ידנית דרך "הוסף ארוחה" בדף התזונה.`);
-      setMode('not-found');
-      
     } catch (err) {
       console.error('[BarcodeScanner] Search error:', err);
-      setError(`שגיאה בחיפוש מוצר:\n${err.message || 'שגיאה לא ידועה'}\n\nבדוק/י חיבור לאינטרנט ונסה/י שוב.`);
+      setError(`שגיאה בחיפוש מוצר:\n${err.message || 'שגיאה לא ידועה'}`);
       setMode('choose');
       setDebugInfo(prev => ({ ...prev, lastDecodeError: err.message }));
     } finally {
@@ -450,41 +426,22 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     }
   };
 
-  // הוספת מוצר
-  const addProductToMeal = async () => {
+  // הוספת מוצר — productData now carries kcal_per_100 / protein_per_100 etc. directly
+  const addProductToMeal = async (overrideGrams) => {
     if (!productData || !traineeEmail) return;
 
     try {
       setLoading(true);
 
-      // Derive per100 from external product data (per-serving → per-100g)
-      const serving = productData.serving_weight || 100;
-      const externalPer100Kcal    = productData.calories / (serving / 100);
-      const externalPer100Protein = productData.protein  / (serving / 100);
-      const externalPer100Carbs   = productData.carbs    / (serving / 100);
-      const externalPer100Fat     = productData.fat      / (serving / 100);
+      // productData from lookupBarcode already has per-100g values
+      const per100Kcal    = Number(productData.kcal_per_100)    || 0;
+      const per100Protein = Number(productData.protein_per_100) || 0;
+      const per100Carbs   = Number(productData.carbs_per_100)   || 0;
+      const per100Fat     = Number(productData.fat_per_100)     || 0;
 
-      // Canonical lock: if a UserFoodItem already exists for this food name, use its per100.
-      // Prevents external barcode data from overwriting established canonical values.
       const foodName = productData.name;
-      const foodNorm = normalizeFoodName(foodName);
-      const canonicalMatch = personalFoods.find(f => {
-        const s = normalizeFoodName(f.normalized_name || f.food_name || '');
-        return s && Number(f.calories_per_100g) > 0 &&
-          (s === foodNorm || foodNorm.includes(s) || s.includes(foodNorm));
-      });
 
-      const per100Kcal    = canonicalMatch ? canonicalMatch.calories_per_100g : externalPer100Kcal;
-      const per100Protein = canonicalMatch ? canonicalMatch.protein_per_100g  : externalPer100Protein;
-      const per100Carbs   = canonicalMatch ? canonicalMatch.carbs_per_100g    : externalPer100Carbs;
-      const per100Fat     = canonicalMatch ? canonicalMatch.fat_per_100g      : externalPer100Fat;
-
-      console.log(canonicalMatch
-        ? `[CANONICAL-LOCK] applied (barcode) "${foodName}" → stored ${per100Kcal} kcal/100g replaces external ${externalPer100Kcal.toFixed(2)}`
-        : `[CANONICAL-LOCK] skipped no match (barcode) "${foodName}" → using external ${externalPer100Kcal.toFixed(2)} kcal/100g`
-      );
-
-      const grams = 100; // barcode scans always use a 100g anchor
+      const grams = overrideGrams || productData.serving_size_g || 100;
       const mealData = {
         trainee_id:          trainee?.id,
         user_id:             user?.id,
@@ -492,18 +449,17 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         date:                selectedDate || new Date().toISOString().split('T')[0],
         meal_type:           'snack',
         food_name:           foodName,
-        food_item_id:        productData.barcode,
-        user_food_item_id:   canonicalMatch?.id,
-        food_database_scope: canonicalMatch ? 'personal' : 'global',
-        learning_event_type: 'search',
-        quantity:            1,
-        unit:                '100g',
+        food_item_id:        productData.food_item_id || null,
+        food_database_scope: productSource === 'fitcoach_db' ? 'global' : 'external',
+        learning_event_type: 'barcode',
+        quantity:            grams,
+        unit:                'gram',
         grams_equivalent:    grams,
         grams_final:         grams,
-        calories:  Math.round(per100Kcal),
-        protein:   Math.round(per100Protein * 100) / 100,
-        carbs:     Math.round(per100Carbs   * 100) / 100,
-        fat:       Math.round(per100Fat     * 100) / 100,
+        calories:  Math.round((per100Kcal    / 100) * grams),
+        protein:   Math.round(((per100Protein / 100) * grams) * 10) / 10,
+        carbs:     Math.round(((per100Carbs   / 100) * grams) * 10) / 10,
+        fat:       Math.round(((per100Fat     / 100) * grams) * 10) / 10,
         per100_kcal:    per100Kcal,
         per100_protein: per100Protein,
         per100_carbs:   per100Carbs,
@@ -539,10 +495,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             grams_equivalent: grams,
             grams_final:     grams,
             corrected_grams: grams,
-            calories:  Math.round(per100Kcal),
-            protein:   Math.round(per100Protein * 100) / 100,
-            carbs:     Math.round(per100Carbs   * 100) / 100,
-            fat:       Math.round(per100Fat     * 100) / 100,
+            calories:  mealData.calories,
+            protein:   mealData.protein,
+            carbs:     mealData.carbs,
+            fat:       mealData.fat,
             original_ai_text: `barcode:${productData.barcode}`,
           },
           imageContext: '',
@@ -999,50 +955,66 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
         {/* MODE: RESULT */}
         {mode === 'result' && productData && (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6">
-            <CheckCircle2 className="w-16 h-16 text-green-400" />
-            
+          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-4 overflow-y-auto">
+            <CheckCircle2 className="w-12 h-12 text-green-400 flex-shrink-0" />
+
             <div className="text-center">
-              <p className="text-sm text-white/70 mb-1">זוהה ברקוד:</p>
-              <p className="text-2xl font-bold text-white">{scannedBarcode}</p>
+              {scannedBarcode && <p className="text-xs text-white/50 mb-1">ברקוד: {scannedBarcode}</p>}
+              {productSource && (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                  productSource === 'fitcoach_db' ? 'bg-green-700/40 text-green-300' : 'bg-blue-700/40 text-blue-300'
+                }`}>
+                  {productSource === 'fitcoach_db' ? '✓ מאגר FitCoach' : '○ OpenFoodFacts'}
+                </span>
+              )}
             </div>
-            
-            <div className="w-full max-w-md bg-slate-900/50 rounded-xl p-6 border border-white/10 space-y-4">
+
+            <div className="w-full max-w-md bg-slate-900/50 rounded-xl p-5 border border-white/10 space-y-4">
               <h3 className="font-bold text-xl text-white text-center">{productData.name}</h3>
-              
+              {productData.brand && <p className="text-center text-white/50 text-sm">{productData.brand}</p>}
+
+              <div className="text-center text-white/50 text-xs">ל-100 גרם</div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
-                  <p className="text-white/60 text-xs mb-1">קלוריות (100ג׳)</p>
-                  <p className="text-green-400 font-bold text-lg">
-                    {Math.round(productData.calories / ((productData.serving_weight || 100) / 100))}
-                  </p>
+                  <p className="text-white/60 text-xs mb-1">קלוריות</p>
+                  <p className="text-green-400 font-bold text-lg">{Math.round(productData.kcal_per_100)}</p>
                 </div>
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-white/60 text-xs mb-1">חלבון</p>
-                  <p className="text-blue-400 font-bold text-lg">
-                    {(productData.protein / ((productData.serving_weight || 100) / 100)).toFixed(1)}ג׳
-                  </p>
+                  <p className="text-blue-400 font-bold text-lg">{Number(productData.protein_per_100).toFixed(1)}ג׳</p>
                 </div>
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-white/60 text-xs mb-1">פחמימות</p>
-                  <p className="text-orange-400 font-bold text-lg">
-                    {(productData.carbs / ((productData.serving_weight || 100) / 100)).toFixed(1)}ג׳
-                  </p>
+                  <p className="text-orange-400 font-bold text-lg">{Number(productData.carbs_per_100).toFixed(1)}ג׳</p>
                 </div>
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-white/60 text-xs mb-1">שומן</p>
-                  <p className="text-purple-400 font-bold text-lg">
-                    {(productData.fat / ((productData.serving_weight || 100) / 100)).toFixed(1)}ג׳
-                  </p>
+                  <p className="text-purple-400 font-bold text-lg">{Number(productData.fat_per_100).toFixed(1)}ג׳</p>
                 </div>
               </div>
+
+              {productData.serving_size_g && (
+                <div className="text-center text-xs text-white/40">
+                  גודל מנה: {productData.serving_size_g}ג׳
+                  {' · '}
+                  {Math.round((productData.kcal_per_100 / 100) * productData.serving_size_g)} קל׳ למנה
+                </div>
+              )}
             </div>
+
+            {/* If from external source — offer to save to FitCoach DB */}
+            {productSource === 'openfoodfacts' && (
+              <p className="text-white/40 text-xs text-center max-w-xs">
+                מוצר זה הגיע ממאגר חיצוני. לאחר הוספה, הנתונים יישמרו ב-FitCoach.
+              </p>
+            )}
 
             <div className="flex gap-2 w-full max-w-md">
               <Button
                 onClick={() => {
                   setMode('choose');
                   setProductData(null);
+                  setProductSource(null);
                   setScannedBarcode(null);
                   setImagePreview(null);
                 }}
@@ -1052,7 +1024,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 סריקה חדשה
               </Button>
               <Button
-                onClick={addProductToMeal}
+                onClick={() => addProductToMeal()}
                 disabled={loading}
                 className="flex-1 bg-green-600 hover:bg-green-700"
               >
@@ -1235,56 +1207,173 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           );
         })()}
 
-        {/* MODE: NOT FOUND */}
+        {/* MODE: NOT FOUND — product learning entry */}
         {mode === 'not-found' && (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6">
-            <AlertCircle className="w-16 h-16 text-orange-400" />
-            
-            <div className="text-center space-y-3">
-              <p className="text-xl font-bold text-white">מוצר לא נמצא</p>
-              {scannedBarcode && (
-                <p className="text-lg text-white/70">ברקוד: {scannedBarcode}</p>
-              )}
-              <p className="text-white/60 max-w-sm">
-                המוצר לא קיים במאגר שלנו
+          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-5 overflow-y-auto">
+            <AlertCircle className="w-14 h-14 text-orange-400 flex-shrink-0" />
+
+            <div className="text-center space-y-2">
+              <p className="text-xl font-bold text-white">מוצר חדש — בוא נלמד אותו</p>
+              {scannedBarcode && <p className="text-sm text-white/50">ברקוד: {scannedBarcode}</p>}
+              <p className="text-white/60 text-sm max-w-xs">
+                המוצר לא קיים במאגר. נוכל ללמד את FitCoach את הערכים שלו.
               </p>
             </div>
 
-            <div className="w-full max-w-md space-y-3">
+            <div className="w-full max-w-sm space-y-3">
               <Button
-                onClick={() => setMode('manual')}
-                className="w-full bg-purple-600 hover:bg-purple-700 text-white h-12"
+                onClick={() => {
+                  setLearnStep('extracting');
+                  setMode('learn-product');
+                  // Trigger label photo capture
+                  setTimeout(() => fileInputRef.current?.click(), 100);
+                }}
+                className="w-full h-14 bg-blue-600 hover:bg-blue-700 text-white font-medium gap-2"
               >
-                הזנה ידנית
+                📷 צלם תווית תזונה
               </Button>
-              
+
               <Button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white h-12"
+                onClick={() => {
+                  setLearnStep('manual-entry');
+                  setConfirmProduct({
+                    barcode: scannedBarcode || '',
+                    name: '',
+                    brand: '',
+                    kcal_per_100: '',
+                    protein_per_100: '',
+                    carbs_per_100: '',
+                    fat_per_100: '',
+                    serving_size_g: '',
+                  });
+                  setMode('confirm-product');
+                }}
+                className="w-full h-14 bg-purple-600 hover:bg-purple-700 text-white font-medium gap-2"
               >
-                צילום תווית
+                ✏️ הזן ערכים ידנית
               </Button>
             </div>
 
-            <div className="flex gap-2 w-full max-w-md">
+            <Button
+              onClick={() => { setMode('choose'); setScannedBarcode(null); setError(null); }}
+              variant="ghost"
+              className="text-white/50 hover:text-white text-sm"
+            >
+              ביטול
+            </Button>
+          </div>
+        )}
+
+        {/* MODE: LEARN-PRODUCT — scanning label photo for AI extraction */}
+        {mode === 'learn-product' && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-5">
+            {learnStep === 'extracting' ? (
+              <>
+                <Loader2 className="w-14 h-14 text-blue-400 animate-spin" />
+                <p className="text-white font-semibold text-lg">מחלץ ערכי תזונה מהתמונה...</p>
+                <p className="text-white/50 text-sm">זה יכול לקחת עד 10 שניות</p>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="w-14 h-14 text-red-400" />
+                <p className="text-white font-semibold">לא הצלחנו לחלץ ערכים</p>
+                <div className="flex gap-2">
+                  <Button onClick={() => { setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
+                    className="bg-blue-600 hover:bg-blue-700">נסה שוב</Button>
+                  <Button onClick={() => {
+                    setLearnStep('manual-entry');
+                    setConfirmProduct({ barcode: scannedBarcode || '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '' });
+                    setMode('confirm-product');
+                  }} variant="outline" className="border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* MODE: CONFIRM-PRODUCT — review/edit before saving to DB */}
+        {mode === 'confirm-product' && confirmProduct && (
+          <div className="flex-1 flex flex-col p-5 space-y-4 overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-bold text-lg">אישור ושמירת מוצר</h3>
+              <button onClick={() => setMode('not-found')} className="text-white/50 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <p className="text-white/50 text-xs">בדוק/י את הפרטים לפני השמירה. ניתן לערוך.</p>
+
+            {[
+              { key: 'name',            label: 'שם מוצר',         type: 'text' },
+              { key: 'brand',           label: 'מותג',             type: 'text' },
+              { key: 'kcal_per_100',    label: 'קלוריות (100ג׳)', type: 'number' },
+              { key: 'protein_per_100', label: 'חלבון (100ג׳)',   type: 'number' },
+              { key: 'carbs_per_100',   label: 'פחמימות (100ג׳)', type: 'number' },
+              { key: 'fat_per_100',     label: 'שומן (100ג׳)',    type: 'number' },
+              { key: 'serving_size_g',  label: 'גודל מנה (ג׳)',   type: 'number' },
+            ].map(({ key, label, type }) => (
+              <div key={key}>
+                <label className="text-white/60 text-xs block mb-1">{label}</label>
+                <input
+                  type={type}
+                  value={confirmProduct[key] ?? ''}
+                  onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
+                  className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                  placeholder={label}
+                />
+              </div>
+            ))}
+
+            <div className="flex gap-2 pt-2">
               <Button
-                onClick={() => {
-                  setMode('choose');
-                  setScannedBarcode(null);
-                  setError(null);
-                }}
+                onClick={() => setMode('not-found')}
                 variant="outline"
                 className="flex-1 border-white/30 text-white hover:bg-white/10"
               >
-                סריקה חדשה
+                ביטול
               </Button>
               <Button
-                onClick={handleClose}
-                className="flex-1 bg-slate-600 hover:bg-slate-700"
+                disabled={!confirmProduct.name || !confirmProduct.kcal_per_100 || loading}
+                onClick={async () => {
+                  setLoading(true);
+                  try {
+                    const saveRes = await base44.functions.invoke('saveLearnedProduct', {
+                      barcode: confirmProduct.barcode || scannedBarcode,
+                      name: confirmProduct.name,
+                      brand: confirmProduct.brand,
+                      kcal_per_100:    Number(confirmProduct.kcal_per_100),
+                      protein_per_100: Number(confirmProduct.protein_per_100) || 0,
+                      carbs_per_100:   Number(confirmProduct.carbs_per_100)   || 0,
+                      fat_per_100:     Number(confirmProduct.fat_per_100)     || 0,
+                      serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                    });
+                    if (saveRes?.ok !== false) {
+                      // Show as result screen
+                      setProductData({
+                        food_item_id:    saveRes?.data?.product?.id || null,
+                        name:            confirmProduct.name,
+                        brand:           confirmProduct.brand || '',
+                        barcode:         confirmProduct.barcode || scannedBarcode,
+                        kcal_per_100:    Number(confirmProduct.kcal_per_100),
+                        protein_per_100: Number(confirmProduct.protein_per_100) || 0,
+                        carbs_per_100:   Number(confirmProduct.carbs_per_100)   || 0,
+                        fat_per_100:     Number(confirmProduct.fat_per_100)     || 0,
+                        serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                      });
+                      setProductSource('fitcoach_db');
+                      setMode('result');
+                    } else {
+                      setError(saveRes?.error || 'שגיאה בשמירה');
+                    }
+                  } catch (err) {
+                    setError(err.message || 'שגיאה בשמירה');
+                  } finally {
+                    setLoading(false);
+                  }
+                }}
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
               >
-                סגור
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'אישור ושמירת מוצר'}
               </Button>
             </div>
+            {error && <p className="text-red-400 text-xs">{error}</p>}
           </div>
         )}
 

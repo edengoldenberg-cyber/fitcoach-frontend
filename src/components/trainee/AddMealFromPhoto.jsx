@@ -836,6 +836,19 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
               </div>
             </div>
 
+            {/* Low-confidence prompt to manually correct values */}
+            {analysis?.confidence === 'low' && (
+              <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">הנתונים אינם בטוחים</p>
+                  <p className="text-xs text-amber-600 mt-0.5">מומלץ לתקן ידנית לדיוק מרבי</p>
+                </div>
+                <Button size="sm" onClick={() => setStep('edit')} className="text-white gap-1.5 h-8 px-3 rounded-lg flex-shrink-0" style={{ backgroundColor: '#f59e0b' }}>
+                  <Edit2 className="w-3 h-3" /> עריכת ערכים
+                </Button>
+              </div>
+            )}
+
             {/* Product search */}
             <div>
               {!showProductSearch ? (
@@ -881,8 +894,8 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
             <div className="bg-slate-50 rounded-xl border p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-slate-800">{analysis.meal_name}</h3>
-                <Button variant="ghost" size="sm" onClick={() => setStep('edit')} className="text-blue-600 gap-1 text-xs">
-                  <Edit2 className="w-3 h-3" /> ערוך
+                <Button size="sm" onClick={() => setStep('edit')} className="text-white text-xs gap-1.5 h-8 px-3 rounded-lg" style={{ backgroundColor: '#79DBD6' }}>
+                  <Edit2 className="w-3 h-3" /> עריכת ערכים
                 </Button>
               </div>
 
@@ -1030,10 +1043,13 @@ export default function AddMealFromPhoto({ open, onClose, onSuccess, mealType, t
         {step === 'edit' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-800">ערוך רכיבים</h3>
+              <h3 className="font-bold text-slate-800">עריכת ערכים</h3>
               <Button variant="ghost" size="sm" onClick={() => setStep('review')} className="text-slate-500 text-xs gap-1">
-                <X className="w-3 h-3" /> סגור
+                <X className="w-3 h-3" /> חזרה לסיכום
               </Button>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700">
+              💡 שינוי גרם מחשב מחדש את כל הערכים. שינוי ישיר של קלוריות/מאקרו שומר את הערך שהזנת.
             </div>
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {editedItems.map((item, index) => (
