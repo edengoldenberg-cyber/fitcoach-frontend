@@ -478,10 +478,27 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         );
       }
 
-      // Learning write: upsert UserFoodItem so future scans/analyses recognise this food.
-      // isManualCorrection=false means the canonical lock inside saveAIFoodCorrection fires:
-      // existing nutrition values are never overwritten — only usage_count is bumped.
-      // Fire-and-forget: a learning failure must not prevent the meal from being saved.
+      // ── OFacts caching: save product to FitCoach DB so next scan is instant (no re-fetch) ──
+      // Only runs when this product came from OpenFoodFacts and is not already in FitCoach DB.
+      // Fire-and-forget: a caching failure must NOT prevent the meal from being saved.
+      if (productSource === 'openfoodfacts' && productData.name && per100Kcal > 0) {
+        base44.functions.invoke('saveLearnedProduct', {
+          barcode:         productData.barcode,
+          name:            productData.name,
+          brand:           productData.brand || undefined,
+          kcal_per_100:    per100Kcal,
+          protein_per_100: per100Protein,
+          carbs_per_100:   per100Carbs,
+          fat_per_100:     per100Fat,
+          serving_size_g:  productData.serving_size_g || undefined,
+          source:          'openfoodfacts',  // tracked for provenance
+        }).then(r => console.log('[BarcodeScanner] OFacts product cached in FitCoach DB:', r?.data?.action))
+          .catch(err => console.warn('[BarcodeScanner] OFacts cache failed (non-fatal):', err?.message));
+      }
+
+      // ── UserFoodItem learning write — personal record / canonical lock ──────────
+      // isManualCorrection=false: canonical lock fires — existing per-100g values never overwritten.
+      // Fire-and-forget: learning failure must not block the meal save.
       if (trainee) {
         saveAIFoodCorrection({
           user,
@@ -1002,10 +1019,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               )}
             </div>
 
-            {/* If from external source — offer to save to FitCoach DB */}
+            {/* OFacts attribution (CC BY-SA required) + cache notice */}
             {productSource === 'openfoodfacts' && (
-              <p className="text-white/40 text-xs text-center max-w-xs">
-                מוצר זה הגיע ממאגר חיצוני. לאחר הוספה, הנתונים יישמרו ב-FitCoach.
+              <p className="text-white/30 text-[9px] text-center max-w-xs">
+                מקור: Open Food Facts (CC BY-SA) · לאחר הוספה, נתוני המוצר יישמרו ב-FitCoach לשימוש עתידי
               </p>
             )}
 
@@ -1334,6 +1351,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 onClick={async () => {
                   setLoading(true);
                   try {
+                    // learnStep tells us the origin: 'extracting'=AI label, 'manual-entry'=user typed
+                    const confirmSource = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
                     const saveRes = await base44.functions.invoke('saveLearnedProduct', {
                       barcode: confirmProduct.barcode || scannedBarcode,
                       name: confirmProduct.name,
@@ -1343,6 +1362,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       carbs_per_100:   Number(confirmProduct.carbs_per_100)   || 0,
                       fat_per_100:     Number(confirmProduct.fat_per_100)     || 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                      source:          confirmSource,
                     });
                     if (saveRes?.ok !== false) {
                       // Show as result screen
