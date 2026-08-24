@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar, ChevronRight, ChevronLeft, Plus, Trash2, Utensils, Pencil, Database, Droplets, User, Sparkles, Check, X } from "lucide-react";
+import { Calendar, ChevronRight, ChevronLeft, Plus, Trash2, Utensils, Pencil, Database, Droplets, User, Sparkles, Check, X, ScanBarcode } from "lucide-react";
 import MacroWheels from '@/components/mealplan/MacroWheels';
 import EditPersonalInfo from '@/components/trainee/EditPersonalInfo';
 import AddNewProductDialog from '@/components/trainee/AddNewProductDialog';
@@ -41,6 +41,7 @@ import MealGroupList from '@/components/trainee/MealGroupList';
 import QuickNutritionLogger from '@/components/trainee/QuickNutritionLogger';
 import AddMealActionSheet from '@/components/trainee/AddMealActionSheet';
 import DuplicateFoodDialog from '@/components/trainee/DuplicateFoodDialog';
+import BarcodeScanner from '@/components/trainee/BarcodeScanner';
 import { batchUpdateNutritionMemory, normalizeFoodName, recordDeletedFoodInMemory, recordQuickFoodUse } from '@/components/trainee/nutritionLearning';
 import { buildCanonicalTraineeFields, getIsraelDateString, invalidateCoachTraineeSyncQueries, logSyncEvent, nutritionRecordMatchesTrainee } from '@/utils/nutritionSync';
 
@@ -110,6 +111,7 @@ export default function NutritionLog() {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [suggestStatusText, setSuggestStatusText] = useState('');
   const [showAddProductDialog, setShowAddProductDialog] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showAddItemSheet, setShowAddItemSheet] = useState(false);
   const [showQuickAddDialog, setShowQuickAddDialog] = useState(false);
   const [manualInitialMode, setManualInitialMode] = useState('choose');
@@ -734,38 +736,46 @@ export default function NutritionLog() {
           </div>
           
           {/* AI Buttons Row */}
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-1.5">
             <Button
               data-testid="open-suggest-dialog"
               onClick={() => {
                 setAddingMealType('snack');
                 setShowSuggestionDialog(true);
               }}
-              className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white shadow-lg text-xs"
+              className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white shadow-lg text-xs px-1"
             >
-              <span className="text-lg mr-0.5">✨</span>
+              <span className="text-base mr-0.5">✨</span>
               הצע
             </Button>
             <Button
               data-testid="open-analyze-dialog"
               onClick={() => setShowAnalyzeDialog(true)}
-              className="bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white shadow-lg text-xs"
+              className="bg-gradient-to-r from-teal-400 to-teal-500 hover:from-teal-500 hover:to-teal-600 text-white shadow-lg text-xs px-1"
             >
-              <span className="text-lg mr-0.5">🔍</span>
+              <span className="text-base mr-0.5">🔍</span>
               נתח
             </Button>
             <Button
               onClick={() => { setPhotoMealType(null); setShowPhotoDialog(true); }}
-              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg text-xs"
+              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-lg text-xs px-1"
             >
-              <span className="text-lg mr-0.5">📸</span>
+              <span className="text-base mr-0.5">📸</span>
               צלם
             </Button>
             <Button
-              onClick={() => setShowAddProductDialog(true)}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg text-xs"
+              data-testid="open-barcode-scanner"
+              onClick={() => setShowBarcodeScanner(true)}
+              className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg text-xs px-1"
             >
-              <span className="text-lg mr-0.5">➕</span>
+              <ScanBarcode className="w-3.5 h-3.5 mr-0.5 flex-shrink-0" />
+              ברקוד
+            </Button>
+            <Button
+              onClick={() => setShowAddProductDialog(true)}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg text-xs px-1"
+            >
+              <span className="text-base mr-0.5">➕</span>
               חדש
             </Button>
           </div>
@@ -1147,6 +1157,18 @@ export default function NutritionLog() {
          open={showAddProductDialog}
          onClose={() => setShowAddProductDialog(false)}
          onSuccess={() => queryClient.invalidateQueries({ queryKey: ['meals'] })}
+       />
+       {/* BarcodeScanner — reuses existing Dialog component.
+           traineeEmail uses trainee.user_email so CoachAsTrainee writes to the
+           preview trainee's account, not the logged-in coach's account. */}
+       <BarcodeScanner
+         open={showBarcodeScanner}
+         onClose={() => {
+           setShowBarcodeScanner(false);
+           queryClient.invalidateQueries({ queryKey: ['meals'] });
+         }}
+         traineeEmail={trainee?.user_email || user?.email}
+         selectedDate={dateStr}
        />
        </div>
       </RouteGuard>
