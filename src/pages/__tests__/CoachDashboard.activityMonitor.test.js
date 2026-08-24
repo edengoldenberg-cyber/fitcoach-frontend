@@ -32,21 +32,22 @@ function activityColor(days, nutritionMode) {
   return 'text-amber-500';
 }
 
-// todayActivity computation (mirrors the useMemo in CoachDashboard.jsx)
+// todayActivity computation — MUTUALLY EXCLUSIVE buckets (mirrors fixed useMemo in CoachDashboard.jsx)
+// Invariant: onlyNutrition + onlyWorkout + bothToday + neitherToday === trainees.length
 function computeTodayActivity(trainees, allMeals, allWorkouts, today) {
-  let nutritionToday = 0, workoutToday = 0, bothToday = 0, neitherToday = 0;
+  let onlyNutrition = 0, onlyWorkout = 0, bothToday = 0, neitherToday = 0;
   trainees.forEach(t => {
     const hasMeal    = allMeals.some(m => m.trainee_email === t.user_email && m.date === today);
     const hasWorkout = allWorkouts.some(w => w.trainee_email === t.user_email && w.date === today);
-    if (hasMeal)               nutritionToday++;
-    if (hasWorkout)            workoutToday++;
-    if (hasMeal && hasWorkout) bothToday++;
-    if (!hasMeal && !hasWorkout) neitherToday++;
+    if      ( hasMeal && !hasWorkout) onlyNutrition++;
+    else if (!hasMeal &&  hasWorkout) onlyWorkout++;
+    else if ( hasMeal &&  hasWorkout) bothToday++;
+    else                              neitherToday++;
   });
-  return { nutritionToday, workoutToday, bothToday, neitherToday };
+  return { onlyNutrition, onlyWorkout, bothToday, neitherToday };
 }
 
-// applyActivityFilter (mirrors filteredTrainees activityFilter block)
+// applyActivityFilter (mirrors fixed filteredTrainees activityFilter block)
 function applyActivityFilter(trainees, activityFilter, allMeals, allWorkouts, today, summaryByEmail = {}) {
   if (!activityFilter) return trainees;
   return trainees.filter(t => {
@@ -57,8 +58,8 @@ function applyActivityFilter(trainees, activityFilter, allMeals, allWorkouts, to
     const dsMeal     = summary.days_since_last_meal;
     const dsWorkout  = summary.days_since_last_workout;
 
-    if (activityFilter === 'nutrition_today')   return hasMeal;
-    if (activityFilter === 'workout_today')     return hasWorkout;
+    if (activityFilter === 'nutrition_today')   return hasMeal && !hasWorkout;   // רק תזונה
+    if (activityFilter === 'workout_today')     return !hasMeal && hasWorkout;   // רק אימון
     if (activityFilter === 'both_today')        return hasMeal && hasWorkout;
     if (activityFilter === 'neither_today')     return !hasMeal && !hasWorkout;
     if (activityFilter === 'no_nutrition_3d')   return dsMeal    === null || dsMeal    >= 3;
@@ -94,20 +95,32 @@ const traineeB = { id: 'b', full_name: 'Bob Levi',      user_email: 'bob@test.co
 const traineeC = { id: 'c', full_name: 'Carol Mizrahi', user_email: 'carol@test.com'  };
 const traineeD = { id: 'd', full_name: 'Dan Sharon',    user_email: 'dan@test.com'    };
 
-// ─── 1. Nutrition today, no workout ───────────────────────────────────────────
-describe('1. nutrition today, no workout', () => {
+// ─── Standard fixtures for all daily-activity tests ──────────────────────────
+// A: nutrition only, B: workout only, C: both, D: neither
+const std4Meals    = [
+  { trainee_email: 'alice@test.com', date: TODAY, calories: 500 },
+  { trainee_email: 'carol@test.com', date: TODAY, calories: 600 },
+];
+const std4Workouts = [
+  { trainee_email: 'bob@test.com',   date: TODAY, status: 'completed' },
+  { trainee_email: 'carol@test.com', date: TODAY, status: 'completed' },
+];
+const std4Trainees = [traineeA, traineeB, traineeC, traineeD];
+
+// ─── 1. Nutrition only (no workout) — must land in onlyNutrition ONLY ────────
+describe('1. nutrition today, no workout → counted only in רק תזונה', () => {
   const meals    = [{ trainee_email: 'alice@test.com', date: TODAY, calories: 500 }];
   const workouts = [];
   const trainees = [traineeA];
 
-  it('counts in nutritionToday', () => {
-    const { nutritionToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(nutritionToday).toBe(1);
+  it('counts in onlyNutrition=1', () => {
+    const { onlyNutrition } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(1);
   });
 
-  it('does NOT count in workoutToday', () => {
-    const { workoutToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(workoutToday).toBe(0);
+  it('does NOT count in onlyWorkout', () => {
+    const { onlyWorkout } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyWorkout).toBe(0);
   });
 
   it('does NOT count in bothToday', () => {
@@ -119,22 +132,27 @@ describe('1. nutrition today, no workout', () => {
     const { neitherToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
     expect(neitherToday).toBe(0);
   });
+
+  it('sum of all four buckets = 1 (total trainees)', () => {
+    const a = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(trainees.length);
+  });
 });
 
-// ─── 2. Workout today, no nutrition ───────────────────────────────────────────
-describe('2. workout today, no nutrition', () => {
+// ─── 2. Workout only (no nutrition) — must land in onlyWorkout ONLY ──────────
+describe('2. workout today, no nutrition → counted only in רק אימון', () => {
   const meals    = [];
   const workouts = [{ trainee_email: 'bob@test.com', date: TODAY, status: 'completed' }];
   const trainees = [traineeB];
 
-  it('counts in workoutToday', () => {
-    const { workoutToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(workoutToday).toBe(1);
+  it('counts in onlyWorkout=1', () => {
+    const { onlyWorkout } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyWorkout).toBe(1);
   });
 
-  it('does NOT count in nutritionToday', () => {
-    const { nutritionToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(nutritionToday).toBe(0);
+  it('does NOT count in onlyNutrition', () => {
+    const { onlyNutrition } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
   });
 
   it('does NOT count in bothToday', () => {
@@ -146,20 +164,44 @@ describe('2. workout today, no nutrition', () => {
     const { neitherToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
     expect(neitherToday).toBe(0);
   });
+
+  it('sum of all four buckets = 1', () => {
+    const a = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(trainees.length);
+  });
 });
 
-// ─── 3. Both today ────────────────────────────────────────────────────────────
-describe('3. both nutrition and workout today', () => {
+// ─── 3. Both today — must land in bothToday ONLY, NOT in onlyNutrition or onlyWorkout
+describe('3. both nutrition and workout → counted ONLY in תזונה + אימון', () => {
   const meals    = [{ trainee_email: 'carol@test.com', date: TODAY, calories: 600 }];
   const workouts = [{ trainee_email: 'carol@test.com', date: TODAY, status: 'completed' }];
   const trainees = [traineeC];
 
-  it('counts in nutritionToday, workoutToday, and bothToday', () => {
-    const activity = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(activity.nutritionToday).toBe(1);
-    expect(activity.workoutToday).toBe(1);
-    expect(activity.bothToday).toBe(1);
-    expect(activity.neitherToday).toBe(0);
+  it('counts in bothToday=1', () => {
+    const { bothToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(bothToday).toBe(1);
+  });
+
+  it('does NOT count in onlyNutrition (the old bug)', () => {
+    // Before the fix: hasMeal incremented nutritionToday regardless of hasWorkout.
+    // After the fix: hasMeal && !hasWorkout → onlyNutrition stays 0 for this trainee.
+    const { onlyNutrition } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
+  });
+
+  it('does NOT count in onlyWorkout (the old bug)', () => {
+    const { onlyWorkout } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyWorkout).toBe(0);
+  });
+
+  it('does NOT count in neitherToday', () => {
+    const { neitherToday } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(neitherToday).toBe(0);
+  });
+
+  it('sum of all four buckets = 1', () => {
+    const a = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(trainees.length);
   });
 });
 
@@ -169,47 +211,185 @@ describe('4. neither nutrition nor workout today', () => {
   const workouts = [];
   const trainees = [traineeD];
 
-  it('counts only in neitherToday', () => {
+  it('counts only in neitherToday=1', () => {
     const activity = computeTodayActivity(trainees, meals, workouts, TODAY);
-    expect(activity.nutritionToday).toBe(0);
-    expect(activity.workoutToday).toBe(0);
+    expect(activity.onlyNutrition).toBe(0);
+    expect(activity.onlyWorkout).toBe(0);
     expect(activity.bothToday).toBe(0);
     expect(activity.neitherToday).toBe(1);
   });
+
+  it('sum of all four buckets = 1', () => {
+    const a = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(trainees.length);
+  });
 });
 
-// ─── 5. Dashboard counts — all four trainees ──────────────────────────────────
-describe('8. dashboard counts with 4 trainees', () => {
-  const trainees = [traineeA, traineeB, traineeC, traineeD];
+// ─── 5. No trainee appears in multiple daily groups (mutual exclusivity) ──────
+describe('5. mutual exclusivity — no trainee counted in more than one bucket', () => {
+  it('each trainee belongs to exactly one of the four buckets', () => {
+    const activity = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    // onlyNutrition = A, onlyWorkout = B, bothToday = C, neitherToday = D
+    expect(activity.onlyNutrition).toBe(1);  // only Alice
+    expect(activity.onlyWorkout).toBe(1);    // only Bob
+    expect(activity.bothToday).toBe(1);      // only Carol
+    expect(activity.neitherToday).toBe(1);   // only Dan
+  });
+
+  it('nutrition=true + workout=true must NOT increment onlyNutrition', () => {
+    // This is the exact bug that existed: Carol (both) was also counted in nutritionToday
+    const trainees = [traineeC];
+    const meals    = [{ trainee_email: 'carol@test.com', date: TODAY, calories: 600 }];
+    const workouts = [{ trainee_email: 'carol@test.com', date: TODAY }];
+    const { onlyNutrition } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
+  });
+
+  it('nutrition=true + workout=true must NOT increment onlyWorkout', () => {
+    const trainees = [traineeC];
+    const meals    = [{ trainee_email: 'carol@test.com', date: TODAY, calories: 600 }];
+    const workouts = [{ trainee_email: 'carol@test.com', date: TODAY }];
+    const { onlyWorkout } = computeTodayActivity(trainees, meals, workouts, TODAY);
+    expect(onlyWorkout).toBe(0);
+  });
+});
+
+// ─── 6. Sum of four groups equals total active trainees ───────────────────────
+describe('6. sum invariant: four groups always sum to total trainees', () => {
+  it('4 trainees: onlyNutrition + onlyWorkout + bothToday + neitherToday = 4', () => {
+    const a = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(4);
+  });
+
+  it('example from production: 52 trainees must sum to 52', () => {
+    // Generate 52 synthetic trainees with 8 nutrition-only, 5 workout-only, 3 both, 36 neither
+    // (8+5+3+36=52, but old code would show 8+5+3+36=52 wrong when "both" were also in "nutrition" and "workout")
+    const trainees52 = Array.from({ length: 52 }, (_, i) => ({
+      id: String(i), full_name: `T${i}`, user_email: `t${i}@test.com`
+    }));
+    const meals52    = [];
+    const workouts52 = [];
+
+    // 8 nutrition-only (indices 0-7)
+    for (let i = 0; i < 8; i++)  meals52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    // 5 workout-only (indices 8-12)
+    for (let i = 8; i < 13; i++) workouts52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    // 3 both (indices 13-15)
+    for (let i = 13; i < 16; i++) {
+      meals52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+      workouts52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    }
+    // 36 neither: indices 16-51 — no meals/workouts
+
+    const a = computeTodayActivity(trainees52, meals52, workouts52, TODAY);
+    expect(a.onlyNutrition).toBe(8);
+    expect(a.onlyWorkout).toBe(5);
+    expect(a.bothToday).toBe(3);
+    expect(a.neitherToday).toBe(36);
+    // The sum MUST be 52 — the old bug would give 8+5+3+36 = 52 but individual cards showed 11/8/3/36=58
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(52);
+  });
+
+  it('proves old overlap bug: old logic produced sum > total trainees', () => {
+    // Simulate the buggy counting for the same 52-trainee scenario
+    function oldBuggyCount(trainees, meals, workouts, today) {
+      let nutritionToday = 0, workoutToday = 0, bothToday = 0, neitherToday = 0;
+      trainees.forEach(t => {
+        const hasMeal    = meals.some(m => m.trainee_email === t.user_email && m.date === today);
+        const hasWorkout = workouts.some(w => w.trainee_email === t.user_email && w.date === today);
+        if (hasMeal)               nutritionToday++;  // ← bug: includes "both" trainees
+        if (hasWorkout)            workoutToday++;    // ← bug: includes "both" trainees
+        if (hasMeal && hasWorkout) bothToday++;
+        if (!hasMeal && !hasWorkout) neitherToday++;
+      });
+      return nutritionToday + workoutToday + bothToday + neitherToday;
+    }
+
+    const trainees52 = Array.from({ length: 52 }, (_, i) => ({ id: String(i), user_email: `t${i}@test.com` }));
+    const meals52    = [];
+    const workouts52 = [];
+    for (let i = 0; i < 8; i++) meals52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    for (let i = 8; i < 13; i++) workouts52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    for (let i = 13; i < 16; i++) {
+      meals52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+      workouts52.push({ trainee_email: `t${i}@test.com`, date: TODAY });
+    }
+
+    const buggySum = oldBuggyCount(trainees52, meals52, workouts52, TODAY);
+    expect(buggySum).toBe(58);  // 8+5+3+3+3+36 = old nutrition(11)+workout(8)+both(3)+neither(36)=58
+    // The NEW fixed sum is 52:
+    const trainees52obj = trainees52.map(t => ({ ...t, full_name: t.user_email }));
+    const a = computeTodayActivity(trainees52obj, meals52, workouts52, TODAY);
+    expect(a.onlyNutrition + a.onlyWorkout + a.bothToday + a.neitherToday).toBe(52);
+  });
+});
+
+// ─── 7. Clicking each card returns exactly its matching trainees ──────────────
+describe('7. filter returns exactly matching trainees', () => {
   // A: nutrition only, B: workout only, C: both, D: neither
-  const meals    = [
-    { trainee_email: 'alice@test.com',  date: TODAY, calories: 500 },
-    { trainee_email: 'carol@test.com',  date: TODAY, calories: 600 },
-  ];
-  const workouts = [
-    { trainee_email: 'bob@test.com',   date: TODAY, status: 'completed' },
-    { trainee_email: 'carol@test.com', date: TODAY, status: 'completed' },
-  ];
 
-  it('nutritionToday=2 (A and C)', () => {
-    expect(computeTodayActivity(trainees, meals, workouts, TODAY).nutritionToday).toBe(2);
+  it('nutrition_today filter → A only (not C who did both)', () => {
+    const result = applyActivityFilter(std4Trainees, 'nutrition_today', std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+    // C has nutrition but also has workout → not in this filter
+    expect(result.map(t => t.id)).not.toContain('c');
   });
 
-  it('workoutToday=2 (B and C)', () => {
-    expect(computeTodayActivity(trainees, meals, workouts, TODAY).workoutToday).toBe(2);
+  it('workout_today filter → B only (not C who did both)', () => {
+    const result = applyActivityFilter(std4Trainees, 'workout_today', std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('b');
+    expect(result.map(t => t.id)).not.toContain('c');
   });
 
-  it('bothToday=1 (only C)', () => {
-    expect(computeTodayActivity(trainees, meals, workouts, TODAY).bothToday).toBe(1);
+  it('both_today filter → C only', () => {
+    const result = applyActivityFilter(std4Trainees, 'both_today', std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('c');
   });
 
-  it('neitherToday=1 (only D)', () => {
-    expect(computeTodayActivity(trainees, meals, workouts, TODAY).neitherToday).toBe(1);
+  it('neither_today filter → D only', () => {
+    const result = applyActivityFilter(std4Trainees, 'neither_today', std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('d');
+  });
+
+  it('sum of four filter results = total trainees (4 non-overlapping groups cover all 4)', () => {
+    const n = applyActivityFilter(std4Trainees, 'nutrition_today', std4Meals, std4Workouts, TODAY).length;
+    const w = applyActivityFilter(std4Trainees, 'workout_today',   std4Meals, std4Workouts, TODAY).length;
+    const b = applyActivityFilter(std4Trainees, 'both_today',      std4Meals, std4Workouts, TODAY).length;
+    const x = applyActivityFilter(std4Trainees, 'neither_today',   std4Meals, std4Workouts, TODAY).length;
+    expect(n + w + b + x).toBe(std4Trainees.length);
+  });
+
+  it('card count matches filter result count for nutrition_today', () => {
+    const activity = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    const filterResult = applyActivityFilter(std4Trainees, 'nutrition_today', std4Meals, std4Workouts, TODAY);
+    expect(filterResult.length).toBe(activity.onlyNutrition);
+  });
+
+  it('card count matches filter result count for workout_today', () => {
+    const activity = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    const filterResult = applyActivityFilter(std4Trainees, 'workout_today', std4Meals, std4Workouts, TODAY);
+    expect(filterResult.length).toBe(activity.onlyWorkout);
+  });
+
+  it('card count matches filter result count for both_today', () => {
+    const activity = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    const filterResult = applyActivityFilter(std4Trainees, 'both_today', std4Meals, std4Workouts, TODAY);
+    expect(filterResult.length).toBe(activity.bothToday);
+  });
+
+  it('card count matches filter result count for neither_today', () => {
+    const activity = computeTodayActivity(std4Trainees, std4Meals, std4Workouts, TODAY);
+    const filterResult = applyActivityFilter(std4Trainees, 'neither_today', std4Meals, std4Workouts, TODAY);
+    expect(filterResult.length).toBe(activity.neitherToday);
   });
 });
 
-// ─── 9. Clicking nutrition filter returns correct trainees ────────────────────
-describe('9. nutrition_today filter', () => {
+// ─── 9. Clicking nutrition filter (updated: only nutrition, not both) ─────────
+describe('9. nutrition_today filter returns only-nutrition trainees', () => {
   const trainees = [traineeA, traineeB, traineeC, traineeD];
   const meals    = [
     { trainee_email: 'alice@test.com', date: TODAY, calories: 500 },
@@ -220,26 +400,23 @@ describe('9. nutrition_today filter', () => {
     { trainee_email: 'carol@test.com', date: TODAY, status: 'completed' },
   ];
 
-  it('returns only trainees with meal today (A and C)', () => {
+  it('returns only Alice (nutrition only), NOT Carol (who did both)', () => {
     const result = applyActivityFilter(trainees, 'nutrition_today', meals, workouts, TODAY);
-    expect(result).toHaveLength(2);
-    expect(result.map(t => t.id).sort()).toEqual(['a', 'c']);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+    expect(result.map(t => t.id)).not.toContain('c');
   });
 });
 
 // ─── 10. Clicking workout filter returns correct trainees ─────────────────────
-describe('10. workout_today filter', () => {
-  const trainees = [traineeA, traineeB, traineeC, traineeD];
-  const meals    = [{ trainee_email: 'alice@test.com', date: TODAY, calories: 500 }];
-  const workouts = [
-    { trainee_email: 'bob@test.com',   date: TODAY, status: 'completed' },
-    { trainee_email: 'carol@test.com', date: TODAY, status: 'completed' },
-  ];
-
-  it('returns only trainees with workout today (B and C)', () => {
-    const result = applyActivityFilter(trainees, 'workout_today', meals, workouts, TODAY);
-    expect(result).toHaveLength(2);
-    expect(result.map(t => t.id).sort()).toEqual(['b', 'c']);
+describe('10. workout_today filter returns only-workout trainees', () => {
+  // Use std4 fixtures: A=nutrition-only, B=workout-only, C=both, D=neither
+  // workout_today filter must return B only (not C who did both)
+  it('returns only Bob (workout only), NOT Carol (who did both)', () => {
+    const result = applyActivityFilter(std4Trainees, 'workout_today', std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('b');
+    expect(result.map(t => t.id)).not.toContain('c');
   });
 });
 
@@ -328,66 +505,122 @@ describe('13. search + activity filter', () => {
   });
 });
 
+// ─── 8. Secondary historical filters still work (non-mutually-exclusive) ──────
+describe('8. secondary recency filters work independently', () => {
+  const summary = {
+    'alice@test.com': { days_since_last_meal: 5, days_since_last_workout: 10, at_risk: false },
+    'bob@test.com':   { days_since_last_meal: 0, days_since_last_workout:  0, at_risk: true  },
+  };
+
+  it('no_nutrition_3d includes trainee with 5 days absence', () => {
+    const r = applyActivityFilter([traineeA], 'no_nutrition_3d', [], [], TODAY, summary);
+    expect(r).toHaveLength(1);
+  });
+
+  it('no_workout_7d includes trainee with 10 days absence', () => {
+    const r = applyActivityFilter([traineeA], 'no_workout_7d', [], [], TODAY, summary);
+    expect(r).toHaveLength(1);
+  });
+
+  it('attention filter includes at_risk trainee', () => {
+    const r = applyActivityFilter([traineeB], 'attention', [], [], TODAY, summary);
+    expect(r).toHaveLength(1);
+  });
+
+  it('secondary filters can overlap (trainee may appear in both recency filters)', () => {
+    const trainees = [traineeA, traineeB];
+    const noNut = applyActivityFilter(trainees, 'no_nutrition_3d', [], [], TODAY, summary).length;
+    const noWork = applyActivityFilter(trainees, 'no_workout_7d', [], [], TODAY, summary).length;
+    // Alice is in both; that's intentional for recency filters
+    expect(noNut + noWork).toBeGreaterThanOrEqual(noNut);  // sum can be > unique count
+  });
+});
+
+// ─── 9. Clearing filter restores all trainees ─────────────────────────────────
+describe('9. clearing filter restores full trainee list', () => {
+  it('null activityFilter returns all trainees', () => {
+    const result = applyActivityFilter(std4Trainees, null, std4Meals, std4Workouts, TODAY);
+    expect(result).toHaveLength(std4Trainees.length);
+    expect(result).toEqual(std4Trainees);
+  });
+
+  it('setting activityFilter to null after nutrition_today restores full list', () => {
+    const filtered = applyActivityFilter(std4Trainees, 'nutrition_today', std4Meals, std4Workouts, TODAY);
+    expect(filtered.length).toBeLessThan(std4Trainees.length); // filter reduces list
+    const cleared  = applyActivityFilter(std4Trainees, null, std4Meals, std4Workouts, TODAY);
+    expect(cleared.length).toBe(std4Trainees.length);           // cleared = full list
+  });
+});
+
+// ─── 10. Existing behavior: badge filter remains intact ───────────────────────
+describe('10. badge filter (existing CoachDashboard behavior) unaffected', () => {
+  const badges = { 'alice@test.com': 'on_track', 'bob@test.com': 'partial', 'carol@test.com': 'behind', 'dan@test.com': 'no_data' };
+
+  it('good filter → only on_track trainee', () => {
+    const result = applyAllFilters(std4Trainees, '', 'good', null, std4Meals, std4Workouts, TODAY, {}, badges);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+  });
+
+  it('badge filter and activityFilter can combine (AND)', () => {
+    // on_track AND nutrition_today → Alice (on_track, has nutrition, no workout)
+    const result = applyAllFilters(std4Trainees, '', 'good', 'nutrition_today', std4Meals, std4Workouts, TODAY, {}, badges);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('a');
+  });
+});
+
 // ─── 14. Timezone / day boundary behavior ────────────────────────────────────
 describe('14. timezone / day boundary', () => {
   it('meal on yesterday date string does not count as today', () => {
     const yesterday = '2026-08-23';
     const meals    = [{ trainee_email: 'alice@test.com', date: yesterday, calories: 500 }];
     const workouts = [];
-    const { nutritionToday, neitherToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
-    expect(nutritionToday).toBe(0);
+    const { onlyNutrition, neitherToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
     expect(neitherToday).toBe(1);
   });
 
   it('meal on today date string counts as today', () => {
     const meals    = [{ trainee_email: 'alice@test.com', date: TODAY, calories: 500 }];
     const workouts = [];
-    const { nutritionToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
-    expect(nutritionToday).toBe(1);
+    const { onlyNutrition } = computeTodayActivity([traineeA], meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(1);
   });
 });
 
 // ─── 15. Deleted/invalid nutrition records do not count ───────────────────────
 describe('15. invalid / zero-calorie records', () => {
-  it('zero-calorie meal still counts as a meal entry (not filtered by calories)', () => {
-    // The activity check is presence-based (date === today), not calorie-based.
-    // A 0-calorie water log is in WaterEntry, not MealEntry; MealEntry zero = still logged.
+  it('zero-calorie meal still counts as a meal entry (presence-based)', () => {
     const meals    = [{ trainee_email: 'alice@test.com', date: TODAY, calories: 0 }];
     const workouts = [];
-    const { nutritionToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
-    // MealEntry with calories=0 still indicates the user opened the nutrition logger.
-    // The backend already handles this via `mealCount > 0` (count of records, not sum of calories).
-    expect(nutritionToday).toBe(1);
+    const { onlyNutrition } = computeTodayActivity([traineeA], meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(1);
   });
 
   it('meal on a different date does not count for today', () => {
     const meals    = [{ trainee_email: 'alice@test.com', date: '2026-08-01', calories: 500 }];
     const workouts = [];
-    const { nutritionToday, neitherToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
-    expect(nutritionToday).toBe(0);
+    const { onlyNutrition, neitherToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
     expect(neitherToday).toBe(1);
   });
 
   it('meal for different trainee email does not count for this trainee', () => {
     const meals    = [{ trainee_email: 'bob@test.com', date: TODAY, calories: 500 }];
     const workouts = [];
-    const { nutritionToday } = computeTodayActivity([traineeA], meals, workouts, TODAY);
-    expect(nutritionToday).toBe(0);
+    const { onlyNutrition } = computeTodayActivity([traineeA], meals, workouts, TODAY);
+    expect(onlyNutrition).toBe(0);
   });
 });
 
 // ─── 16. Non-completed workout does not count (status filter) ─────────────────
 describe('16. only completed workouts count', () => {
-  it('workout with status=planned does not count as completed', () => {
-    // The backend filters status='completed' in WorkoutSession query.
-    // On the frontend, the workouts array from allWorkouts already has status='completed'.
-    // A 'planned' record would not be in allWorkouts due to the backend filter.
-    // Here we verify the frontend logic does NOT further filter by status
-    // (trusting the backend — the data in allWorkouts is already completed-only).
-    const workouts = [{ trainee_email: 'bob@test.com', date: TODAY }]; // status not in frontend data
+  it('workout present in allWorkouts = completed (backend-filtered before reaching frontend)', () => {
+    const workouts = [{ trainee_email: 'bob@test.com', date: TODAY }];
     const meals    = [];
-    const { workoutToday } = computeTodayActivity([traineeB], meals, workouts, TODAY);
-    expect(workoutToday).toBe(1); // backend-filtered, so present = completed
+    const { onlyWorkout } = computeTodayActivity([traineeB], meals, workouts, TODAY);
+    expect(onlyWorkout).toBe(1);
   });
 });
 

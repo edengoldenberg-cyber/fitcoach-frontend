@@ -1053,8 +1053,8 @@ export default function CoachDashboard() {
       const dsMeal     = summary?.days_since_last_meal;
       const dsWorkout  = summary?.days_since_last_workout;
 
-      if (activityFilter === 'nutrition_today')   return hasMeal;
-      if (activityFilter === 'workout_today')     return hasWorkout;
+      if (activityFilter === 'nutrition_today')   return hasMeal && !hasWorkout;   // רק תזונה
+      if (activityFilter === 'workout_today')     return !hasMeal && hasWorkout;   // רק אימון
       if (activityFilter === 'both_today')        return hasMeal && hasWorkout;
       if (activityFilter === 'neither_today')     return !hasMeal && !hasWorkout;
       if (activityFilter === 'no_nutrition_3d')   return dsMeal    === null || dsMeal    >= 3;
@@ -1082,18 +1082,20 @@ export default function CoachDashboard() {
     return { onTrack, partial, behind, notReported, neutral, noTarget, notApplicable, total: trainees.length };
   }, [trainees, traineeTodayStats]);
 
-  // Today-specific activity counts — four independent buckets (may overlap intentionally)
+  // Today-specific activity counts — four MUTUALLY EXCLUSIVE buckets.
+  // Every trainee belongs to exactly ONE bucket.
+  // Invariant: onlyNutrition + onlyWorkout + bothToday + neitherToday === trainees.length
   const todayActivity = useMemo(() => {
-    let nutritionToday = 0, workoutToday = 0, bothToday = 0, neitherToday = 0;
+    let onlyNutrition = 0, onlyWorkout = 0, bothToday = 0, neitherToday = 0;
     trainees.forEach(t => {
       const hasMeal    = allMeals.some(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
       const hasWorkout = allWorkouts.some(w => w.trainee_email === t.user_email && w.date === today);
-      if (hasMeal)              nutritionToday++;
-      if (hasWorkout)           workoutToday++;
-      if (hasMeal && hasWorkout) bothToday++;
-      if (!hasMeal && !hasWorkout) neitherToday++;
+      if      ( hasMeal && !hasWorkout) onlyNutrition++;
+      else if (!hasMeal &&  hasWorkout) onlyWorkout++;
+      else if ( hasMeal &&  hasWorkout) bothToday++;
+      else                              neitherToday++;
     });
-    return { nutritionToday, workoutToday, bothToday, neitherToday };
+    return { onlyNutrition, onlyWorkout, bothToday, neitherToday };
   }, [trainees, allMeals, allWorkouts, today]);
 
   const deleteMutation = useMutation({
@@ -1225,10 +1227,10 @@ export default function CoachDashboard() {
           </div>
           <div className="grid grid-cols-4 gap-2">
             {[
-              { key: 'nutrition_today', count: todayActivity.nutritionToday, label: '🥗 תזונה',   activeColor: 'border-emerald-400 bg-emerald-50', numColor: 'text-emerald-600', baseColor: 'border-emerald-100 hover:bg-emerald-50' },
-              { key: 'workout_today',   count: todayActivity.workoutToday,   label: '🏋️ אימון',  activeColor: 'border-orange-400  bg-orange-50',  numColor: 'text-orange-500',  baseColor: 'border-orange-100  hover:bg-orange-50'  },
-              { key: 'both_today',      count: todayActivity.bothToday,      label: '✅ שניהם',  activeColor: 'border-blue-400    bg-blue-50',    numColor: 'text-blue-600',    baseColor: 'border-blue-100    hover:bg-blue-50'    },
-              { key: 'neither_today',   count: todayActivity.neitherToday,   label: '🔴 ללא',    activeColor: 'border-red-400     bg-red-50',     numColor: 'text-red-500',     baseColor: 'border-red-100     hover:bg-red-50'     },
+              { key: 'nutrition_today', count: todayActivity.onlyNutrition, label: '🥗 רק תזונה',        activeColor: 'border-emerald-400 bg-emerald-50', numColor: 'text-emerald-600', baseColor: 'border-emerald-100 hover:bg-emerald-50' },
+              { key: 'workout_today',   count: todayActivity.onlyWorkout,   label: '🏋️ רק אימון',       activeColor: 'border-orange-400  bg-orange-50',  numColor: 'text-orange-500',  baseColor: 'border-orange-100  hover:bg-orange-50'  },
+              { key: 'both_today',      count: todayActivity.bothToday,     label: '✅ תזונה + אימון',   activeColor: 'border-blue-400    bg-blue-50',    numColor: 'text-blue-600',    baseColor: 'border-blue-100    hover:bg-blue-50'    },
+              { key: 'neither_today',   count: todayActivity.neitherToday,  label: '🔴 ללא פעילות',     activeColor: 'border-red-400     bg-red-50',     numColor: 'text-red-500',     baseColor: 'border-red-100     hover:bg-red-50'     },
             ].map(({ key, count, label, activeColor, numColor, baseColor }) => (
               <div
                 key={key}
@@ -1373,9 +1375,9 @@ export default function CoachDashboard() {
           <div className="flex items-center justify-between bg-slate-800 text-white rounded-xl px-3 py-2 mb-3 text-xs">
             <span>
               {{
-                nutrition_today:  '🥗 מסנן: תזונה היום',
-                workout_today:    '🏋️ מסנן: אימון היום',
-                both_today:       '✅ מסנן: שניהם היום',
+                nutrition_today:  '🥗 מסנן: רק תזונה היום',
+                workout_today:    '🏋️ מסנן: רק אימון היום',
+                both_today:       '✅ מסנן: תזונה + אימון היום',
                 neither_today:    '🔴 מסנן: ללא פעילות היום',
                 no_nutrition_3d:  '🥗 מסנן: ללא תזונה 3+ ימים',
                 no_workout_7d:    '🏋️ מסנן: ללא אימון 7+ ימים',
