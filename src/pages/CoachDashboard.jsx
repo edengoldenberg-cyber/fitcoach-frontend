@@ -52,7 +52,7 @@ function getStatusBadge(badge) {
 // ─── MiniCard (in list) ─────────────────────────────────────────────────────
 const DAY_LABELS_SHORT = { sunday: 'א', monday: 'ב', tuesday: 'ג', wednesday: 'ד', thursday: 'ה', friday: 'ו', saturday: 'ש' };
 
-function TraineeMiniCard({ trainee, todayStats, weekStats, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
+function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
   const initials = trainee.full_name?.split(' ').map(n => n[0]).join('') || '?';
   // Badge comes from backend today_status — time-aware, no invented defaults
   const badge = getStatusBadge(todayStats?.overallBadge);
@@ -140,18 +140,40 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, selected, selectMode,
             )}
             </Link>
           </div>
-          {/* TODAY quick-stats — source: today's MealEntry / WaterEntry / WorkoutSession only */}
-          <div className="flex items-center gap-2 text-xs text-slate-500">
-            <Utensils className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-            {todayStats?.nutritionLogged ? (
-              <span className="truncate">
-                {todayStats.mealCount} ארוחות · {todayStats.caloriesLogged}{todayStats.calTarget ? `/${todayStats.calTarget} קל׳` : ' קל׳'}
-                {todayStats.proteinLogged != null ? ` · חל׳ ${todayStats.proteinLogged}g` : ''}
+          {/* Dual activity indicators — nutrition (🥗) and workout (🏋️) shown independently */}
+          <div className="flex items-center gap-3 text-[11px]">
+            {/* Nutrition activity */}
+            <span className="flex items-center gap-1">
+              <Utensils className={`w-3 h-3 flex-shrink-0 ${todayStats?.nutritionLogged ? 'text-emerald-500' : 'text-slate-300'}`} />
+              {todayStats?.nutritionLogged ? (
+                <span className="text-emerald-600 font-medium">היום</span>
+              ) : summary?.days_since_last_meal !== undefined ? (
+                <span className={activityColor(summary?.days_since_last_meal, true)}>
+                  {formatDaysSince(summary?.days_since_last_meal) ?? 'לא ידוע'}
+                </span>
+              ) : (
+                <span className="text-slate-300">—</span>
+              )}
+            </span>
+            {/* Workout activity */}
+            <span className="flex items-center gap-1">
+              <Dumbbell className={`w-3 h-3 flex-shrink-0 ${todayStats?.workoutDone ? 'text-orange-500' : 'text-slate-300'}`} />
+              {todayStats?.workoutDone ? (
+                <span className="text-orange-500 font-medium">היום</span>
+              ) : summary?.days_since_last_workout !== undefined ? (
+                <span className={activityColor(summary?.days_since_last_workout, false)}>
+                  {formatDaysSince(summary?.days_since_last_workout) ?? 'לא ידוע'}
+                </span>
+              ) : (
+                <span className="text-slate-300">—</span>
+              )}
+            </span>
+            {/* Attention flag */}
+            {summary?.at_risk && (
+              <span className="text-amber-500 text-[10px] font-medium mr-auto">
+                ⚠️ {summary.at_risk_reasons?.includes('no_report_3_days') ? 'תזונה' : summary.at_risk_reasons?.[0] || 'תשומת לב'}
               </span>
-            ) : (
-              <span className="text-slate-400 italic text-[11px]">לא תועדה תזונה היום</span>
             )}
-            <Dumbbell className={`w-3 h-3 mr-auto flex-shrink-0 ${todayStats?.workoutDone ? 'text-orange-500' : 'text-slate-300'}`} />
           </div>
         </div>
         {!selectMode && <ChevronLeft className="w-4 h-4 text-slate-300 flex-shrink-0" />}
@@ -718,11 +740,34 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
   );
 }
 
+// ─── Activity helpers ────────────────────────────────────────────────────────
+// Format days-since into compact Hebrew label
+function formatDaysSince(days) {
+  if (days === null || days === undefined) return null;
+  if (days === 0) return 'היום';
+  if (days === 1) return 'אתמול';
+  return `לפני ${days} ימים`;
+}
+
+// Color class based on days since last activity (nutrition: 3d threshold, workout: 7d threshold)
+function activityColor(days, nutritionMode) {
+  if (days === null || days === undefined) return 'text-slate-300';
+  if (days === 0 || days === 1) return 'text-emerald-600';
+  const yellowThreshold = nutritionMode ? 2 : 4;
+  const redThreshold    = nutritionMode ? 3 : 7;
+  if (days <= yellowThreshold) return 'text-amber-500';
+  if (days >= redThreshold)    return 'text-red-500';
+  return 'text-amber-500';
+}
+
 // ─── Main Coach Dashboard ────────────────────────────────────────────────────
 export default function CoachDashboard() {
   const location = useLocation();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  // activityFilter is independent of the badge filter — it filters by today's activity type
+  // or by recency thresholds. null = no activity filter applied.
+  const [activityFilter, setActivityFilter] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedTrainee, setSelectedTrainee] = useState(null);
@@ -988,17 +1033,37 @@ export default function CoachDashboard() {
 
   const filteredTrainees = useMemo(() => trainees.filter(t => {
     if (!t.full_name?.toLowerCase().includes(search.toLowerCase())) return false;
-    if (filter === 'all') return true;
-    const badge = traineeTodayStats[t.user_email]?.overallBadge;
-    if (filter === 'good')         return badge === 'on_track';
-    if (filter === 'partial')      return badge === 'partial';
-    // 'behind' = has data but materially below expected pace
-    if (filter === 'behind')       return badge === 'behind';
-    // 'not_reported' = evaluation window open, zero logs — informational, NOT alarm
-    if (filter === 'not_reported') return badge === 'no_data';
-    // neutral / no_target remain visible under 'all' only
+
+    // Badge filter (existing)
+    if (filter !== 'all') {
+      const badge = traineeTodayStats[t.user_email]?.overallBadge;
+      if (filter === 'good')         { if (badge !== 'on_track') return false; }
+      else if (filter === 'partial') { if (badge !== 'partial')  return false; }
+      else if (filter === 'behind')  { if (badge !== 'behind')   return false; }
+      else if (filter === 'not_reported') { if (badge !== 'no_data') return false; }
+      // neutral / no_target remain visible under 'all' only
+    }
+
+    // Activity filter (new) — operates on today's meals/workouts and recency from summary
+    if (activityFilter) {
+      const email      = t.user_email;
+      const hasMeal    = allMeals.some(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
+      const hasWorkout = allWorkouts.some(w => w.trainee_email === email && w.date === today);
+      const summary    = summaryByEmail[email];
+      const dsMeal     = summary?.days_since_last_meal;
+      const dsWorkout  = summary?.days_since_last_workout;
+
+      if (activityFilter === 'nutrition_today')   return hasMeal;
+      if (activityFilter === 'workout_today')     return hasWorkout;
+      if (activityFilter === 'both_today')        return hasMeal && hasWorkout;
+      if (activityFilter === 'neither_today')     return !hasMeal && !hasWorkout;
+      if (activityFilter === 'no_nutrition_3d')   return dsMeal    === null || dsMeal    >= 3;
+      if (activityFilter === 'no_workout_7d')     return dsWorkout === null || dsWorkout >= 7;
+      if (activityFilter === 'attention')         return summary?.at_risk === true;
+    }
+
     return true;
-  }), [trainees, search, filter, traineeTodayStats]);
+  }), [trainees, search, filter, activityFilter, traineeTodayStats, allMeals, allWorkouts, today, summaryByEmail]);
 
   const stats = useMemo(() => {
     // Each counter is independent — no merging of semantically distinct states.
@@ -1017,17 +1082,18 @@ export default function CoachDashboard() {
     return { onTrack, partial, behind, notReported, neutral, noTarget, notApplicable, total: trainees.length };
   }, [trainees, traineeTodayStats]);
 
-  // Today-specific activity counts
+  // Today-specific activity counts — four independent buckets (may overlap intentionally)
   const todayActivity = useMemo(() => {
-    let loggedToday = 0, workoutToday = 0, silentToday = 0;
+    let nutritionToday = 0, workoutToday = 0, bothToday = 0, neitherToday = 0;
     trainees.forEach(t => {
-      const hasMeal = allMeals.some(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
+      const hasMeal    = allMeals.some(m => nutritionRecordMatchesTrainee(m, t) && m.date === today);
       const hasWorkout = allWorkouts.some(w => w.trainee_email === t.user_email && w.date === today);
-      if (hasMeal) loggedToday++;
-      if (hasWorkout) workoutToday++;
-      if (!hasMeal && !hasWorkout) silentToday++;
+      if (hasMeal)              nutritionToday++;
+      if (hasWorkout)           workoutToday++;
+      if (hasMeal && hasWorkout) bothToday++;
+      if (!hasMeal && !hasWorkout) neitherToday++;
     });
-    return { loggedToday, workoutToday, silentToday };
+    return { nutritionToday, workoutToday, bothToday, neitherToday };
   }, [trainees, allMeals, allWorkouts, today]);
 
   const deleteMutation = useMutation({
@@ -1141,34 +1207,59 @@ export default function CoachDashboard() {
           </Link>
         </div>
 
-        {/* Today Summary */}
+        {/* Today Summary — 4 independent activity cards */}
         <Card className="p-4 mb-4 bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-200">
-          <h2 className="text-sm font-bold text-teal-800 mb-3 flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            פעילות היום
-          </h2>
-          <div className="grid grid-cols-3 gap-2">
-            <div
-              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-emerald-50 transition-colors border border-emerald-100"
-              onClick={() => setFilter('good')}
-            >
-              <p className="text-2xl font-bold text-emerald-600">{todayActivity.loggedToday}</p>
-              <p className="text-[10px] text-emerald-700 mt-0.5">דיווחו היום</p>
-            </div>
-            <div
-              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-orange-50 transition-colors border border-orange-100"
-              onClick={() => setFilter('all')}
-            >
-              <p className="text-2xl font-bold text-orange-500">{todayActivity.workoutToday}</p>
-              <p className="text-[10px] text-orange-700 mt-0.5">אימנו היום</p>
-            </div>
-            <div
-              className="bg-white rounded-lg p-2.5 text-center cursor-pointer hover:bg-red-50 transition-colors border border-red-100"
-              onClick={() => setFilter('bad')}
-            >
-              <p className="text-2xl font-bold text-red-500">{todayActivity.silentToday}</p>
-              <p className="text-[10px] text-red-700 mt-0.5">לא פעילים</p>
-            </div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-teal-800 flex items-center gap-2">
+              <Calendar className="w-4 h-4" />
+              פעילות היום
+            </h2>
+            {activityFilter && (
+              <button
+                onClick={() => setActivityFilter(null)}
+                className="text-[10px] text-teal-600 hover:text-teal-800 flex items-center gap-0.5 font-medium"
+              >
+                <X className="w-3 h-3" /> נקה סינון
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { key: 'nutrition_today', count: todayActivity.nutritionToday, label: '🥗 תזונה',   activeColor: 'border-emerald-400 bg-emerald-50', numColor: 'text-emerald-600', baseColor: 'border-emerald-100 hover:bg-emerald-50' },
+              { key: 'workout_today',   count: todayActivity.workoutToday,   label: '🏋️ אימון',  activeColor: 'border-orange-400  bg-orange-50',  numColor: 'text-orange-500',  baseColor: 'border-orange-100  hover:bg-orange-50'  },
+              { key: 'both_today',      count: todayActivity.bothToday,      label: '✅ שניהם',  activeColor: 'border-blue-400    bg-blue-50',    numColor: 'text-blue-600',    baseColor: 'border-blue-100    hover:bg-blue-50'    },
+              { key: 'neither_today',   count: todayActivity.neitherToday,   label: '🔴 ללא',    activeColor: 'border-red-400     bg-red-50',     numColor: 'text-red-500',     baseColor: 'border-red-100     hover:bg-red-50'     },
+            ].map(({ key, count, label, activeColor, numColor, baseColor }) => (
+              <div
+                key={key}
+                className={`bg-white rounded-lg p-2 text-center cursor-pointer transition-colors border-2 ${activityFilter === key ? activeColor : `border ${baseColor}`}`}
+                onClick={() => setActivityFilter(activityFilter === key ? null : key)}
+                title={activityFilter === key ? 'לחץ לביטול הסינון' : 'לחץ לסינון'}
+              >
+                <p className={`text-xl font-bold ${numColor}`}>{count}</p>
+                <p className="text-[10px] text-slate-600 mt-0.5 leading-tight">{label}</p>
+              </div>
+            ))}
+          </div>
+          {/* Quick recency filters */}
+          <div className="flex gap-1.5 mt-2.5 flex-wrap">
+            {[
+              { key: 'no_nutrition_3d', label: '🥗 3+ ימים ללא תזונה' },
+              { key: 'no_workout_7d',   label: '🏋️ 7+ ימים ללא אימון' },
+              { key: 'attention',       label: '⚠️ דורש תשומת לב' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setActivityFilter(activityFilter === key ? null : key)}
+                className={`text-[10px] px-2 py-1 rounded-full border transition-colors font-medium ${
+                  activityFilter === key
+                    ? 'bg-slate-700 text-white border-slate-700'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </Card>
 
@@ -1277,6 +1368,27 @@ export default function CoachDashboard() {
           </div>
         )}
 
+        {/* Active filter indicator */}
+        {activityFilter && (
+          <div className="flex items-center justify-between bg-slate-800 text-white rounded-xl px-3 py-2 mb-3 text-xs">
+            <span>
+              {{
+                nutrition_today:  '🥗 מסנן: תזונה היום',
+                workout_today:    '🏋️ מסנן: אימון היום',
+                both_today:       '✅ מסנן: שניהם היום',
+                neither_today:    '🔴 מסנן: ללא פעילות היום',
+                no_nutrition_3d:  '🥗 מסנן: ללא תזונה 3+ ימים',
+                no_workout_7d:    '🏋️ מסנן: ללא אימון 7+ ימים',
+                attention:        '⚠️ מסנן: דורש תשומת לב',
+              }[activityFilter] || 'סינון פעיל'}
+              {' '}— {filteredTrainees.length} מתאמנים
+            </span>
+            <button onClick={() => setActivityFilter(null)} className="text-slate-300 hover:text-white">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* List */}
         {filter !== 'deleted' && <div className="space-y-2">
           {isLoading ? (
@@ -1307,6 +1419,7 @@ export default function CoachDashboard() {
                    trainee={trainee}
                    todayStats={traineeTodayStats[trainee.user_email]}
                    weekStats={traineeWeeklyStats[trainee.user_email]}
+                   summary={summaryByEmail[trainee.user_email]}
                    selectMode={selectMode}
                    selected={selectedIds.includes(trainee.id)}
                    onSelect={() => toggleSelect(trainee.id)}
