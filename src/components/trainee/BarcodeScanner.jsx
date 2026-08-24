@@ -18,7 +18,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   // Accumulates full diagnostic data during each startCameraScan run.
   // Persists across renders so the admin error panel can display it.
   const diagRef = useRef(null);
-  const [scannedOnce, setScannedOnce] = useState(false);
+  // Ref-based "first scan only" guard — avoids stale closure problem.
+  // onScanSuccess is created once inside startCameraScan and closes over React
+  // state values at that moment. If scannedOnce were state, the closure would
+  // always see the initial value (false). A ref is mutated in place and always
+  // returns the current value regardless of when the closure was created.
+  const scannedOnceRef = useRef(false);
+  const [scannedOnce, setScannedOnce] = useState(false); // kept for UI/external state
+  // Decode loop counters — visible in scan UI for iOS debugging
+  const [decodeAttempts, setDecodeAttempts] = useState(0);
+  const decodeAttemptsRef = useRef(0);
   // Set when camera start fails; drives the admin-only diagnostics panel.
   const [cameraDiag, setCameraDiag] = useState(null);
   
@@ -105,6 +114,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setImagePreview(null);
       setCameraActive(false);
       setScannedOnce(false);
+      scannedOnceRef.current = false;
+      decodeAttemptsRef.current = 0;
+      setDecodeAttempts(0);
       setCameraDiag(null);
       diagRef.current = null;
       setDebugInfo(prev => ({
@@ -140,6 +152,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     
     setCameraActive(false);
     setScannedOnce(false);
+    scannedOnceRef.current = false;
+    decodeAttemptsRef.current = 0;
   };
 
   // סריקה חיה מהמצלמה
@@ -196,6 +210,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setError(null);
       setLoading(true);
       setScannedOnce(false);
+      scannedOnceRef.current = false;      // ref-based guard, no stale closure
+      decodeAttemptsRef.current = 0;
+      setDecodeAttempts(0);
       setCameraDiag(null);
       setDebugInfo(prev => ({ ...prev, decodeMode: 'live', cameraOpened: false }));
 
@@ -256,12 +273,23 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         console.warn(`[BC][${ms()}] CAMERA_ENUM_FAIL:`, String(camErr));
       }
 
-      // Html5Qrcode.SUPPORTED_FORMATS is undefined at runtime (not a class property).
-      // The correct export is Html5QrcodeSupportedFormats (top-level enum from html5-qrcode).
+      // ── Scanner config ────────────────────────────────────────────────────
+      // aspectRatio: 1.0 is intentionally OMITTED.
+      // With aspectRatio:1.0, html5-qrcode tries to request a 1:1 video stream.
+      // On iPhone the camera returns landscape video (e.g. 1920×1080) even in
+      // portrait mode. The ratio widthRatio=(1920/390)≈4.9 vs heightRatio=(1080/800)≈1.35
+      // causes foreverScan to crop a 1277×351 source region into a 260×260 canvas —
+      // severely distorting EAN barcodes so ZXing cannot decode them.
+      // Without aspectRatio, the camera uses its natural ratio and the distortion disappears.
+      //
+      // qrbox uses a function so it adapts to the actual viewfinder dimensions.
+      // EAN-13/UPC barcodes are wide and short — use 85% width, 25% height.
       const config = {
         fps: 10,
-        qrbox: { width: 260, height: 260 },
-        aspectRatio: 1.0,
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width:  Math.floor(viewfinderWidth  * 0.85),
+          height: Math.floor(viewfinderHeight * 0.15),  // EAN barcodes are ~3:1 w/h ratio
+        }),
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -272,19 +300,43 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         ],
       };
 
+      // ── Per-frame decode callback ─────────────────────────────────────────
+      // Uses scannedOnceRef (not the scannedOnce state) to avoid the stale
+      // closure problem: onScanSuccess is created once and the React state value
+      // it closes over never updates within the closure. A ref always returns the
+      // current value regardless of when the callback was created.
       const onScanSuccess = async (decodedText) => {
+        // Increment decode attempt counter for UI diagnostics
+        decodeAttemptsRef.current += 1;
+        if (decodeAttemptsRef.current % 5 === 1) {   // throttle UI updates
+          setDecodeAttempts(decodeAttemptsRef.current);
+        }
+
         const now = Date.now();
+        // 5-second duplicate guard via ref (always current)
         if (lastScannedRef.current.barcode === decodedText && now - lastScannedRef.current.timestamp < 5000) return;
-        if (scannedOnce) return;
+        // First-scan-only guard via ref (no stale closure)
+        if (scannedOnceRef.current) return;
+        scannedOnceRef.current = true;
         setScannedOnce(true);
+
         lastScannedRef.current = { barcode: decodedText, timestamp: now };
         addLog('success', 'barcode', 'scan_success', { barcode: decodedText });
-        setScanStatus('ברקוד זוהה ✅');
+        setScanStatus('ברקוד זוהה ✅ ' + decodedText);  // visible on-screen confirmation
         if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
         setCameraActive(false);
         setDebugInfo(prev => ({ ...prev, lastDetectedBarcode: decodedText }));
         try { await scannerRef.current?.stop(); } catch (_) {}
         handleBarcodeDetected(decodedText);
+      };
+
+      // Per-frame error callback — used as decode-attempt counter
+      // html5-qrcode calls this every frame when no barcode is found (normal)
+      const onScanError = (_err) => {
+        decodeAttemptsRef.current += 1;
+        if (decodeAttemptsRef.current % 10 === 0) {   // throttle UI updates to every 10 frames
+          setDecodeAttempts(decodeAttemptsRef.current);
+        }
       };
 
       setScanStatus('מחפש ברקוד...');
@@ -295,7 +347,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       diag.envAttempted = true;
       console.log(`[BC][${ms()}] ENV_START_BEGIN`);
       try {
-        await scannerRef.current.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
+        await scannerRef.current.start({ facingMode: 'environment' }, config, onScanSuccess, onScanError);
         cameraStarted = true;
         console.log(`[BC][${ms()}] ENV_START_SUCCESS`);
         addLog('info', 'barcode', 'camera_started', { attempt: 'environment' });
@@ -323,7 +375,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             throw Object.assign(new Error('barcode-reader missing for user-facing attempt'), { name: 'ElementMissingError' });
           }
           scannerRef.current = new Html5Qrcode('barcode-reader');
-          await scannerRef.current.start({ facingMode: 'user' }, config, onScanSuccess, () => {});
+          await scannerRef.current.start({ facingMode: 'user' }, config, onScanSuccess, onScanError);
           cameraStarted = true;
           console.log(`[BC][${ms()}] USER_START_SUCCESS`);
           addLog('info', 'barcode', 'camera_started', { attempt: 'user' });
@@ -349,7 +401,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             scannerRef.current = new Html5Qrcode('barcode-reader');
             await scannerRef.current.start(
               { deviceId: { exact: deviceCams[0].id } },
-              config, onScanSuccess, () => {}
+              config, onScanSuccess, onScanError
             );
             cameraStarted = true;
             console.log(`[BC][${ms()}] DEVICE_START_SUCCESS id=${deviceCams[0].id}`);
@@ -1060,11 +1112,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   </p>
                 </div>
 
-                {/* Status */}
-                <div className="absolute bottom-32 left-0 right-0 text-center pointer-events-none z-20">
+                {/* Status + decode counter (counter proves scanning loop is running) */}
+                <div className="absolute bottom-32 left-0 right-0 text-center pointer-events-none z-20 space-y-1">
                   <p className="text-white/80 text-sm bg-black/50 px-4 py-2 rounded-full inline-block">
                     {scanStatus}
                   </p>
+                  {decodeAttempts > 0 && (
+                    <p className="text-white/50 text-[10px] bg-black/40 px-3 py-1 rounded-full inline-block">
+                      frames: {decodeAttempts}
+                    </p>
+                  )}
                 </div>
 
                 {/* Controls */}

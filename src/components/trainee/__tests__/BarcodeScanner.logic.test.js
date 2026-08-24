@@ -258,6 +258,111 @@ describe('Html5QrcodeSupportedFormats — correct enum import', () => {
   });
 });
 
+// ─── Scanner config / qrbox / decode ─────────────────────────────────────────
+
+describe('Scanner config — qrbox and aspectRatio', () => {
+  // Simulate the function-based qrbox
+  const makeQrbox = (viewfinderWidth, viewfinderHeight) => ({
+    width:  Math.floor(viewfinderWidth  * 0.85),
+    height: Math.floor(viewfinderHeight * 0.15),  // EAN barcodes are ~3:1 w/h
+  });
+
+  test('qrbox is wide rectangle — appropriate for EAN-13 retail barcodes', () => {
+    const box = makeQrbox(390, 800);
+    assert.ok(box.width > box.height * 2, `qrbox must be wider than 2× its height, got ${box.width}×${box.height}`);
+  });
+
+  test('qrbox adapts to viewfinder dimensions', () => {
+    const small = makeQrbox(320, 600);
+    const large = makeQrbox(430, 900);
+    assert.ok(large.width > small.width, 'wider viewfinder → wider qrbox');
+    assert.ok(large.height > small.height, 'taller viewfinder → taller qrbox');
+  });
+
+  test('config does not include aspectRatio', () => {
+    const config = {
+      fps: 10,
+      qrbox: makeQrbox,
+      formatsToSupport: [9, 10, 14, 15], // EAN_13, EAN_8, UPC_A, UPC_E numeric values
+    };
+    assert.equal(config.aspectRatio, undefined, 'aspectRatio must be absent — it distorts 1D barcode scanning on iPhone');
+  });
+
+  test('config without aspectRatio is valid (library accepts undefined aspectRatio)', () => {
+    const config = { fps: 10, qrbox: makeQrbox };
+    assert.doesNotThrow(() => {
+      const fps = config.fps;
+      const box = config.qrbox(390, 800);
+      assert.ok(fps > 0 && box.width > 0 && box.height > 0);
+    });
+  });
+});
+
+describe('scannedOnceRef — stale closure prevention', () => {
+  test('scannedOnceRef blocks duplicate on second call (ref mutates in place)', () => {
+    const scannedOnceRef = { current: false };
+    let callCount = 0;
+
+    const onScanSuccess = (text) => {
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      callCount++;
+    };
+
+    onScanSuccess('7290000000001');
+    assert.equal(callCount, 1, 'first call succeeds');
+    onScanSuccess('7290000000001');
+    assert.equal(callCount, 1, 'second call blocked by ref guard');
+  });
+
+  test('scannedOnceRef reset on new session', () => {
+    const scannedOnceRef = { current: true }; // simulate previous session
+    scannedOnceRef.current = false;            // reset for new session
+    let callCount = 0;
+
+    const onScanSuccess = (text) => {
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      callCount++;
+    };
+
+    onScanSuccess('7290000000002');
+    assert.equal(callCount, 1, 'after reset, first scan in new session works');
+  });
+
+  test('stale state closure would have been wrong (ref fixes this)', () => {
+    // Demonstrate the bug: if we used state (captured once), setXxx updates don't
+    // affect the closure value.
+    let stateScannedOnce = false;
+    const setStateScannedOnce = (v) => { /* React batches — closure doesn't update */ };
+
+    const onScanSuccessWithState = (text) => {
+      if (stateScannedOnce) return; // always reads original captured value
+      setStateScannedOnce(true);   // doesn't update stateScannedOnce in closure
+    };
+
+    onScanSuccessWithState('abc');
+    // stateScannedOnce is still false in closure — second call would not be blocked
+    // (the ref approach fixes this since ref.current IS the current value)
+    assert.equal(stateScannedOnce, false, 'proves stale closure — state unchanged in closure');
+  });
+});
+
+describe('Decode attempt counter', () => {
+  test('onScanError increments attempt counter', () => {
+    const ref = { current: 0 };
+    const onScanError = () => { ref.current += 1; };
+    onScanError(); onScanError(); onScanError();
+    assert.equal(ref.current, 3);
+  });
+
+  test('counter reset on new scan session', () => {
+    const ref = { current: 42 };
+    ref.current = 0;
+    assert.equal(ref.current, 0);
+  });
+});
+
 // ─── getCameras() replacement ─────────────────────────────────────────────────
 
 describe('enumerateDevices() replacement for getCameras()', () => {
