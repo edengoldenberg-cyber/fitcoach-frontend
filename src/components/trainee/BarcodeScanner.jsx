@@ -165,6 +165,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       scannerRefExisted:      !!scannerRef.current,
       cameras:                null,
       camerasErr:             null,
+      hasEnumerateDevices:    !!(navigator.mediaDevices?.enumerateDevices),
       // getUserMedia probe — run AFTER all start() attempts fail, not before.
       // Running it BEFORE would acquire then release the camera; on iOS WebKit
       // the hardware doesn't release in <80ms, causing the scanner's
@@ -225,14 +226,32 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         scannerRef.current = new Html5Qrcode('barcode-reader');
       }
 
-      // ── Camera enumeration (diagnostic only — does NOT acquire camera) ────
+      // ── Camera enumeration via enumerateDevices() — no getUserMedia called ──
+      // CRITICAL: Do NOT use Html5Qrcode.getCameras() here.
+      // getCameras() in html5-qrcode v2.3.8 (retriever.js line 83) calls
+      //   navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+      // internally to get device labels, which opens and immediately closes the
+      // camera BEFORE our scanner.start() call.
+      // On iOS WebKit, the camera hardware doesn't release fast enough, so when
+      // scanner.start() calls getUserMedia a moment later, it gets NotReadableError.
+      // enumerateDevices() does NOT open the camera and is safe here.
       stage('enumerate-cameras');
       console.log(`[BC][${ms()}] CAMERA_ENUM_START`);
+      diag.hasEnumerateDevices = !!(navigator.mediaDevices?.enumerateDevices);
       try {
-        const cams = await Html5Qrcode.getCameras();
-        diag.cameras = cams?.map(c => ({ id: c.id, label: c.label })) || [];
-        console.log(`[BC][${ms()}] CAMERA_ENUM_SUCCESS count=${diag.cameras.length}`, diag.cameras.map(c => c.label));
+        if (navigator.mediaDevices?.enumerateDevices) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          diag.cameras = devices
+            .filter(d => d.kind === 'videoinput')
+            .map(d => ({ id: d.deviceId, label: d.label || '(no label — permission needed)' }));
+          console.log(`[BC][${ms()}] CAMERA_ENUM_SUCCESS count=${diag.cameras.length}`, diag.cameras);
+        } else {
+          diag.cameras = [];
+          diag.camerasErr = 'enumerateDevices not available';
+          console.warn(`[BC][${ms()}] CAMERA_ENUM enumerateDevices not available`);
+        }
       } catch (camErr) {
+        diag.cameras = [];
         diag.camerasErr = String(camErr);
         console.warn(`[BC][${ms()}] CAMERA_ENUM_FAIL:`, String(camErr));
       }
@@ -752,24 +771,36 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         {/* Persistent hidden container for image barcode scanning. */}
         <div id="barcode-reader-image" aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden' }} />
 
-        {/* ── Persistent camera diagnostics panel — survives mode changes ── */}
-        {/* Shown to coach/admin whenever a camera failure occurs.           */}
-        {/* MUST be outside all mode-conditional blocks so it remains       */}
-        {/* visible even after mode switches back to 'choose'.              */}
-        {cameraDiag && showDebug && (
-          <div className="absolute inset-x-0 bottom-0 z-50 bg-slate-950 border-t-2 border-red-500/60 max-h-[55vh] flex flex-col">
+        {/* ── Persistent camera diagnostics panel ────────────────────────────── */}
+        {/* Shown whenever camera fails (no admin/coach gate — we need the   */}
+        {/* real iPhone error regardless of user role detection).            */}
+        {/* Placed OUTSIDE all mode-conditional blocks so it survives the    */}
+        {/* automatic return to 'choose' mode after failure.                 */}
+        {cameraDiag && (
+          <div className="absolute inset-x-0 bottom-0 z-50 bg-slate-950 border-t-2 border-red-500/60 max-h-[60vh] flex flex-col">
             <div className="flex items-center justify-between px-4 py-2 bg-red-900/60 flex-shrink-0">
-              <span className="text-red-300 text-xs font-bold">🔴 Camera Failure Diagnostics (Admin)</span>
+              <span className="text-red-300 text-xs font-bold">🔴 אבחון תקלת מצלמה</span>
               <div className="flex gap-2">
                 <button
                   onClick={() => {
                     const txt = JSON.stringify(cameraDiag, null, 2);
-                    try { navigator.clipboard.writeText(txt); alert('📋 הועתק! שלח לתמיכה.'); }
-                    catch (_) { alert(txt); }
+                    try {
+                      navigator.clipboard.writeText(txt);
+                      alert('📋 הועתק! שלח לתמיכה.');
+                    } catch (_) {
+                      // Clipboard API fails on some iOS contexts — show textarea for manual copy
+                      const ta = document.createElement('textarea');
+                      ta.value = txt;
+                      ta.style.cssText = 'position:fixed;top:20px;left:10px;right:10px;height:60vh;z-index:9999;font-size:10px;font-family:monospace;';
+                      document.body.appendChild(ta);
+                      ta.select();
+                      alert('בחר/י הכל והעתק/י ידנית. לחץ/י אישור לסגירה.');
+                      document.body.removeChild(ta);
+                    }
                   }}
                   className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded transition-colors"
                 >
-                  📋 העתק פרטי תקלה
+                  📋 העתק אבחון מצלמה
                 </button>
                 <button onClick={() => setCameraDiag(null)} className="text-red-400 hover:text-red-200 text-xs px-1">✕</button>
               </div>
@@ -795,10 +826,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 <span className="text-white/50">readerPreDefer:</span> <span className={cameraDiag.barcodeReaderPreDefer ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.barcodeReaderPreDefer)}</span>
                 <span className="text-white/50">readerPostDefer:</span><span className={cameraDiag.barcodeReaderPostDefer ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.barcodeReaderPostDefer)}</span>
 
-                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ cameras</span>
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ camera devices</span>
+                <span className="text-white/50">enumerateDevices:</span><span className={cameraDiag.hasEnumerateDevices ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.hasEnumerateDevices)}</span>
                 <span className="text-white/50">count:</span>         <span className="text-white/70">{cameraDiag.cameras != null ? cameraDiag.cameras.length : '?'}</span>
-                <span className="text-white/50">labels:</span>        <span className="text-white/60 break-all">{(cameraDiag.cameras || []).map(c => c.label || c.id).join(', ') || '(none)'}</span>
                 <span className="text-white/50">camerasErr:</span>    <span className="text-red-300 break-all">{cameraDiag.camerasErr || '—'}</span>
+                {(cameraDiag.cameras || []).map((c, i) => (
+                  <React.Fragment key={i}>
+                    <span className="text-white/50">cam[{i}].label:</span><span className="text-white/60 break-all">{c.label || '(no label)'}</span>
+                    <span className="text-white/50">cam[{i}].id:</span>   <span className="text-white/40 break-all">{c.id ? c.id.slice(0, 8) + '…' : '(none)'}</span>
+                  </React.Fragment>
+                ))}
 
                 <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ start attempts</span>
                 <span className="text-white/50">envTried:</span>      <span className="text-white/70">{String(cameraDiag.envAttempted)}</span>

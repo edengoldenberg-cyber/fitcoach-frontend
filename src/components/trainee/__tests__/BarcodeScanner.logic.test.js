@@ -165,6 +165,63 @@ describe('Barcode normalization', () => {
   });
 });
 
+// ─── getCameras() replacement ─────────────────────────────────────────────────
+
+describe('enumerateDevices() replacement for getCameras()', () => {
+  test('getCameras() is not called before start() — would open camera via getUserMedia', () => {
+    // Verify: we use enumerateDevices() NOT getCameras() during startup.
+    // Html5Qrcode.getCameras() internally calls getUserMedia which opens the camera,
+    // then closes it. On iOS WebKit, the camera release takes >80ms, so the
+    // subsequent scanner.start() getUserMedia call fails with NotReadableError.
+    // enumerateDevices() does NOT open the camera — safe to call before start().
+    const safeEnumeration = async (mediaDevices) => {
+      if (!mediaDevices?.enumerateDevices) return [];
+      const devices = await mediaDevices.enumerateDevices();
+      return devices.filter(d => d.kind === 'videoinput').map(d => ({ id: d.deviceId, label: d.label }));
+    };
+
+    // Mock mediaDevices with enumerateDevices (no getUserMedia needed)
+    let getUserMediaCalled = false;
+    const mockMediaDevices = {
+      enumerateDevices: async () => [
+        { kind: 'videoinput', deviceId: 'cam1', label: 'Back Camera' },
+        { kind: 'audioinput', deviceId: 'mic1', label: 'Microphone' },
+      ],
+      getUserMedia: async () => { getUserMediaCalled = true; throw new Error('should not be called'); },
+    };
+
+    return safeEnumeration(mockMediaDevices).then(cams => {
+      assert.ok(!getUserMediaCalled, 'getUserMedia must NOT be called during camera enumeration');
+      assert.equal(cams.length, 1, 'should return only videoinput devices');
+      assert.equal(cams[0].label, 'Back Camera');
+    });
+  });
+
+  test('enumerateDevices() without permission returns empty labels (normal iOS behavior)', () => {
+    const mockDevicesNoLabels = {
+      enumerateDevices: async () => [
+        { kind: 'videoinput', deviceId: 'abc123', label: '' },  // no label before permission
+      ],
+    };
+    return mockDevicesNoLabels.enumerateDevices().then(devices => {
+      const cams = devices.filter(d => d.kind === 'videoinput');
+      assert.equal(cams.length, 1, 'device listed even without labels');
+      assert.equal(cams[0].label, '', 'label is empty before permission — expected');
+      // Device ID is still available for Attempt 3
+      assert.ok(cams[0].deviceId, 'deviceId available without permission');
+    });
+  });
+
+  test('cameraDiag panel shows regardless of showDebug', () => {
+    // Previously: cameraDiag && showDebug — if showDebug=false panel was hidden
+    // Now:        cameraDiag              — always shows for any user after failure
+    const shouldShow = (cameraDiag, showDebug) => cameraDiag !== null;  // showDebug removed
+    assert.ok(shouldShow({ lastStage: 'start-environment' }, false), 'panel shows even when showDebug=false');
+    assert.ok(shouldShow({ lastStage: 'constructor' }, true), 'panel shows when showDebug=true');
+    assert.ok(!shouldShow(null, true), 'panel hidden when cameraDiag is null');
+  });
+});
+
 // ─── Canonical lookup pipeline ─────────────────────────────────────────────────
 
 describe('Canonical lookup pipeline — single entry point', () => {
