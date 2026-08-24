@@ -81,7 +81,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   });
 
   const isAdmin = user?.role === 'admin';
-  const isCoach = (coachTrainees && coachTrainees.length > 0) || user?.role === 'admin';
+  // Also include user?.role === 'coach' so the diagnostics panel shows before
+  // coachTrainees query finishes loading (it might still be in-flight when camera fails).
+  const isCoach = user?.role === 'coach' || user?.role === 'admin' || (coachTrainees && coachTrainees.length > 0);
   const showDebug = isAdmin || isCoach;
 
   useEffect(() => {
@@ -144,47 +146,49 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const startCameraScan = async () => {
     if (!open) return;
 
-    // ── Initialize full diagnostic collector ─────────────────────────────────
-    // This object is populated at each stage so any failure carries full context.
+    const t0 = Date.now();
+    const ms = () => `+${Date.now() - t0}ms`;
+
+    // ── Diagnostic collector: populated at each stage ─────────────────────
     const diag = {
-      ts:                      new Date().toISOString(),
-      stages:                  [],
-      lastStage:               null,
-      // Environment
-      isSecureContext:         window.isSecureContext,
-      hasMediaDevices:         !!navigator.mediaDevices,
-      hasGetUserMedia:         !!(navigator.mediaDevices?.getUserMedia),
-      userAgent:               navigator.userAgent,
-      platform:                navigator.platform || navigator.userAgentData?.platform || 'unknown',
-      // DOM state
-      barcodeReaderPreDefer:   null,
-      barcodeReaderPostDefer:  null,
-      scannerRefExisted:       !!scannerRef.current,
-      // Camera discovery
-      cameras:                 null,
-      camerasErr:              null,
-      // getUserMedia direct probe (diagnostic only)
-      gumTest:                 null,
-      gumErr:                  null,
-      // Start attempts
-      envAttempted:            false,
-      envErr:                  null,
-      userAttempted:           false,
-      userErr:                 null,
-      deviceIdAttempted:       false,
-      deviceIdErr:             null,
-      // Result
-      errType:                 null,
-      errName:                 null,
-      errMessage:              null,
-      errStack:                null,
-      errString:               null,
+      ts:                     new Date().toISOString(),
+      stages:                 [],
+      lastStage:              null,
+      isSecureContext:        window.isSecureContext,
+      hasMediaDevices:        !!navigator.mediaDevices,
+      hasGetUserMedia:        !!(navigator.mediaDevices?.getUserMedia),
+      userAgent:              navigator.userAgent,
+      platform:               navigator.platform || 'unknown',
+      docVisibility:          document.visibilityState,
+      barcodeReaderPreDefer:  null,
+      barcodeReaderPostDefer: null,
+      scannerRefExisted:      !!scannerRef.current,
+      cameras:                null,
+      camerasErr:             null,
+      // getUserMedia probe — run AFTER all start() attempts fail, not before.
+      // Running it BEFORE would acquire then release the camera; on iOS WebKit
+      // the hardware doesn't release in <80ms, causing the scanner's
+      // subsequent getUserMedia call to get NotReadableError ("device busy").
+      gumTest:                'not-run',
+      gumErr:                 null,
+      envAttempted:           false,
+      envErr:                 null,
+      userAttempted:          false,
+      userErr:                null,
+      deviceIdAttempted:      false,
+      deviceIdErr:            null,
+      errType:                null,
+      errName:                null,
+      errMessage:             null,
+      errStack:               null,
+      errString:              null,
     };
     diagRef.current = diag;
     const stage = (s) => { diag.lastStage = s; diag.stages.push(s); };
 
     try {
       stage('preflight');
+      console.log(`[BC][${ms()}] SCANNER_START_BEGIN`);
       addLog('info', 'barcode', 'camera_start_attempt');
 
       setMode('camera');
@@ -196,14 +200,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
       diag.barcodeReaderPreDefer = !!document.getElementById('barcode-reader');
 
-      // Defer: let React commit the mode='camera' render (adds #barcode-reader to DOM)
+      // Defer so React commits the mode='camera' render (adds #barcode-reader to DOM)
       await new Promise(resolve => setTimeout(resolve, 0));
       if (!open) return;
 
       stage('post-defer');
       diag.barcodeReaderPostDefer = !!document.getElementById('barcode-reader');
+      console.log(`[BC][${ms()}] POST_DEFER reader=${diag.barcodeReaderPostDefer}`);
 
-      // Environment preflight checks
       if (!window.isSecureContext) {
         throw Object.assign(new Error('Not a secure context (HTTPS required)'), { name: 'InsecureContextError' });
       }
@@ -211,26 +215,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         throw Object.assign(new Error('getUserMedia not supported'), { name: 'UnsupportedError' });
       }
 
-      // ── getUserMedia diagnostic probe ──────────────────────────────────────
-      // Run a direct getUserMedia({ video: true }) to separate browser-level
-      // permission/support failures from html5-qrcode library failures.
-      // The test stream is stopped immediately — no camera remains open.
-      stage('gum-probe');
-      try {
-        const testStream = await navigator.mediaDevices.getUserMedia({ video: true });
-        diag.gumTest = 'success';
-        testStream.getTracks().forEach(t => t.stop());
-        // Brief pause so the camera fully releases before html5-qrcode grabs it
-        await new Promise(r => setTimeout(r, 80));
-      } catch (gumErr) {
-        diag.gumTest = 'failed';
-        diag.gumErr  = `${gumErr?.name}: ${gumErr?.message}`;
-        // If getUserMedia itself fails, there's no point trying the scanner
-        throw gumErr;
-      }
-
       // ── Scanner constructor ────────────────────────────────────────────────
       stage('constructor');
+      console.log(`[BC][${ms()}] HTML5_CONSTRUCTOR`);
       if (!scannerRef.current) {
         if (!document.getElementById('barcode-reader')) {
           throw Object.assign(new Error('barcode-reader element not in DOM after defer'), { name: 'ElementMissingError' });
@@ -238,13 +225,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         scannerRef.current = new Html5Qrcode('barcode-reader');
       }
 
-      // ── Camera enumeration (non-blocking diagnostic) ───────────────────────
+      // ── Camera enumeration (diagnostic only — does NOT acquire camera) ────
       stage('enumerate-cameras');
+      console.log(`[BC][${ms()}] CAMERA_ENUM_START`);
       try {
         const cams = await Html5Qrcode.getCameras();
         diag.cameras = cams?.map(c => ({ id: c.id, label: c.label })) || [];
+        console.log(`[BC][${ms()}] CAMERA_ENUM_SUCCESS count=${diag.cameras.length}`, diag.cameras.map(c => c.label));
       } catch (camErr) {
-        diag.camerasErr = `${camErr?.name || typeof camErr}: ${camErr?.message || String(camErr)}`;
+        diag.camerasErr = String(camErr);
+        console.warn(`[BC][${ms()}] CAMERA_ENUM_FAIL:`, String(camErr));
       }
 
       const config = {
@@ -277,64 +267,88 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       };
 
       setScanStatus('מחפש ברקוד...');
+      let cameraStarted = false;
 
       // ── Attempt 1: rear / environment camera ──────────────────────────────
       stage('start-environment');
       diag.envAttempted = true;
-      let cameraStarted = false;
-
+      console.log(`[BC][${ms()}] ENV_START_BEGIN`);
       try {
         await scannerRef.current.start({ facingMode: 'environment' }, config, onScanSuccess, () => {});
         cameraStarted = true;
+        console.log(`[BC][${ms()}] ENV_START_SUCCESS`);
         addLog('info', 'barcode', 'camera_started', { attempt: 'environment' });
       } catch (envErr) {
-        diag.envErr = `${envErr?.name || typeof envErr}: ${envErr?.message || String(envErr)}`;
-        addLog('warn', 'barcode', 'env_camera_failed', { err: diag.envErr });
-        console.warn('[BarcodeScanner] environment failed:', diag.envErr);
+        // html5-qrcode wraps getUserMedia errors as strings:
+        //   "Error getting userMedia, error = <originalError>"
+        // so envErr may be a string, not an Error object.
+        diag.envErr = String(envErr);
+        console.warn(`[BC][${ms()}] ENV_START_FAIL:`, String(envErr));
+        addLog('warn', 'barcode', 'env_camera_failed', { err: String(envErr) });
 
         // ── Attempt 2: front camera ────────────────────────────────────────
-        // IMPORTANT: passing {} to html5-qrcode start() throws immediately:
-        //   "cameraIdOrConfig object should have exactly 1 key, found 0 keys"
-        // The only valid first-argument forms are { facingMode } or { deviceId }.
+        // NOTE: passing {} to start() throws "object should have exactly 1 key"
+        // in html5-qrcode 2.3.8 — use { facingMode: 'user' } instead.
         stage('start-user');
         diag.userAttempted = true;
+        console.log(`[BC][${ms()}] USER_START_BEGIN`);
         try {
-          try { await scannerRef.current?.clear(); } catch (_) {}
+          // Abandon the current scanner instance (potentially in bad state after failed start).
+          // Do NOT call clear() — it throws if state is unexpectedly SCANNING.
+          // html5-qrcode's start() calls clearElement() internally, so a fresh
+          // instance on the same element is safe.
+          scannerRef.current = null;
+          if (!document.getElementById('barcode-reader')) {
+            throw Object.assign(new Error('barcode-reader missing for user-facing attempt'), { name: 'ElementMissingError' });
+          }
           scannerRef.current = new Html5Qrcode('barcode-reader');
           await scannerRef.current.start({ facingMode: 'user' }, config, onScanSuccess, () => {});
           cameraStarted = true;
+          console.log(`[BC][${ms()}] USER_START_SUCCESS`);
           addLog('info', 'barcode', 'camera_started', { attempt: 'user' });
         } catch (userErr) {
-          diag.userErr = `${userErr?.name || typeof userErr}: ${userErr?.message || String(userErr)}`;
-          addLog('warn', 'barcode', 'user_camera_failed', { err: diag.userErr });
-          console.warn('[BarcodeScanner] user-facing camera failed:', diag.userErr);
+          diag.userErr = String(userErr);
+          console.warn(`[BC][${ms()}] USER_START_FAIL:`, String(userErr));
+          addLog('warn', 'barcode', 'user_camera_failed', { err: String(userErr) });
 
-          // ── Attempt 3: first available device ID ──────────────────────────
+          // ── Attempt 3: first enumerated device ID ─────────────────────────
           stage('start-device-id');
           diag.deviceIdAttempted = true;
-          const deviceCams = diag.cameras && diag.cameras.length > 0 ? diag.cameras : [];
+          console.log(`[BC][${ms()}] DEVICE_START_BEGIN cameras=${diag.cameras?.length}`);
+          const deviceCams = diag.cameras?.filter(c => c.id) || [];
           if (deviceCams.length === 0) {
-            throw Object.assign(new Error('No cameras found after all fallbacks'), { name: 'NotFoundError' });
+            // No enumerated cameras to try — bail out now
+            throw Object.assign(
+              new Error('No cameras available after all fallback attempts'),
+              { name: 'NotFoundError' }
+            );
           }
-          try { await scannerRef.current?.clear(); } catch (_) {}
-          scannerRef.current = new Html5Qrcode('barcode-reader');
-          await scannerRef.current.start(
-            { deviceId: { exact: deviceCams[0].id } },
-            config, onScanSuccess, () => {}
-          );
-          diag.deviceIdErr = null;
-          cameraStarted = true;
-          addLog('info', 'barcode', 'camera_started', { attempt: 'deviceId', id: deviceCams[0].id });
+          try {
+            scannerRef.current = null;
+            scannerRef.current = new Html5Qrcode('barcode-reader');
+            await scannerRef.current.start(
+              { deviceId: { exact: deviceCams[0].id } },
+              config, onScanSuccess, () => {}
+            );
+            cameraStarted = true;
+            console.log(`[BC][${ms()}] DEVICE_START_SUCCESS id=${deviceCams[0].id}`);
+            addLog('info', 'barcode', 'camera_started', { attempt: 'deviceId', id: deviceCams[0].id });
+          } catch (devErr) {
+            diag.deviceIdErr = String(devErr);
+            console.warn(`[BC][${ms()}] DEVICE_START_FAIL:`, String(devErr));
+            throw devErr; // all three attempts failed — propagate to outer catch
+          }
         }
       }
 
       if (!cameraStarted) {
-        throw Object.assign(new Error('Camera failed to start after all attempts'), { name: 'CameraStartError' });
+        throw Object.assign(new Error('Camera failed to start (no attempt succeeded)'), { name: 'CameraStartError' });
       }
 
       stage('stream-active');
+      console.log(`[BC][${ms()}] STREAM_ACTIVE`);
 
-      // Torch support check (non-fatal)
+      // Torch support check (non-fatal, doesn't affect camera)
       try {
         const caps = await scannerRef.current.getRunningTrackCapabilities();
         if (caps?.torch) setTorchSupported(true);
@@ -344,7 +358,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setPermissionGranted(true);
       setDebugInfo(prev => ({ ...prev, cameraOpened: true }));
       setLoading(false);
-      addLog('success', 'barcode', 'camera_stream_active', { stage: diag.lastStage });
+      addLog('success', 'barcode', 'camera_stream_active', {});
 
       // 30-second scan timeout
       scanTimeoutRef.current = setTimeout(async () => {
@@ -355,27 +369,55 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       }, 30000);
 
     } catch (err) {
+      // ── Run getUserMedia diagnostic probe NOW (after all attempts failed) ─
+      // We intentionally run this AFTER the scanner attempts, not before.
+      // Running it before would open then close the camera, and iOS WebKit
+      // takes longer than 80ms to release the hardware — causing NotReadableError
+      // on the actual scanner start immediately after.
+      console.log(`[BC][${ms()}] GUM_REQUEST (post-failure diagnostic)`);
+      try {
+        const testStream = await navigator.mediaDevices.getUserMedia?.({ video: true });
+        diag.gumTest = 'success';
+        testStream?.getTracks().forEach(t => t.stop());
+        console.log(`[BC][${ms()}] GUM_SUCCESS GUM_TRACK_STOP`);
+      } catch (gumErr) {
+        diag.gumTest = 'failed';
+        diag.gumErr  = String(gumErr);
+        console.warn(`[BC][${ms()}] GUM_FAIL:`, String(gumErr));
+      }
+
       // ── Capture full diagnostic snapshot ──────────────────────────────────
       const errName    = err?.name    || (typeof err === 'string' ? 'StringError' : 'UnknownError');
       const errMessage = err?.message || (typeof err === 'string' ? err : String(err));
-      diag.errType    = typeof err;
-      diag.errName    = errName;
-      diag.errMessage = errMessage;
-      diag.errStack   = err?.stack   || null;
-      diag.errString  = String(err);
+      diag.errType     = typeof err;
+      diag.errName     = errName;
+      diag.errMessage  = errMessage;
+      diag.errStack    = err?.stack || null;
+      diag.errString   = String(err);
+      diag.docVisibility = document.visibilityState;
 
-      console.error('[BarcodeScanner] failed at stage:', diag.lastStage, '\ndiag:', JSON.stringify(diag, null, 2));
+      console.error(`[BC][${ms()}] FINAL_CAMERA_FAILURE stage=${diag.lastStage}`,
+        '\nerrName:', errName,
+        '\nerrMsg:', errMessage,
+        '\nenvErr:', diag.envErr,
+        '\nuserErr:', diag.userErr,
+        '\ndevErr:', diag.deviceIdErr,
+        '\ngumTest:', diag.gumTest,
+        '\ncameras:', JSON.stringify(diag.cameras)
+      );
       addLog('error', 'barcode', 'camera_failed', {
-        stage:    diag.lastStage,
+        stage:     diag.lastStage,
         errName,
         errMessage,
         errString: String(err),
-        gumTest:  diag.gumTest,
-        envErr:   diag.envErr,
-        userErr:  diag.userErr,
+        envErr:    diag.envErr,
+        userErr:   diag.userErr,
+        deviceIdErr: diag.deviceIdErr,
+        gumTest:   diag.gumTest,
+        cameras:   diag.cameras?.length,
       });
 
-      // Save diagnostics for the admin panel
+      // Persist for the admin diagnostics panel
       setCameraDiag({ ...diag });
 
       setLoading(false);
@@ -383,19 +425,22 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setDebugInfo(prev => ({ ...prev, lastDecodeError: `[${diag.lastStage}] ${errName}: ${errMessage}` }));
 
       // ── User-visible error messages ────────────────────────────────────────
-      if (errName === 'NotAllowedError' || errMessage.includes('Permission') || errMessage.includes('denied')) {
+      // html5-qrcode wraps errors as strings so we must check String(err) and errMessage
+      const errFull = diag.errString || '';
+      if (errName === 'NotAllowedError' || errFull.includes('NotAllowedError') || errFull.includes('Permission') || errFull.includes('denied')) {
         setError('אין הרשאה למצלמה.\n\nיש לאפשר גישה למצלמה בהגדרות הדפדפן ולרענן את הדף.');
         setMode('permission-denied');
       } else if (errName === 'InsecureContextError') {
         setError('נדרש חיבור מאובטח (HTTPS) לשימוש במצלמה.');
         setMode('choose');
-      } else if (errName === 'UnsupportedError') {
+      } else if (errName === 'UnsupportedError' || errFull.includes('not supported')) {
         setError('הדפדפן הזה אינו תומך בסריקה חיה.\n\nנסה/י סריקה מתמונה או הקלדה ידנית.');
         setMode('choose');
-      } else if (errName === 'NotFoundError' && !errMessage.includes('barcode-reader') && !errMessage.includes('Element')) {
+      } else if ((errName === 'NotFoundError' && !errFull.includes('barcode-reader') && !errFull.includes('Element'))
+                 || errFull.includes('No cameras')) {
         setError('לא נמצאה מצלמה במכשיר.\n\nנסה/י סריקה מתמונה או הקלדה ידנית.');
         setMode('choose');
-      } else if (errName === 'NotReadableError' || errMessage.includes('already in use') || errMessage.includes('device in use')) {
+      } else if (errName === 'NotReadableError' || errFull.includes('NotReadableError') || errFull.includes('already in use') || errFull.includes('device in use')) {
         setError('המצלמה נמצאת בשימוש על ידי אפליקציה אחרת.\n\nסגור/י את האפליקציה האחרת ונסה/י שוב.');
         setMode('choose');
       } else {
@@ -704,11 +749,75 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           </button>
         </div>
 
-        {/* Persistent hidden container for image barcode scanning.
-            Always in DOM when dialog is open so Html5Qrcode("barcode-reader-image")
-            can be constructed regardless of the current mode. aria-hidden so
-            assistive tech ignores the empty div. */}
+        {/* Persistent hidden container for image barcode scanning. */}
         <div id="barcode-reader-image" aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden' }} />
+
+        {/* ── Persistent camera diagnostics panel — survives mode changes ── */}
+        {/* Shown to coach/admin whenever a camera failure occurs.           */}
+        {/* MUST be outside all mode-conditional blocks so it remains       */}
+        {/* visible even after mode switches back to 'choose'.              */}
+        {cameraDiag && showDebug && (
+          <div className="absolute inset-x-0 bottom-0 z-50 bg-slate-950 border-t-2 border-red-500/60 max-h-[55vh] flex flex-col">
+            <div className="flex items-center justify-between px-4 py-2 bg-red-900/60 flex-shrink-0">
+              <span className="text-red-300 text-xs font-bold">🔴 Camera Failure Diagnostics (Admin)</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    const txt = JSON.stringify(cameraDiag, null, 2);
+                    try { navigator.clipboard.writeText(txt); alert('📋 הועתק! שלח לתמיכה.'); }
+                    catch (_) { alert(txt); }
+                  }}
+                  className="text-[10px] bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded transition-colors"
+                >
+                  📋 העתק פרטי תקלה
+                </button>
+                <button onClick={() => setCameraDiag(null)} className="text-red-400 hover:text-red-200 text-xs px-1">✕</button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1 p-3">
+              <div className="grid grid-cols-[120px_1fr] gap-x-2 gap-y-0.5 text-[10px] font-mono text-white/80">
+                <span className="text-red-400 font-bold col-span-2">▸ failure</span>
+                <span className="text-white/50">lastStage:</span>     <span className="text-red-400 font-bold">{cameraDiag.lastStage}</span>
+                <span className="text-white/50">stages:</span>        <span className="text-slate-300 break-all">{cameraDiag.stages?.join(' → ')}</span>
+                <span className="text-white/50">errName:</span>       <span className="text-red-300 break-all">{cameraDiag.errName}</span>
+                <span className="text-white/50">errMessage:</span>    <span className="text-red-200 break-all">{cameraDiag.errMessage}</span>
+                <span className="text-white/50">errString:</span>     <span className="text-orange-300 break-all">{String(cameraDiag.errString || '').slice(0, 250)}</span>
+                <span className="text-white/50">errType:</span>       <span className="text-white/60">{cameraDiag.errType}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ environment</span>
+                <span className="text-white/50">isSecure:</span>      <span className={cameraDiag.isSecureContext ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.isSecureContext)}</span>
+                <span className="text-white/50">mediaDevices:</span>  <span className={cameraDiag.hasMediaDevices ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.hasMediaDevices)}</span>
+                <span className="text-white/50">getUserMedia:</span>  <span className={cameraDiag.hasGetUserMedia ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.hasGetUserMedia)}</span>
+                <span className="text-white/50">docVisibility:</span><span className="text-white/60">{cameraDiag.docVisibility}</span>
+                <span className="text-white/50">platform:</span>      <span className="text-white/60">{cameraDiag.platform}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ DOM</span>
+                <span className="text-white/50">readerPreDefer:</span> <span className={cameraDiag.barcodeReaderPreDefer ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.barcodeReaderPreDefer)}</span>
+                <span className="text-white/50">readerPostDefer:</span><span className={cameraDiag.barcodeReaderPostDefer ? 'text-green-400' : 'text-red-400'}>{String(cameraDiag.barcodeReaderPostDefer)}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ cameras</span>
+                <span className="text-white/50">count:</span>         <span className="text-white/70">{cameraDiag.cameras != null ? cameraDiag.cameras.length : '?'}</span>
+                <span className="text-white/50">labels:</span>        <span className="text-white/60 break-all">{(cameraDiag.cameras || []).map(c => c.label || c.id).join(', ') || '(none)'}</span>
+                <span className="text-white/50">camerasErr:</span>    <span className="text-red-300 break-all">{cameraDiag.camerasErr || '—'}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ start attempts</span>
+                <span className="text-white/50">envTried:</span>      <span className="text-white/70">{String(cameraDiag.envAttempted)}</span>
+                <span className="text-white/50">envErr:</span>        <span className="text-red-300 break-all">{cameraDiag.envErr || '—'}</span>
+                <span className="text-white/50">userTried:</span>     <span className="text-white/70">{String(cameraDiag.userAttempted)}</span>
+                <span className="text-white/50">userErr:</span>       <span className="text-red-300 break-all">{cameraDiag.userErr || '—'}</span>
+                <span className="text-white/50">devIdTried:</span>    <span className="text-white/70">{String(cameraDiag.deviceIdAttempted)}</span>
+                <span className="text-white/50">devIdErr:</span>      <span className="text-red-300 break-all">{cameraDiag.deviceIdErr || '—'}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ post-failure getUserMedia probe</span>
+                <span className="text-white/50">gumTest:</span>       <span className={cameraDiag.gumTest === 'success' ? 'text-green-400' : cameraDiag.gumTest === 'failed' ? 'text-red-400' : 'text-white/50'}>{cameraDiag.gumTest}</span>
+                <span className="text-white/50">gumErr:</span>        <span className="text-red-300 break-all">{cameraDiag.gumErr || '—'}</span>
+
+                <span className="text-yellow-400 font-bold col-span-2 mt-1">▸ UA</span>
+                <span className="text-white/50">UA:</span>            <span className="text-white/50 break-all text-[9px]">{(cameraDiag.userAgent || '').slice(0, 150)}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MODE: CHOOSE */}
         {mode === 'choose' && (
@@ -862,138 +971,6 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 </div>
               );
             })()}
-
-            {/* ── Camera failure diagnostics — coach/admin only ──────────── */}
-            {cameraDiag && showDebug && (
-              <div className="w-full max-w-sm mt-4 rounded-lg border border-red-500/40 bg-red-950/30 overflow-hidden">
-                <div className="px-4 py-2 bg-red-900/50 flex items-center justify-between">
-                  <span className="text-red-300 text-xs font-bold">🔴 Camera Failure — Admin Diagnostics</span>
-                  <button
-                    onClick={() => setCameraDiag(null)}
-                    className="text-red-400 hover:text-red-200 text-xs"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="p-3 space-y-1.5 text-[10px] font-mono text-white/80 max-h-72 overflow-y-auto">
-                  <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-0.5">
-                    <span className="text-white/50">stage:</span>
-                    <span className="text-red-400 font-bold">{cameraDiag.lastStage}</span>
-
-                    <span className="text-white/50">stages:</span>
-                    <span className="text-slate-300 break-all">{cameraDiag.stages?.join(' → ')}</span>
-
-                    <span className="text-white/50">errName:</span>
-                    <span className="text-red-300">{cameraDiag.errName}</span>
-
-                    <span className="text-white/50">errMessage:</span>
-                    <span className="text-red-200 break-all">{cameraDiag.errMessage}</span>
-
-                    <span className="text-white/50">errString:</span>
-                    <span className="text-red-200 break-all">{String(cameraDiag.errString || '').slice(0, 200)}</span>
-
-                    <span className="text-white/50">errType:</span>
-                    <span className="text-white/70">{cameraDiag.errType}</span>
-
-                    <span className="text-white/50 mt-1">— env —</span>
-                    <span />
-
-                    <span className="text-white/50">isSecure:</span>
-                    <span className={cameraDiag.isSecureContext ? 'text-green-400' : 'text-red-400'}>
-                      {String(cameraDiag.isSecureContext)}
-                    </span>
-
-                    <span className="text-white/50">mediaDevices:</span>
-                    <span className={cameraDiag.hasMediaDevices ? 'text-green-400' : 'text-red-400'}>
-                      {String(cameraDiag.hasMediaDevices)}
-                    </span>
-
-                    <span className="text-white/50">getUserMedia:</span>
-                    <span className={cameraDiag.hasGetUserMedia ? 'text-green-400' : 'text-red-400'}>
-                      {String(cameraDiag.hasGetUserMedia)}
-                    </span>
-
-                    <span className="text-white/50 mt-1">— DOM —</span>
-                    <span />
-
-                    <span className="text-white/50">readerPreDefer:</span>
-                    <span className={cameraDiag.barcodeReaderPreDefer ? 'text-green-400' : 'text-red-400'}>
-                      {String(cameraDiag.barcodeReaderPreDefer)}
-                    </span>
-
-                    <span className="text-white/50">readerPostDefer:</span>
-                    <span className={cameraDiag.barcodeReaderPostDefer ? 'text-green-400' : 'text-red-400'}>
-                      {String(cameraDiag.barcodeReaderPostDefer)}
-                    </span>
-
-                    <span className="text-white/50 mt-1">— getUserMedia —</span>
-                    <span />
-
-                    <span className="text-white/50">gumTest:</span>
-                    <span className={cameraDiag.gumTest === 'success' ? 'text-green-400' : 'text-red-400'}>
-                      {cameraDiag.gumTest || 'not run'}
-                    </span>
-
-                    <span className="text-white/50">gumErr:</span>
-                    <span className="text-red-300 break-all">{cameraDiag.gumErr || '—'}</span>
-
-                    <span className="text-white/50 mt-1">— cameras —</span>
-                    <span />
-
-                    <span className="text-white/50">count:</span>
-                    <span className="text-white/70">{cameraDiag.cameras ? cameraDiag.cameras.length : '?'}</span>
-
-                    <span className="text-white/50">camerasErr:</span>
-                    <span className="text-red-300 break-all">{cameraDiag.camerasErr || '—'}</span>
-
-                    <span className="text-white/50 mt-1">— attempts —</span>
-                    <span />
-
-                    <span className="text-white/50">env tried:</span>
-                    <span className="text-white/70">{String(cameraDiag.envAttempted)}</span>
-
-                    <span className="text-white/50">envErr:</span>
-                    <span className="text-red-300 break-all">{cameraDiag.envErr || '—'}</span>
-
-                    <span className="text-white/50">user tried:</span>
-                    <span className="text-white/70">{String(cameraDiag.userAttempted)}</span>
-
-                    <span className="text-white/50">userErr:</span>
-                    <span className="text-red-300 break-all">{cameraDiag.userErr || '—'}</span>
-
-                    <span className="text-white/50">devId tried:</span>
-                    <span className="text-white/70">{String(cameraDiag.deviceIdAttempted)}</span>
-
-                    <span className="text-white/50">devIdErr:</span>
-                    <span className="text-red-300 break-all">{cameraDiag.deviceIdErr || '—'}</span>
-
-                    <span className="text-white/50 mt-1">— device —</span>
-                    <span />
-
-                    <span className="text-white/50">platform:</span>
-                    <span className="text-white/70">{cameraDiag.platform}</span>
-
-                    <span className="text-white/50">UA:</span>
-                    <span className="text-white/60 break-all">{(cameraDiag.userAgent || '').slice(0, 120)}</span>
-                  </div>
-                </div>
-                <div className="px-3 pb-3">
-                  <button
-                    onClick={() => {
-                      try {
-                        navigator.clipboard.writeText(JSON.stringify(cameraDiag, null, 2));
-                        alert('📋 הועתק! שלח לתמיכה.');
-                      } catch (_) {
-                        alert(JSON.stringify(cameraDiag, null, 2));
-                      }
-                    }}
-                    className="w-full text-xs py-2 px-3 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-medium transition-colors"
-                  >
-                    📋 העתק פרטי שגיאה
-                  </button>
-                </div>
-              </div>
-            )}
 
             {isAdmin && (
               <button
