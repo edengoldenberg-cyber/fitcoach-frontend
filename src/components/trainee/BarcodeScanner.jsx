@@ -135,22 +135,43 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
   // סריקה חיה מהמצלמה
   const startCameraScan = async () => {
+    // Guard: prevent starting if dialog is closing
+    if (!open) return;
+
     try {
       addLog('info', 'barcode', 'request camera permission');
-      
-      // בדיקת תמיכה ב-BarcodeDetector
-      const supported = 'BarcodeDetector' in window;
-      addLog('info', 'barcode', 'BarcodeDetector support', { supported });
-      
+
       setMode('camera');
       setError(null);
       setLoading(true);
       setScannedOnce(false);
       setDebugInfo(prev => ({ ...prev, decodeMode: 'live', cameraOpened: false }));
 
-      // יצירת scanner עם html5-qrcode
+      // CRITICAL FIX: React batches the setState calls above and hasn't committed
+      // the DOM yet. The #barcode-reader div is inside the camera-mode render block,
+      // so it doesn't exist until after the re-render. Deferring with setTimeout(0)
+      // lets React flush the state update and paint the div before we touch it.
+      // Without this, new Html5Qrcode("barcode-reader") throws:
+      //   "HTML Element with id=barcode-reader not found"
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Safety check: bail out if dialog closed or mode changed during the defer
+      if (!open) return;
+
+      // Validate prerequisites before touching camera hardware
+      if (!window.isSecureContext) {
+        throw Object.assign(new Error('Not a secure context (HTTPS required)'), { name: 'InsecureContextError' });
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw Object.assign(new Error('getUserMedia not supported'), { name: 'UnsupportedError' });
+      }
+
+      // יצירת scanner — element is now in DOM (mode='camera' has rendered)
       if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode("barcode-reader");
+        if (!document.getElementById('barcode-reader')) {
+          throw Object.assign(new Error('barcode-reader element missing from DOM'), { name: 'ElementMissingError' });
+        }
+        scannerRef.current = new Html5Qrcode('barcode-reader');
       }
 
       const config = {
@@ -167,79 +188,76 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         ],
       };
 
+      const onScanSuccess = async (decodedText) => {
+        // Anti-duplicate: ignore same barcode within 5 seconds
+        const now = Date.now();
+        if (
+          lastScannedRef.current.barcode === decodedText &&
+          now - lastScannedRef.current.timestamp < 5000
+        ) return;
+
+        if (scannedOnce) return;
+        setScannedOnce(true);
+        lastScannedRef.current = { barcode: decodedText, timestamp: now };
+
+        addLog('success', 'barcode', 'scan_success', { barcode: decodedText });
+        setScanStatus('ברקוד זוהה ✅');
+
+        if (scanTimeoutRef.current) {
+          clearTimeout(scanTimeoutRef.current);
+          scanTimeoutRef.current = null;
+        }
+
+        setCameraActive(false);
+        setDebugInfo(prev => ({ ...prev, lastDetectedBarcode: decodedText }));
+
+        try { await scannerRef.current?.stop(); } catch (_) {}
+        handleBarcodeDetected(decodedText);
+      };
+
       setScanStatus('מחפש ברקוד...');
       addLog('info', 'barcode', 'scan started', { mode: 'live' });
 
-      // התחל סריקה
-      await scannerRef.current.start(
-        { facingMode: "environment" },
-        config,
-        async (decodedText) => {
-          // Anti-duplicates: התעלם מברקוד זהה בתוך 5 שניות
-          const now = Date.now();
-          if (
-            lastScannedRef.current.barcode === decodedText &&
-            now - lastScannedRef.current.timestamp < 5000
-          ) {
-            console.log('[BarcodeScanner] Duplicate barcode ignored:', decodedText);
-            return;
-          }
-          
-          // הפסק סריקה אחרי זיהוי ראשון
-          if (scannedOnce) return;
-          setScannedOnce(true);
-          
-          // עדכן timestamp
-          lastScannedRef.current = { barcode: decodedText, timestamp: now };
-          
-          console.log("BARCODE:", decodedText);
-          addLog('success', 'barcode', 'scan_success', { 
-            barcode: decodedText
-          });
-          
-          setScanStatus('ברקוד זוהה ✅');
-          
-          if (scanTimeoutRef.current) {
-            clearTimeout(scanTimeoutRef.current);
-            scanTimeoutRef.current = null;
-          }
-          
-          setCameraActive(false);
-          setDebugInfo(prev => ({ ...prev, lastDetectedBarcode: decodedText }));
-          
-          // הפסק סריקה מיידית
-          await scannerRef.current.stop();
-          
-          handleBarcodeDetected(decodedText);
-        },
-        (errorMessage) => {
-          // שגיאות סריקה שוטפות - מתעלמים
-        }
-      );
-
-      // בדוק אם פנס נתמך
+      // Try rear/environment camera first; fall back to any available camera.
+      // OverconstrainedError or NotFoundError on the environment constraint is
+      // common on devices that expose only a single front-facing camera or on
+      // desktop browsers that don't understand facingMode.
       try {
-        const cameras = await Html5Qrcode.getCameras();
-        if (cameras && cameras.length > 0) {
-          const capabilities = await scannerRef.current.getRunningTrackCapabilities();
-          if (capabilities && capabilities.torch) {
-            setTorchSupported(true);
-          }
-        }
-      } catch (err) {
-        console.log('[BarcodeScanner] Torch not supported:', err);
+        await scannerRef.current.start(
+          { facingMode: 'environment' },
+          config,
+          onScanSuccess,
+          () => {} // per-frame errors are normal — ignore
+        );
+        addLog('info', 'barcode', 'camera_started', { facingMode: 'environment' });
+      } catch (envErr) {
+        console.log('[BarcodeScanner] rear camera failed, falling back to default:', envErr?.message || envErr);
+        addLog('warn', 'barcode', 'rear_camera_fallback', { reason: envErr?.message || String(envErr) });
+        // Re-create scanner instance on the element (clear state from failed start)
+        try { await scannerRef.current?.clear(); } catch (_) {}
+        scannerRef.current = new Html5Qrcode('barcode-reader');
+        await scannerRef.current.start(
+          {},  // no constraint → browser picks any available camera
+          config,
+          onScanSuccess,
+          () => {}
+        );
+        addLog('info', 'barcode', 'camera_started', { facingMode: 'any' });
       }
+
+      // Check torch support (non-fatal)
+      try {
+        const capabilities = await scannerRef.current.getRunningTrackCapabilities();
+        if (capabilities?.torch) setTorchSupported(true);
+      } catch (_) {}
 
       setCameraActive(true);
       setPermissionGranted(true);
       setDebugInfo(prev => ({ ...prev, cameraOpened: true }));
       setLoading(false);
-      
-      addLog('success', 'barcode', 'camera stream active', {
-        trackSettings: 'available'
-      });
+      addLog('success', 'barcode', 'camera stream active', {});
 
-      // Timeout של 30 שניות
+      // 30-second scan timeout
       scanTimeoutRef.current = setTimeout(async () => {
         await cleanup();
         setError('⏱️ לא הצלחנו לזהות ברקוד תוך 30 שניות.\nנסה/י: תאורה טובה יותר, התקרבות למוצר, או ייצוב הידיים.');
@@ -248,22 +266,34 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       }, 30000);
 
     } catch (err) {
+      // Normalize: html5-qrcode sometimes throws strings, not Error objects
+      const errName    = err?.name    || (typeof err === 'string' ? 'StringError' : 'UnknownError');
+      const errMessage = err?.message || (typeof err === 'string' ? err : 'Unknown error');
+
+      console.error('[BarcodeScanner] Camera start failed:', errName, errMessage, err);
+      addLog('error', 'barcode', 'camera_failed', { errorName: errName, errorMessage: errMessage });
+
       setLoading(false);
       setCameraActive(false);
-      setDebugInfo(prev => ({ ...prev, lastDecodeError: err.message }));
-      
-      addLog('error', 'barcode', 'camera_failed', {
-        errorMessage: err.message
-      });
-      
-      if (err.name === 'NotAllowedError') {
-        setError('❌ גישה למצלמה נדחתה.\n\nאנא אפשר/י גישה למצלמה בהגדרות הדפדפן.');
+      setDebugInfo(prev => ({ ...prev, lastDecodeError: `${errName}: ${errMessage}` }));
+
+      if (errName === 'NotAllowedError' || errMessage.includes('Permission') || errMessage.includes('denied')) {
+        setError('אין הרשאה למצלמה.\n\nיש לאפשר גישה למצלמה בהגדרות הדפדפן ולרענן את הדף.');
         setMode('permission-denied');
-      } else if (err.name === 'NotFoundError') {
-        setError('❌ לא נמצאה מצלמה במכשיר.\n\nנסה/י הזנה ידנית או סריקה מתמונה.');
+      } else if (errName === 'InsecureContextError') {
+        setError('נדרש חיבור מאובטח (HTTPS) לשימוש במצלמה.');
+        setMode('choose');
+      } else if (errName === 'UnsupportedError') {
+        setError('הדפדפן הזה אינו תומך בסריקה חיה.\n\nנסה/י סריקה מתמונה או הקלדה ידנית.');
+        setMode('choose');
+      } else if (errName === 'NotFoundError' && !errMessage.includes('barcode-reader') && !errMessage.includes('Element')) {
+        setError('לא נמצאה מצלמה במכשיר.\n\nנסה/י סריקה מתמונה או הקלדה ידנית.');
+        setMode('choose');
+      } else if (errName === 'NotReadableError' || errMessage.includes('already in use') || errMessage.includes('device in use')) {
+        setError('המצלמה נמצאת בשימוש על ידי אפליקציה אחרת.\n\nסגור/י את האפליקציה האחרת ונסה/י שוב.');
         setMode('choose');
       } else {
-        setError('❌ שגיאה בטעינת הסורק.\n\nנסה/י הזנה ידנית או סריקה מתמונה.');
+        setError('לא ניתן לפתוח את המצלמה.\n\nנסה/י סריקה מתמונה או הקלדה ידנית.');
         setMode('choose');
       }
     }
@@ -331,9 +361,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       };
       reader.readAsDataURL(file);
 
-      // יצירת scanner אם לא קיים
+      // barcode-reader-image is a persistent hidden div always in the Dialog DOM —
+      // it's safe to construct here regardless of mode.
       if (!scannerRef.current) {
-        scannerRef.current = new Html5Qrcode("barcode-reader-image");
+        scannerRef.current = new Html5Qrcode('barcode-reader-image');
       }
 
       // Timeout של 6 שניות
@@ -341,7 +372,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         scanTimeoutRef.current = setTimeout(() => reject(new Error('Timeout')), 6000);
       });
 
-      const decodePromise = scannerRef.current.scanFile(file, true);
+      // showImage=false — no need to render to the hidden div
+      const decodePromise = scannerRef.current.scanFile(file, false);
 
       const barcode = await Promise.race([decodePromise, timeoutPromise]);
       
@@ -566,6 +598,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           </button>
         </div>
 
+        {/* Persistent hidden container for image barcode scanning.
+            Always in DOM when dialog is open so Html5Qrcode("barcode-reader-image")
+            can be constructed regardless of the current mode. aria-hidden so
+            assistive tech ignores the empty div. */}
+        <div id="barcode-reader-image" aria-hidden="true" style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden', visibility: 'hidden' }} />
+
         {/* MODE: CHOOSE */}
         {mode === 'choose' && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-4">
@@ -735,42 +773,47 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
         {/* MODE: CAMERA */}
         {mode === 'camera' && (
-          <div className="flex-1 flex flex-col items-center justify-center relative bg-black">
-            {loading ? (
-              <div className="text-center space-y-3">
+          <div className="flex-1 relative bg-black overflow-hidden">
+            {/* #barcode-reader MUST always be in the DOM while mode=camera.
+                Html5Qrcode takes over this element to render the video stream.
+                Previously this was inside a cameraActive conditional, causing
+                the constructor to fail because the element didn't exist yet. */}
+            <div id="barcode-reader" className="w-full h-full" />
+
+            {/* Loading overlay — covers the scanner div until camera is live */}
+            {loading && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black">
                 <Loader2 className="w-12 h-12 text-green-400 animate-spin mx-auto" />
-                <p className="text-white">פותח מצלמה...</p>
+                <p className="text-white mt-3">פותח מצלמה...</p>
               </div>
-            ) : cameraActive ? (
+            )}
+
+            {/* Scan overlay and controls — only when camera stream is active */}
+            {cameraActive && (
               <>
-                <div id="barcode-reader" className="w-full h-full" />
-                
-                {/* Overlay כהה עם חלון סריקה */}
+                {/* Dark overlay with scan window */}
                 <div className="absolute inset-0 pointer-events-none">
-                  {/* רקע כהה */}
                   <div className="absolute inset-0 bg-black/60" />
-                  
-                  {/* חלון סריקה במרכז */}
                   <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                     <div className="w-[260px] h-[260px] border-2 border-green-400 rounded-lg shadow-lg" />
                   </div>
                 </div>
-                
-                {/* טקסט הדרכה */}
+
+                {/* Instruction */}
                 <div className="absolute top-24 left-0 right-0 text-center pointer-events-none z-20">
                   <p className="text-white text-lg font-bold bg-green-600/90 px-6 py-3 rounded-full inline-block shadow-lg">
                     כוון את הברקוד למרכז
                   </p>
                 </div>
-                
-                {/* חיווי סטטוס */}
+
+                {/* Status */}
                 <div className="absolute bottom-32 left-0 right-0 text-center pointer-events-none z-20">
                   <p className="text-white/80 text-sm bg-black/50 px-4 py-2 rounded-full inline-block">
                     {scanStatus}
                   </p>
                 </div>
-                
-                {/* כפתורים */}
+
+                {/* Controls */}
                 <div className="absolute bottom-6 left-0 right-0 flex justify-center gap-3 z-20 px-4">
                   {torchSupported && (
                     <Button
@@ -779,14 +822,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       size="icon"
                       className="border-white/30 text-white hover:bg-white/10 pointer-events-auto"
                     >
-                      {torchEnabled ? (
-                        <FlashlightOff className="w-5 h-5" />
-                      ) : (
-                        <Flashlight className="w-5 h-5" />
-                      )}
+                      {torchEnabled ? <FlashlightOff className="w-5 h-5" /> : <Flashlight className="w-5 h-5" />}
                     </Button>
                   )}
-                  
                   <Button
                     onClick={() => setMode('manual')}
                     variant="outline"
@@ -794,20 +832,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   >
                     הזנה ידנית
                   </Button>
-                  
                   <Button
-                    onClick={async () => {
-                      await cleanup();
-                      setMode('choose');
-                    }}
+                    onClick={async () => { await cleanup(); setMode('choose'); }}
                     variant="outline"
                     className="border-white/30 text-white hover:bg-white/10 pointer-events-auto"
                   >
                     סגור
                   </Button>
                 </div>
-                
-                {/* Scanner Debug (Admin/Coach only) */}
+
+                {/* Debug panel (Admin/Coach only) */}
                 {showDebug && (
                   <div className="absolute bottom-24 left-4 right-4 bg-black/90 rounded-lg p-3 z-30 text-[10px] font-mono text-white/90 max-h-48 overflow-y-auto pointer-events-none border border-green-400/30">
                     <div className="font-bold text-green-400 mb-2 text-xs">🔧 Scanner Debug (Admin/Coach)</div>
@@ -854,7 +888,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   </div>
                 )}
               </>
-            ) : null}
+            )}
           </div>
         )}
 
@@ -878,7 +912,6 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         {/* MODE: IMAGE */}
         {mode === 'image' && (
           <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6">
-            <div id="barcode-reader-image" className="hidden" />
             
             {imagePreview && (
               <div className="w-full max-w-sm aspect-video bg-slate-800 rounded-lg overflow-hidden">
