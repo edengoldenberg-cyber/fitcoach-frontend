@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Html5Qrcode } from 'html5-qrcode';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
@@ -256,17 +256,19 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         console.warn(`[BC][${ms()}] CAMERA_ENUM_FAIL:`, String(camErr));
       }
 
+      // Html5Qrcode.SUPPORTED_FORMATS is undefined at runtime (not a class property).
+      // The correct export is Html5QrcodeSupportedFormats (top-level enum from html5-qrcode).
       const config = {
         fps: 10,
         qrbox: { width: 260, height: 260 },
         aspectRatio: 1.0,
         formatsToSupport: [
-          Html5Qrcode.SUPPORTED_FORMATS.EAN_13,
-          Html5Qrcode.SUPPORTED_FORMATS.EAN_8,
-          Html5Qrcode.SUPPORTED_FORMATS.UPC_A,
-          Html5Qrcode.SUPPORTED_FORMATS.UPC_E,
-          Html5Qrcode.SUPPORTED_FORMATS.CODE_128,
-          Html5Qrcode.SUPPORTED_FORMATS.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
         ],
       };
 

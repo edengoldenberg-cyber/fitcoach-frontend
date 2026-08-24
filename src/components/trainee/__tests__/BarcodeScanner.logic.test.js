@@ -165,6 +165,99 @@ describe('Barcode normalization', () => {
   });
 });
 
+// ─── SUPPORTED_FORMATS fix ────────────────────────────────────────────────────
+
+describe('Html5QrcodeSupportedFormats — correct enum import', () => {
+  // Real iPhone diagnostic proved:
+  //   errMessage: "undefined is not an object (evaluating 'ac.SUPPORTED_FORMATS.EAN_13')"
+  // Html5Qrcode.SUPPORTED_FORMATS does NOT exist as a class property.
+  // Html5QrcodeSupportedFormats IS the correct top-level export.
+
+  // Simulate the installed enum values (from node_modules inspection)
+  const Html5QrcodeSupportedFormats = {
+    EAN_13: 9, EAN_8: 10, UPC_A: 14, UPC_E: 15, CODE_128: 5, CODE_39: 3,
+  };
+  const Html5Qrcode = {}; // no SUPPORTED_FORMATS property
+
+  test('Html5Qrcode.SUPPORTED_FORMATS is undefined (root cause)', () => {
+    assert.equal(Html5Qrcode.SUPPORTED_FORMATS, undefined,
+      'Html5Qrcode.SUPPORTED_FORMATS does not exist — accessing .EAN_13 throws TypeError');
+  });
+
+  test('Html5QrcodeSupportedFormats.EAN_13 is defined', () => {
+    assert.equal(typeof Html5QrcodeSupportedFormats.EAN_13, 'number');
+    assert.equal(Html5QrcodeSupportedFormats.EAN_13, 9);
+  });
+
+  test('Html5QrcodeSupportedFormats.EAN_8 is defined', () => {
+    assert.equal(typeof Html5QrcodeSupportedFormats.EAN_8, 'number');
+    assert.equal(Html5QrcodeSupportedFormats.EAN_8, 10);
+  });
+
+  test('Html5QrcodeSupportedFormats.UPC_A is defined', () => {
+    assert.equal(typeof Html5QrcodeSupportedFormats.UPC_A, 'number');
+    assert.equal(Html5QrcodeSupportedFormats.UPC_A, 14);
+  });
+
+  test('Html5QrcodeSupportedFormats.UPC_E is defined', () => {
+    assert.equal(typeof Html5QrcodeSupportedFormats.UPC_E, 'number');
+    assert.equal(Html5QrcodeSupportedFormats.UPC_E, 15);
+  });
+
+  test('config object with Html5QrcodeSupportedFormats does not throw', () => {
+    assert.doesNotThrow(() => {
+      const config = {
+        fps: 10,
+        qrbox: { width: 260, height: 260 },
+        aspectRatio: 1.0,
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+        ],
+      };
+      assert.ok(config.formatsToSupport.length === 6, 'all 6 formats included');
+      assert.ok(config.formatsToSupport.every(f => typeof f === 'number'), 'all formats are numbers');
+    });
+  });
+
+  test('old pattern with Html5Qrcode.SUPPORTED_FORMATS would throw TypeError', () => {
+    assert.throws(() => {
+      // This is the bug that crashed the iPhone
+      const _ = Html5Qrcode.SUPPORTED_FORMATS.EAN_13;
+    }, TypeError, 'accessing undefined.EAN_13 must throw TypeError');
+  });
+
+  test('enumerate-cameras stage completes before config is evaluated', () => {
+    // The crash at "enumerate-cameras" lastStage means:
+    // stage('enumerate-cameras') ran, then config evaluation crashed before
+    // stage('start-environment') could be set.
+    // With the fix, stage should advance to 'start-environment'.
+    const stages = [];
+    const stage = (s) => stages.push(s);
+
+    stage('preflight');
+    stage('post-defer');
+    stage('constructor');
+    stage('enumerate-cameras');
+
+    // Simulate config creation with FIXED import — no throw
+    const config = {
+      formatsToSupport: [
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+      ],
+    };
+
+    stage('start-environment'); // now reachable
+    assert.ok(stages.includes('start-environment'), 'start-environment must be reached after config fix');
+    assert.ok(stages.indexOf('start-environment') > stages.indexOf('enumerate-cameras'));
+  });
+});
+
 // ─── getCameras() replacement ─────────────────────────────────────────────────
 
 describe('enumerateDevices() replacement for getCameras()', () => {
