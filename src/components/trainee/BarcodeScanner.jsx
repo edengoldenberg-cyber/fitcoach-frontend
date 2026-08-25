@@ -62,6 +62,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const scanFallbackTimerRef = useRef(null);
   // Set when camera start fails; drives the diagnostics panel.
   const [cameraDiag, setCameraDiag] = useState(null);
+  // Diagnostic info for label extraction failures — shown to coach/admin only.
+  const [labelDiagState, setLabelDiagState] = useState(null);
   
   const [mode, setMode] = useState('choose'); // 'choose','camera','image','manual','result','learn-product','confirm-product','debug'
   const [loading, setLoading] = useState(false);
@@ -160,6 +162,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setScannerEngine(null);
       if (scanFallbackTimerRef.current) { clearTimeout(scanFallbackTimerRef.current); scanFallbackTimerRef.current = null; }
       setCameraDiag(null);
+      setLabelDiagState(null);
       diagRef.current = null;
       setDebugInfo(prev => ({
         ...prev,
@@ -898,7 +901,24 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     if (mode === 'learn-product' || learnStep === 'extracting') {
       setMode('learn-product');
       setLearnStep('extracting');
+
+      // Diagnostic accumulator — shown to coach/admin on failure
+      const labelDiag = {
+        failureStage:       'FILE_SELECTED',
+        barcode:            scannedBarcode,
+        imageMimeType:      null,
+        imageBase64Length:  null,
+        invokeCompleted:    false,
+        rawInvokeResponse:  null,
+        backendOk:          null,
+        backendError:       null,
+        resolvedPayload:    null,
+        labelExtractorVersion: null,
+        valuesAccepted:     false,
+      };
+
       try {
+        labelDiag.failureStage = 'BASE64_ENCODING';
         const reader = new FileReader();
         const base64 = await new Promise((res, rej) => {
           reader.onload = ev => res(ev.target.result);
@@ -906,16 +926,48 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           reader.readAsDataURL(file);
         });
 
+        // Detect MIME type from data URL prefix
+        const mimeMatch = base64.match(/^data:([^;]+);base64,/);
+        labelDiag.imageMimeType     = mimeMatch?.[1] ?? 'unknown';
+        labelDiag.imageBase64Length = base64.length;
+        labelDiag.failureStage      = 'BASE64_READY';
+
+        console.log('[LabelDiag] image', { mime: labelDiag.imageMimeType, len: labelDiag.imageBase64Length });
+
+        // HEIC/HEIF is not supported by OpenAI vision
+        const isHeic = ['image/heic','image/heif','image/heics'].includes(labelDiag.imageMimeType?.toLowerCase());
+        if (isHeic) {
+          labelDiag.failureStage = 'HEIC_DETECTED';
+          labelDiag.backendError = 'image/heic not supported by OpenAI vision';
+          setLabelDiagState(labelDiag);
+          setLearnStep('failed');
+          e.target.value = '';
+          return;
+        }
+
+        labelDiag.failureStage = 'FUNCTION_INVOKE_BEGIN';
         const aiRes = await base44.functions.invoke('analyzeLabelPhoto', {
           image_url: base64,
           barcode:   scannedBarcode || undefined,
         });
+        labelDiag.invokeCompleted   = true;
+        labelDiag.rawInvokeResponse = aiRes;
+        labelDiag.backendOk         = aiRes?.ok;
+        labelDiag.backendError      = aiRes?.error ?? null;
+        labelDiag.labelExtractorVersion = aiRes?.data?.labelExtractorVersion ?? aiRes?.labelExtractorVersion ?? null;
+        labelDiag.failureStage      = 'FUNCTION_INVOKE_COMPLETE';
+
+        console.log('[LabelDiag] invoke result', { ok: aiRes?.ok, error: aiRes?.error, version: labelDiag.labelExtractorVersion });
 
         const d = aiRes?.data;
+        labelDiag.resolvedPayload = d ? {
+          calories: d.calories, protein: d.protein, carbs: d.carbs, fat: d.fat,
+          serving_basis: d.serving_basis, confidence: d.confidence, name: d.name,
+        } : null;
 
         // Validate: at least one macro must be non-null INCLUDING 0.
         // CRITICAL: use != null, NOT truthiness — 0 is a valid nutrition value.
-        const hasAnyMacro = d && (
+        const hasAnyMacro = d != null && (
           d.calories != null ||
           d.protein  != null ||
           d.carbs    != null ||
@@ -923,6 +975,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         );
 
         if (hasAnyMacro) {
+          labelDiag.valuesAccepted = true;
+          labelDiag.failureStage   = 'VALUES_ACCEPTED';
+
           // toField: convert extracted value to display string.
           // 0 → "0"  (not blank, not "-")
           // null → "" (empty — user must fill in)
@@ -939,13 +994,18 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             serving_size_g:  '',
             serving_basis:   d.serving_basis || '100g',
           });
+          setLabelDiagState(labelDiag);
           setMode('confirm-product');
         } else {
-          // AI could not extract anything — allow manual entry fallback
+          labelDiag.failureStage = 'VALUES_REJECTED';
+          setLabelDiagState(labelDiag);
           setLearnStep('failed');
         }
       } catch (aiErr) {
-        console.error('[BarcodeScanner] Label AI error:', aiErr);
+        labelDiag.failureStage = 'EXCEPTION';
+        labelDiag.backendError = aiErr?.message || String(aiErr);
+        console.error('[BarcodeScanner] Label AI error:', aiErr, 'diag:', labelDiag);
+        setLabelDiagState(labelDiag);
         setLearnStep('failed');
       }
       e.target.value = '';
@@ -2070,7 +2130,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 <p className="text-white font-semibold">לא הצלחנו לחלץ ערכים</p>
                 <p className="text-white/50 text-sm text-center px-4">נסה/י לצלם את טבלת הערכים מקרוב יותר ובתאורה טובה</p>
                 <div className="flex gap-2">
-                  <Button onClick={() => { setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
+                  <Button onClick={() => { setLabelDiagState(null); setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
                     className="bg-blue-600 hover:bg-blue-700">📷 צלם שוב</Button>
                   <Button onClick={() => {
                     setLearnStep('manual-entry');
@@ -2078,6 +2138,50 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     setMode('confirm-product');
                   }} variant="outline" className="border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
                 </div>
+
+                {/* Admin/coach-only diagnostic panel for label extraction failures */}
+                {showDebug && labelDiagState && (
+                  <div className="w-full max-w-sm mt-3 bg-slate-900 rounded-lg border border-red-500/40 overflow-hidden">
+                    <div className="flex items-center justify-between px-3 py-2 bg-red-900/50">
+                      <span className="text-red-300 text-[10px] font-bold">🔴 Label Extraction Diagnostics</span>
+                      <button
+                        onClick={() => {
+                          const txt = JSON.stringify(labelDiagState, null, 2);
+                          try { navigator.clipboard.writeText(txt); alert('📋 Copied!'); }
+                          catch(_) { alert(txt.substring(0, 500)); }
+                        }}
+                        className="text-[9px] bg-slate-700 text-white px-2 py-0.5 rounded"
+                      >📋 Copy</button>
+                    </div>
+                    <div className="px-3 py-2 space-y-0.5 text-[9px] font-mono">
+                      <div className="text-yellow-400 font-bold">failureStage: {labelDiagState.failureStage}</div>
+                      <div className="text-white/60">barcode: {labelDiagState.barcode}</div>
+                      <div className="text-white/60">imageMime: {labelDiagState.imageMimeType}</div>
+                      <div className="text-white/60">imageLen: {labelDiagState.imageBase64Length?.toLocaleString()}</div>
+                      <div className="text-white/60">invokeDone: {String(labelDiagState.invokeCompleted)}</div>
+                      <div className={labelDiagState.backendOk === false ? 'text-red-400' : 'text-green-400'}>
+                        backendOk: {String(labelDiagState.backendOk)}
+                      </div>
+                      {labelDiagState.backendError && (
+                        <div className="text-red-300 break-all">error: {String(labelDiagState.backendError)}</div>
+                      )}
+                      <div className="text-blue-300">version: {labelDiagState.labelExtractorVersion ?? '(none)'}</div>
+                      {labelDiagState.resolvedPayload && (
+                        <div className="text-white/70">
+                          cal:{String(labelDiagState.resolvedPayload.calories)}
+                          {' '}p:{String(labelDiagState.resolvedPayload.protein)}
+                          {' '}c:{String(labelDiagState.resolvedPayload.carbs)}
+                          {' '}f:{String(labelDiagState.resolvedPayload.fat)}
+                          {' '}basis:{labelDiagState.resolvedPayload.serving_basis}
+                          {' '}conf:{String(labelDiagState.resolvedPayload.confidence)}
+                        </div>
+                      )}
+                      <div className={labelDiagState.valuesAccepted ? 'text-green-400' : 'text-red-400'}>
+                        accepted: {String(labelDiagState.valuesAccepted)}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -2181,6 +2285,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
                       fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                      nutrition_basis: confirmProduct.serving_basis || '100g',
                       source:          confirmSource,
                     });
                     if (saveRes?.ok !== false) {
