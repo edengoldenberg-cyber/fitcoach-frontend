@@ -25,10 +25,18 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   // returns the current value regardless of when the closure was created.
   const scannedOnceRef = useRef(false);
   const [scannedOnce, setScannedOnce] = useState(false); // kept for UI/external state
-  // Decode loop counters — visible in scan UI for iOS debugging
+  // Decode attempt counter (incremented by onScanError on every non-decode frame).
+  // Visible in camera UI — proves the scanning loop is running.
   const [decodeAttempts, setDecodeAttempts] = useState(0);
   const decodeAttemptsRef = useRef(0);
-  // Set when camera start fails; drives the admin-only diagnostics panel.
+  // A/B decoder config state:
+  //   A = no qrbox, retail formats (EAN/UPC) — tried first
+  //   B = no qrbox, no formatsToSupport — let ZXing try all formats
+  const [scanConfigMode, setScanConfigMode] = useState('A');
+  const scanConfigModeRef = useRef('A');
+  // Timer that switches A→B after 8s with no successful decode.
+  const scanFallbackTimerRef = useRef(null);
+  // Set when camera start fails; drives the diagnostics panel.
   const [cameraDiag, setCameraDiag] = useState(null);
   
   const [mode, setMode] = useState('choose'); // 'choose','camera','image','manual','result','learn-product','confirm-product','debug'
@@ -117,6 +125,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       scannedOnceRef.current = false;
       decodeAttemptsRef.current = 0;
       setDecodeAttempts(0);
+      scanConfigModeRef.current = 'A';
+      setScanConfigMode('A');
+      if (scanFallbackTimerRef.current) { clearTimeout(scanFallbackTimerRef.current); scanFallbackTimerRef.current = null; }
       setCameraDiag(null);
       diagRef.current = null;
       setDebugInfo(prev => ({
@@ -136,6 +147,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       clearTimeout(scanTimeoutRef.current);
       scanTimeoutRef.current = null;
     }
+    if (scanFallbackTimerRef.current) {
+      clearTimeout(scanFallbackTimerRef.current);
+      scanFallbackTimerRef.current = null;
+    }
     
     if (scannerRef.current) {
       try {
@@ -154,6 +169,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     setScannedOnce(false);
     scannedOnceRef.current = false;
     decodeAttemptsRef.current = 0;
+    scanConfigModeRef.current = 'A';
   };
 
   // סריקה חיה מהמצלמה
@@ -273,23 +289,19 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         console.warn(`[BC][${ms()}] CAMERA_ENUM_FAIL:`, String(camErr));
       }
 
-      // ── Scanner config ────────────────────────────────────────────────────
-      // aspectRatio: 1.0 is intentionally OMITTED.
-      // With aspectRatio:1.0, html5-qrcode tries to request a 1:1 video stream.
-      // On iPhone the camera returns landscape video (e.g. 1920×1080) even in
-      // portrait mode. The ratio widthRatio=(1920/390)≈4.9 vs heightRatio=(1080/800)≈1.35
-      // causes foreverScan to crop a 1277×351 source region into a 260×260 canvas —
-      // severely distorting EAN barcodes so ZXing cannot decode them.
-      // Without aspectRatio, the camera uses its natural ratio and the distortion disappears.
+      // ── Scanner configs ───────────────────────────────────────────────────
+      // No qrbox in EITHER config — the qrbox was cropping/distorting the frame.
+      // Without qrbox, html5-qrcode decodes the FULL video frame.
+      // aspectRatio is intentionally absent — let the camera use its natural ratio.
+      // The green scan guide rectangle is CSS-only in the UI overlay below.
       //
-      // qrbox uses a function so it adapts to the actual viewfinder dimensions.
-      // EAN-13/UPC barcodes are wide and short — use 85% width, 25% height.
-      const config = {
+      // Config A (primary): retail formats only — EAN-13, EAN-8, UPC-A, UPC-E
+      // Config B (fallback, starts after 8s with no decode): no formatsToSupport
+      //   → html5-qrcode uses all 17 formats, letting ZXing try every decoder.
+      //   This isolates whether format restriction causes non-detection on this device.
+      const configA = {
         fps: 10,
-        qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width:  Math.floor(viewfinderWidth  * 0.85),
-          height: Math.floor(viewfinderHeight * 0.15),  // EAN barcodes are ~3:1 w/h ratio
-        }),
+        // NO qrbox — full frame decoding
         formatsToSupport: [
           Html5QrcodeSupportedFormats.EAN_13,
           Html5QrcodeSupportedFormats.EAN_8,
@@ -299,19 +311,17 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           Html5QrcodeSupportedFormats.CODE_39,
         ],
       };
+      const configB = {
+        fps: 10,
+        // NO qrbox, NO formatsToSupport — default ZXing with all formats
+      };
 
       // ── Per-frame decode callback ─────────────────────────────────────────
       // Uses scannedOnceRef (not the scannedOnce state) to avoid the stale
       // closure problem: onScanSuccess is created once and the React state value
       // it closes over never updates within the closure. A ref always returns the
       // current value regardless of when the callback was created.
-      const onScanSuccess = async (decodedText) => {
-        // Increment decode attempt counter for UI diagnostics
-        decodeAttemptsRef.current += 1;
-        if (decodeAttemptsRef.current % 5 === 1) {   // throttle UI updates
-          setDecodeAttempts(decodeAttemptsRef.current);
-        }
-
+      const onScanSuccess = async (decodedText, decodedResult) => {
         const now = Date.now();
         // 5-second duplicate guard via ref (always current)
         if (lastScannedRef.current.barcode === decodedText && now - lastScannedRef.current.timestamp < 5000) return;
@@ -320,9 +330,25 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         scannedOnceRef.current = true;
         setScannedOnce(true);
 
+        // Cancel the A→B fallback timer — a decode happened, no need to switch
+        if (scanFallbackTimerRef.current) { clearTimeout(scanFallbackTimerRef.current); scanFallbackTimerRef.current = null; }
+
+        const formatName = decodedResult?.result?.format?.formatName ?? 'unknown';
+        console.log('[BC] SCAN_SUCCESS', {
+          decodedText,
+          formatName,
+          timestamp: now,
+          configMode: scanConfigModeRef.current,
+        });
+
         lastScannedRef.current = { barcode: decodedText, timestamp: now };
-        addLog('success', 'barcode', 'scan_success', { barcode: decodedText });
-        setScanStatus('ברקוד זוהה ✅ ' + decodedText);  // visible on-screen confirmation
+        addLog('success', 'barcode', 'scan_success', {
+          barcode: decodedText,
+          formatName,
+          configMode: scanConfigModeRef.current,
+        });
+        // Show ✅ confirmation in UI immediately, before product lookup
+        setScanStatus('✅ BARCODE DETECTED: ' + decodedText);
         if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
         setCameraActive(false);
         setDebugInfo(prev => ({ ...prev, lastDetectedBarcode: decodedText }));
@@ -330,8 +356,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         handleBarcodeDetected(decodedText);
       };
 
-      // Per-frame error callback — used as decode-attempt counter
-      // html5-qrcode calls this every frame when no barcode is found (normal)
+      // Per-frame error callback — increments decode-attempt counter.
+      // html5-qrcode calls this every frame when no barcode is found (normal).
+      // The counter proves the decode loop is running; it is NOT a frame count.
       const onScanError = (_err) => {
         decodeAttemptsRef.current += 1;
         if (decodeAttemptsRef.current % 10 === 0) {   // throttle UI updates to every 10 frames
@@ -345,9 +372,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       // ── Attempt 1: rear / environment camera ──────────────────────────────
       stage('start-environment');
       diag.envAttempted = true;
-      console.log(`[BC][${ms()}] ENV_START_BEGIN`);
+      console.log(`[BC][${ms()}] ENV_START_BEGIN configA fps=${configA.fps} formats=${configA.formatsToSupport?.length}`);
       try {
-        await scannerRef.current.start({ facingMode: 'environment' }, config, onScanSuccess, onScanError);
+        await scannerRef.current.start({ facingMode: 'environment' }, configA, onScanSuccess, onScanError);
         cameraStarted = true;
         console.log(`[BC][${ms()}] ENV_START_SUCCESS`);
         addLog('info', 'barcode', 'camera_started', { attempt: 'environment' });
@@ -375,7 +402,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             throw Object.assign(new Error('barcode-reader missing for user-facing attempt'), { name: 'ElementMissingError' });
           }
           scannerRef.current = new Html5Qrcode('barcode-reader');
-          await scannerRef.current.start({ facingMode: 'user' }, config, onScanSuccess, onScanError);
+          await scannerRef.current.start({ facingMode: 'user' }, configA, onScanSuccess, onScanError);
           cameraStarted = true;
           console.log(`[BC][${ms()}] USER_START_SUCCESS`);
           addLog('info', 'barcode', 'camera_started', { attempt: 'user' });
@@ -401,7 +428,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             scannerRef.current = new Html5Qrcode('barcode-reader');
             await scannerRef.current.start(
               { deviceId: { exact: deviceCams[0].id } },
-              config, onScanSuccess, onScanError
+              configA, onScanSuccess, onScanError
             );
             cameraStarted = true;
             console.log(`[BC][${ms()}] DEVICE_START_SUCCESS id=${deviceCams[0].id}`);
@@ -432,6 +459,45 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setDebugInfo(prev => ({ ...prev, cameraOpened: true }));
       setLoading(false);
       addLog('success', 'barcode', 'camera_stream_active', {});
+
+      // ── A→B fallback timer: if no decode after 8s, switch to configB ──────
+      // configB has no formatsToSupport → ZXing tries all 17 formats (vs 6 in A).
+      // This isolates whether format restriction causes non-detection on this device.
+      // IMPORTANT: stop the current scanner BEFORE creating a new instance.
+      // Two Html5Qrcode instances on the same element would overlap and corrupt state.
+      scanFallbackTimerRef.current = setTimeout(async () => {
+        if (scannedOnceRef.current) return;  // decode already happened — nothing to do
+        console.log('[BC] FALLBACK_A_TO_B: switching to configB (all formats)');
+        addLog('info', 'barcode', 'fallback_mode_b_start', {});
+        scanConfigModeRef.current = 'B';
+        setScanConfigMode('B');
+        setScanStatus('מחפש ברקוד... (מצב B)');
+
+        // Stop current scanner instance before creating new one
+        try { await scannerRef.current?.stop(); } catch (_) {}
+        scannerRef.current = null;
+
+        if (!document.getElementById('barcode-reader') || scannedOnceRef.current) return;
+
+        // Attempt env camera with configB
+        try {
+          scannerRef.current = new Html5Qrcode('barcode-reader');
+          await scannerRef.current.start({ facingMode: 'environment' }, configB, onScanSuccess, onScanError);
+          console.log('[BC] FALLBACK_B_ENV_SUCCESS');
+        } catch (fbEnvErr) {
+          console.warn('[BC] FALLBACK_B_ENV_FAIL:', String(fbEnvErr));
+          // Attempt user-facing camera with configB
+          try {
+            scannerRef.current = null;
+            if (!document.getElementById('barcode-reader') || scannedOnceRef.current) return;
+            scannerRef.current = new Html5Qrcode('barcode-reader');
+            await scannerRef.current.start({ facingMode: 'user' }, configB, onScanSuccess, onScanError);
+            console.log('[BC] FALLBACK_B_USER_SUCCESS');
+          } catch (fbUserErr) {
+            console.warn('[BC] FALLBACK_B_ALL_FAIL:', String(fbUserErr));
+          }
+        }
+      }, 8000);
 
       // 30-second scan timeout
       scanTimeoutRef.current = setTimeout(async () => {
@@ -1117,9 +1183,18 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   <p className="text-white/80 text-sm bg-black/50 px-4 py-2 rounded-full inline-block">
                     {scanStatus}
                   </p>
+                  <p className={`text-[10px] px-3 py-1 rounded-full inline-block font-mono ${
+                    scanConfigMode === 'A'
+                      ? 'bg-blue-900/60 text-blue-300'
+                      : 'bg-orange-900/60 text-orange-300'
+                  }`}>
+                    {scanConfigMode === 'A'
+                      ? 'MODE A — FULL FRAME / RETAIL FORMATS'
+                      : 'MODE B — FULL FRAME / DEFAULT FORMATS'}
+                  </p>
                   {decodeAttempts > 0 && (
                     <p className="text-white/50 text-[10px] bg-black/40 px-3 py-1 rounded-full inline-block">
-                      frames: {decodeAttempts}
+                      decode attempts: {decodeAttempts}
                     </p>
                   )}
                 </div>

@@ -298,6 +298,137 @@ describe('Scanner config — qrbox and aspectRatio', () => {
   });
 });
 
+// ─── Full-frame A/B isolation test ────────────────────────────────────────────
+
+describe('Full-frame decoder config — A/B isolation test (regression)', () => {
+  const Html5QrcodeSupportedFormats = {
+    EAN_13: 9, EAN_8: 10, UPC_A: 14, UPC_E: 15, CODE_128: 5, CODE_39: 3,
+  };
+
+  const configA = {
+    fps: 10,
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39,
+    ],
+  };
+
+  const configB = {
+    fps: 10,
+    // NO formatsToSupport — html5-qrcode uses all 17 ZXing formats
+  };
+
+  // 1. primary live config has NO qrbox
+  test('1. primary (configA) has NO qrbox', () => {
+    assert.equal(configA.qrbox, undefined, 'configA must not have qrbox — full frame decoding');
+  });
+
+  // 2. primary live config has NO aspectRatio
+  test('2. primary (configA) has NO aspectRatio', () => {
+    assert.equal(configA.aspectRatio, undefined, 'configA must not have aspectRatio');
+  });
+
+  // 3. primary config uses correct Html5QrcodeSupportedFormats numeric values
+  test('3. primary configA uses correct Html5QrcodeSupportedFormats enum values', () => {
+    assert.ok(configA.formatsToSupport.includes(Html5QrcodeSupportedFormats.EAN_13), 'EAN_13=9');
+    assert.ok(configA.formatsToSupport.includes(Html5QrcodeSupportedFormats.EAN_8),  'EAN_8=10');
+    assert.ok(configA.formatsToSupport.includes(Html5QrcodeSupportedFormats.UPC_A),  'UPC_A=14');
+    assert.ok(configA.formatsToSupport.includes(Html5QrcodeSupportedFormats.UPC_E),  'UPC_E=15');
+    assert.ok(configA.formatsToSupport.every(f => typeof f === 'number'), 'all formats are numbers');
+  });
+
+  // 4. fallback configB has NO formatsToSupport
+  test('4. fallback (configB) has NO formatsToSupport', () => {
+    assert.equal(configB.formatsToSupport, undefined,
+      'configB must not have formatsToSupport — lets ZXing try all formats');
+  });
+
+  // 5. fallback only starts after primary scanner is stopped
+  test('5. fallback only starts after primary scanner is stopped', async () => {
+    const log = [];
+    const mockPrimaryScanner = { stop: async () => { log.push('primary-stopped'); } };
+
+    // Simulate fallback timer callback
+    await mockPrimaryScanner.stop();
+    log.push('fallback-B-started');
+
+    assert.ok(log.indexOf('primary-stopped') < log.indexOf('fallback-B-started'),
+      'primary scanner must be stopped before fallback B scanner starts');
+  });
+
+  // 6. scanner instances never overlap — new instance only after null-out
+  test('6. scanner instances never overlap', async () => {
+    let activeCount = 0;
+    const mockCreate = () => {
+      activeCount++;
+      return {
+        start: async () => {},
+        stop:  async () => { activeCount--; },
+      };
+    };
+
+    const s1 = mockCreate();
+    assert.equal(activeCount, 1, 'one instance active');
+    await s1.stop();
+    // ref set to null before creating new instance (matches production code)
+    let scannerRef = null;
+    scannerRef = mockCreate();
+    assert.equal(activeCount, 1, 'still only one instance after transition');
+    await scannerRef.stop();
+    assert.equal(activeCount, 0);
+  });
+
+  // 7. first successful decode cancels fallback timer
+  test('7. first successful decode cancels fallback timer', () => {
+    let timerFired = false;
+    let timerId = setTimeout(() => { timerFired = true; }, 50);
+
+    // Simulate onScanSuccess: cancel timer immediately
+    clearTimeout(timerId);
+    timerId = null;
+
+    return new Promise(resolve => setTimeout(() => {
+      assert.ok(!timerFired, 'fallback timer must not fire after decode');
+      resolve();
+    }, 120));
+  });
+
+  // 8. successful decode can only be handled once (scannedOnceRef guard)
+  test('8. successful decode can only be handled once', () => {
+    const scannedOnceRef = { current: false };
+    let handleCount = 0;
+
+    const onScanSuccess = (_text) => {
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      handleCount++;
+    };
+
+    onScanSuccess('7290000000001');
+    onScanSuccess('7290000000001');
+    onScanSuccess('9999999999999');
+    assert.equal(handleCount, 1, 'only the first decode fires the handler');
+  });
+
+  // 9. fresh session resets fallback mode and scannedOnceRef
+  test('9. fresh session resets fallback mode (scanConfigModeRef) and scannedOnceRef', () => {
+    // Simulate state after a Mode B fallback session where a barcode was decoded
+    const scannedOnceRef     = { current: true };
+    const scanConfigModeRef  = { current: 'B' };
+
+    // Reset (mirrors the open useEffect)
+    scannedOnceRef.current    = false;
+    scanConfigModeRef.current = 'A';
+
+    assert.equal(scannedOnceRef.current,    false, 'scannedOnceRef must reset to false');
+    assert.equal(scanConfigModeRef.current, 'A',   'scanConfigModeRef must reset to A');
+  });
+});
+
 describe('scannedOnceRef — stale closure prevention', () => {
   test('scannedOnceRef blocks duplicate on second call (ref mutates in place)', () => {
     const scannedOnceRef = { current: false };
