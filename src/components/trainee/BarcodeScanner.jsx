@@ -98,7 +98,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   // Diagnostic info for label extraction failures — shown to coach/admin only.
   const [labelDiagState, setLabelDiagState] = useState(null);
   
-  const [mode, setMode] = useState('choose'); // 'choose','camera','image','manual','result','learn-product','confirm-product','debug'
+  const [mode, setMode] = useState('choose'); // 'choose','camera','image','manual','result','learn-product','confirm-product','edit-name','debug'
   const [loading, setLoading] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState(null);
   const [productData, setProductData] = useState(null);
@@ -108,6 +108,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const [confirmProduct, setConfirmProduct] = useState(null); // product data to confirm before saving
   // For verify-label flow: conflicts between external (OFacts/cached) and label values
   const [verifyConflicts, setVerifyConflicts] = useState(null); // null | Array<{field,external,label,pctDiff}>
+  // For edit-name mode: only name/name_he, never touches nutrition
+  const [editNameState, setEditNameState] = useState({ name: '', name_he: '' });
   const [error, setError] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
@@ -185,6 +187,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setLearnStep('choose');
       setConfirmProduct(null);
       setVerifyConflicts(null);
+      setEditNameState({ name: '', name_he: '' });
       setManualBarcode('');
       setImagePreview(null);
       setCameraActive(false);
@@ -2078,27 +2081,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </div>
             )}
 
-            {/* Coach/admin: correct Hebrew name for existing products.
-                Condition: role-based, not debug-flag — this is a product correction
-                feature, not diagnostics. Visible to coach/admin only; never to trainees. */}
+            {/* Coach/admin: correct Hebrew name ONLY (never touches nutrition).
+                Uses updateProductNameOnly API — not saveLearnedProduct — so there is
+                NO risk of accidentally propagating stale external nutrition as user_learned. */}
             {(isAdmin || isCoach) && productData && (
               <button
                 onClick={() => {
-                  setLearnStep('manual-entry');
-                  setConfirmProduct({
-                    barcode:         scannedBarcode || productData.barcode || '',
-                    name_he:         '',
-                    name:            productData.name || '',
-                    brand:           productData.brand || '',
-                    kcal_per_100:    String(productData.kcal_per_100 ?? ''),
-                    protein_per_100: String(productData.protein_per_100 ?? ''),
-                    carbs_per_100:   String(productData.carbs_per_100 ?? ''),
-                    fat_per_100:     String(productData.fat_per_100 ?? ''),
-                    serving_size_g:  String(productData.serving_size_g ?? ''),
-                    serving_basis:   productData.nutrition_basis || '100g',
-                    extracted_name:  '',
-                  });
-                  setMode('confirm-product');
+                  setEditNameState({ name: productData.name || '', name_he: '' });
+                  setMode('edit-name');
                 }}
                 className="text-sm text-white/60 hover:text-white border border-white/20 hover:border-white/50 rounded-lg px-3 py-1.5 transition-colors"
               >
@@ -2672,6 +2662,98 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </Button>
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
+          </div>
+        )}
+
+        {/* MODE: EDIT-NAME — updates ONLY name/name_he via updateProductNameOnly.
+            This mode must NEVER show or update nutrition fields. The root cause of
+            the "name updated but nutrition stale" bug was that the old "ערוך שם" flow
+            used confirm-product which pre-filled nutrition from productData (stale OFacts
+            values) and the user accidentally confirmed wrong macros while editing just the name. */}
+        {mode === 'edit-name' && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-5">
+            <div className="w-full max-w-md space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-white font-bold text-lg">ערוך שם מוצר</h3>
+                <button onClick={() => { setMode('result'); setError(null); }} className="text-white/50 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-white/40 text-xs">עדכון שם בלבד — ערכים תזונתיים לא ישתנו</p>
+
+              <div>
+                <label className="text-white/60 text-xs block mb-1">שם בעברית</label>
+                <input
+                  type="text"
+                  value={editNameState.name_he}
+                  onChange={e => setEditNameState(s => ({ ...s, name_he: e.target.value }))}
+                  placeholder="לדוגמה: קוקה קולה זירו"
+                  className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="text-white/60 text-xs block mb-1">שם מקורי/אנגלית (לחיפוש)</label>
+                <input
+                  type="text"
+                  value={editNameState.name}
+                  onChange={e => setEditNameState(s => ({ ...s, name: e.target.value }))}
+                  placeholder="Original / English name"
+                  className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                />
+              </div>
+
+              {error && <p className="text-red-400 text-xs">{error}</p>}
+
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => { setMode('result'); setError(null); }}
+                  variant="outline"
+                  className="flex-1 border-white/30 text-white bg-transparent hover:bg-white/10"
+                >
+                  ביטול
+                </Button>
+                <Button
+                  disabled={!editNameState.name_he || loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setError(null);
+                    console.log('[BC] UPDATE_NAME_BEGIN', {
+                      barcode: scannedBarcode || productData?.barcode,
+                      name: editNameState.name, name_he: editNameState.name_he,
+                    });
+                    try {
+                      const res = await base44.functions.invoke('updateProductNameOnly', {
+                        barcode: scannedBarcode || productData?.barcode || '',
+                        name:    editNameState.name   || undefined,
+                        name_he: editNameState.name_he || undefined,
+                      });
+                      console.log('[BC] UPDATE_NAME_RESULT', { ok: res?.ok, error: res?.error });
+                      if (res?.ok) {
+                        const updatedProduct = res.data?.product;
+                        setProductData(prev => ({
+                          ...prev,
+                          // Use updated name_he for display; nutrition is UNCHANGED
+                          name: updatedProduct?.name_he || updatedProduct?.name || editNameState.name_he || prev.name,
+                        }));
+                        setMode('result');
+                      } else {
+                        setError(res?.error || 'שגיאה בעדכון השם');
+                      }
+                    } catch (err) {
+                      console.error('[BC] UPDATE_NAME_ERROR', err?.message);
+                      setError(err.message || 'שגיאה בעדכון השם');
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : 'שמור שם'}
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 
