@@ -891,6 +891,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     if (!file) return;
 
     // ── LEARN-PRODUCT PATH: extract nutrition label via AI ───────────────────
+    // Uses analyzeLabelPhoto — a dedicated nutrition-label reader that:
+    //   • returns per-100g / per-100ml values directly from the label table
+    //   • correctly handles 0-calorie products (Coke Zero etc.) — 0 IS valid
+    //   • uses != null validation, NEVER truthiness (0 !== falsy-zero)
     if (mode === 'learn-product' || learnStep === 'extracting') {
       setMode('learn-product');
       setLearnStep('extracting');
@@ -901,27 +905,43 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           reader.onerror = rej;
           reader.readAsDataURL(file);
         });
-        // Call meal photo analysis — the updated prompt has label-priority built in
-        const aiRes = await base44.functions.invoke('analyzeAndEnrichMealPhoto', {
-          meal_text: `תווית תזונה של מוצר ארוז (ברקוד: ${scannedBarcode || 'לא ידוע'})`,
+
+        const aiRes = await base44.functions.invoke('analyzeLabelPhoto', {
           image_url: base64,
+          barcode:   scannedBarcode || undefined,
         });
-        const items = aiRes?.data?.items || aiRes?.items || [];
-        const first = items[0];
-        if (first && first.calories > 0) {
-          const grams = first.amount || 100;
+
+        const d = aiRes?.data;
+
+        // Validate: at least one macro must be non-null INCLUDING 0.
+        // CRITICAL: use != null, NOT truthiness — 0 is a valid nutrition value.
+        const hasAnyMacro = d && (
+          d.calories != null ||
+          d.protein  != null ||
+          d.carbs    != null ||
+          d.fat      != null
+        );
+
+        if (hasAnyMacro) {
+          // toField: convert extracted value to display string.
+          // 0 → "0"  (not blank, not "-")
+          // null → "" (empty — user must fill in)
+          const toField = (v) => (v != null ? String(v) : '');
+
           setConfirmProduct({
             barcode:         scannedBarcode || '',
-            name:            first.name || '',
-            brand:           '',
-            kcal_per_100:    grams > 0 ? Math.round((first.calories / grams) * 100) : '',
-            protein_per_100: grams > 0 ? Math.round(((first.protein  || 0) / grams) * 1000) / 10 : '',
-            carbs_per_100:   grams > 0 ? Math.round(((first.carbs    || 0) / grams) * 1000) / 10 : '',
-            fat_per_100:     grams > 0 ? Math.round(((first.fat      || 0) / grams) * 1000) / 10 : '',
-            serving_size_g:  grams !== 100 ? grams : '',
+            name:            d.name || '',
+            brand:           d.brand || '',
+            kcal_per_100:    toField(d.calories),
+            protein_per_100: toField(d.protein),
+            carbs_per_100:   toField(d.carbs),
+            fat_per_100:     toField(d.fat),
+            serving_size_g:  '',
+            serving_basis:   d.serving_basis || '100g',
           });
           setMode('confirm-product');
         } else {
+          // AI could not extract anything — allow manual entry fallback
           setLearnStep('failed');
         }
       } catch (aiErr) {
@@ -2015,6 +2035,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     carbs_per_100: '',
                     fat_per_100: '',
                     serving_size_g: '',
+                    serving_basis: '100g',
                   });
                   setMode('confirm-product');
                 }}
@@ -2041,18 +2062,19 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               <>
                 <Loader2 className="w-14 h-14 text-blue-400 animate-spin" />
                 <p className="text-white font-semibold text-lg">מחלץ ערכי תזונה מהתמונה...</p>
-                <p className="text-white/50 text-sm">זה יכול לקחת עד 10 שניות</p>
+                <p className="text-white/50 text-sm text-center px-4">צלם את טבלת הערכים מקרוב, ישר ובתאורה טובה</p>
               </>
             ) : (
               <>
                 <AlertCircle className="w-14 h-14 text-red-400" />
                 <p className="text-white font-semibold">לא הצלחנו לחלץ ערכים</p>
+                <p className="text-white/50 text-sm text-center px-4">נסה/י לצלם את טבלת הערכים מקרוב יותר ובתאורה טובה</p>
                 <div className="flex gap-2">
                   <Button onClick={() => { setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
-                    className="bg-blue-600 hover:bg-blue-700">נסה שוב</Button>
+                    className="bg-blue-600 hover:bg-blue-700">📷 צלם שוב</Button>
                   <Button onClick={() => {
                     setLearnStep('manual-entry');
-                    setConfirmProduct({ barcode: scannedBarcode || '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '' });
+                    setConfirmProduct({ barcode: scannedBarcode || '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '', serving_basis: '100g' });
                     setMode('confirm-product');
                   }} variant="outline" className="border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
                 </div>
@@ -2065,33 +2087,68 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         {mode === 'confirm-product' && confirmProduct && (
           <div className="flex-1 flex flex-col p-5 space-y-4 overflow-y-auto">
             <div className="flex items-center justify-between">
-              <h3 className="text-white font-bold text-lg">אישור ושמירת מוצר</h3>
+              <h3 className="text-white font-bold text-lg">
+                {learnStep === 'extracting' ? '✅ זיהינו את הערכים הבאים' : 'הזנת מוצר ידנית'}
+              </h3>
               <button onClick={() => setMode('not-found')} className="text-white/50 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
-            <p className="text-white/50 text-xs">בדוק/י את הפרטים לפני השמירה. ניתן לערוך.</p>
+            <p className="text-white/50 text-xs">בדוק/י את הפרטים לפני השמירה. ניתן לערוך כל שדה.</p>
 
-            {[
-              { key: 'name',            label: 'שם מוצר',         type: 'text' },
-              { key: 'brand',           label: 'מותג',             type: 'text' },
-              { key: 'kcal_per_100',    label: 'קלוריות (100ג׳)', type: 'number' },
-              { key: 'protein_per_100', label: 'חלבון (100ג׳)',   type: 'number' },
-              { key: 'carbs_per_100',   label: 'פחמימות (100ג׳)', type: 'number' },
-              { key: 'fat_per_100',     label: 'שומן (100ג׳)',    type: 'number' },
-              { key: 'serving_size_g',  label: 'גודל מנה (ג׳)',   type: 'number' },
-            ].map(({ key, label, type }) => (
-              <div key={key}>
-                <label className="text-white/60 text-xs block mb-1">{label}</label>
-                <input
-                  type={type}
-                  value={confirmProduct[key] ?? ''}
-                  onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
-                  className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
-                  placeholder={label}
-                />
+            {/* serving_basis selector — 100g vs 100ml */}
+            <div>
+              <label className="text-white/60 text-xs block mb-1">בסיס ערכים</label>
+              <div className="flex gap-2">
+                {['100g', '100ml'].map(basis => (
+                  <button
+                    key={basis}
+                    onClick={() => setConfirmProduct(p => ({ ...p, serving_basis: basis }))}
+                    className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      (confirmProduct.serving_basis || '100g') === basis
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'bg-slate-800 border-white/20 text-white/60 hover:bg-slate-700'
+                    }`}
+                  >
+                    {basis === '100g' ? 'ל-100 גרם' : 'ל-100 מ"ל'}
+                  </button>
+                ))}
               </div>
-            ))}
+            </div>
+
+            {/* Nutrition fields — labels adapt to serving_basis */}
+            {(() => {
+              const basis = (confirmProduct.serving_basis || '100g') === '100ml' ? '100מ"ל' : '100ג׳';
+              return [
+                { key: 'name',            label: 'שם מוצר',              type: 'text'   },
+                { key: 'brand',           label: 'מותג',                  type: 'text'   },
+                { key: 'kcal_per_100',    label: `קלוריות (${basis})`,   type: 'number' },
+                { key: 'protein_per_100', label: `חלבון (${basis})`,     type: 'number' },
+                { key: 'carbs_per_100',   label: `פחמימות (${basis})`,   type: 'number' },
+                { key: 'fat_per_100',     label: `שומן (${basis})`,      type: 'number' },
+                { key: 'serving_size_g',  label: 'גודל מנה (ג׳/מ"ל)',    type: 'number' },
+              ].map(({ key, label, type }) => (
+                <div key={key}>
+                  <label className="text-white/60 text-xs block mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={confirmProduct[key] ?? ''}
+                    onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
+                    className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                    placeholder={type === 'number' ? '0' : label}
+                  />
+                </div>
+              ));
+            })()}
 
             <div className="flex gap-2 pt-2">
+              {learnStep === 'extracting' && (
+                <Button
+                  onClick={() => { setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
+                  variant="outline"
+                  className="border-white/30 text-white hover:bg-white/10"
+                >
+                  📷 צלם שוב
+                </Button>
+              )}
               <Button
                 onClick={() => setMode('not-found')}
                 variant="outline"
@@ -2100,34 +2157,42 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 ביטול
               </Button>
               <Button
-                disabled={!confirmProduct.name || !confirmProduct.kcal_per_100 || loading}
+                disabled={!confirmProduct.name || confirmProduct.kcal_per_100 === '' || loading}
                 onClick={async () => {
                   setLoading(true);
                   try {
+                    // Parse calorie value — 0 is valid (Coke Zero etc.)
+                    const kcalStr = String(confirmProduct.kcal_per_100 ?? '');
+                    const kcalNum = kcalStr === '' ? null : Number(kcalStr);
+                    if (kcalNum === null || isNaN(kcalNum) || kcalNum < 0) {
+                      setError('יש להזין ערך קלורי תקין (0 ומעלה)');
+                      setLoading(false);
+                      return;
+                    }
+
                     // learnStep tells us the origin: 'extracting'=AI label, 'manual-entry'=user typed
                     const confirmSource = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
                     const saveRes = await base44.functions.invoke('saveLearnedProduct', {
                       barcode: confirmProduct.barcode || scannedBarcode,
                       name: confirmProduct.name,
-                      brand: confirmProduct.brand,
-                      kcal_per_100:    Number(confirmProduct.kcal_per_100),
-                      protein_per_100: Number(confirmProduct.protein_per_100) || 0,
-                      carbs_per_100:   Number(confirmProduct.carbs_per_100)   || 0,
-                      fat_per_100:     Number(confirmProduct.fat_per_100)     || 0,
+                      brand: confirmProduct.brand || undefined,
+                      kcal_per_100:    kcalNum,
+                      protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
+                      carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
+                      fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
                       source:          confirmSource,
                     });
                     if (saveRes?.ok !== false) {
-                      // Show as result screen
                       setProductData({
                         food_item_id:    saveRes?.data?.product?.id || null,
                         name:            confirmProduct.name,
                         brand:           confirmProduct.brand || '',
                         barcode:         confirmProduct.barcode || scannedBarcode,
-                        kcal_per_100:    Number(confirmProduct.kcal_per_100),
-                        protein_per_100: Number(confirmProduct.protein_per_100) || 0,
-                        carbs_per_100:   Number(confirmProduct.carbs_per_100)   || 0,
-                        fat_per_100:     Number(confirmProduct.fat_per_100)     || 0,
+                        kcal_per_100:    kcalNum,
+                        protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
+                        carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
+                        fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                         serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
                       });
                       setProductSource('fitcoach_db');
@@ -2143,7 +2208,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 }}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'אישור ושמירת מוצר'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'שמור מוצר'}
               </Button>
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
