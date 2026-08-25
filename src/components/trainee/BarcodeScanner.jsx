@@ -1108,7 +1108,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       const result = await base44.functions.invoke('lookupBarcode', { barcode });
       const { product, source } = result?.data || {};
 
-      if (product && product.kcal_per_100 > 0) {
+      // Use != null not > 0 — zero-calorie products (Coke Zero, sparkling water) are valid.
+      if (product && product.kcal_per_100 != null) {
         addLog('success', 'barcode', 'product_found', { productName: product.name, source });
         setProductData(product);
         setProductSource(source);
@@ -1128,29 +1129,38 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   };
 
   // הוספת מוצר — productData now carries kcal_per_100 / protein_per_100 etc. directly
-  const addProductToMeal = async (overrideGrams) => {
+  const addProductToMeal = async (overrideQty) => {
     if (!productData || !traineeEmail) return;
 
+    console.log('[BC] ADD_MEAL_BEGIN', { product: productData?.name, source: productSource });
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-
       // productData from lookupBarcode already has per-100g/ml values
-      const per100Kcal    = Number(productData.kcal_per_100)    || 0;
-      const per100Protein = Number(productData.protein_per_100) || 0;
-      const per100Carbs   = Number(productData.carbs_per_100)   || 0;
-      const per100Fat     = Number(productData.fat_per_100)     || 0;
+      // Use Number() but do NOT use || 0 — zero-calorie products like Coke Zero must
+      // preserve their 0 values. || 0 is fine here only because NaN || 0 === 0 and 0 || 0 === 0.
+      const per100Kcal    = Number(productData.kcal_per_100    ?? 0);
+      const per100Protein = Number(productData.protein_per_100 ?? 0);
+      const per100Carbs   = Number(productData.carbs_per_100   ?? 0);
+      const per100Fat     = Number(productData.fat_per_100     ?? 0);
 
-      // nutrition_basis: '100g' for solids (default), '100ml' for beverages.
-      // The formula (kcal_per_100 / 100) × quantity is the same either way —
-      // the number is correct. But the unit label must reflect the actual substance.
+      // nutrition_basis: '100g' for solids, '100ml' for beverages.
+      // The formula (kcal_per_100 / 100) × qty is identical for g and ml.
+      // The unit label determines what "qty" means in the stored record.
       const nutritionBasis = productData.nutrition_basis || '100g';
       const isLiquid       = nutritionBasis === '100ml';
       const unitLabel      = isLiquid ? 'ml' : 'gram';
       const defaultQty     = productData.serving_size_g || (isLiquid ? 250 : 100);
 
       const foodName = productData.name;
+      const qty      = overrideQty || defaultQty;
 
-      const qty = overrideGrams || defaultQty;
+      const calories = Math.round((per100Kcal    / 100) * qty);
+      const protein  = Math.round(((per100Protein / 100) * qty) * 10) / 10;
+      const carbs    = Math.round(((per100Carbs   / 100) * qty) * 10) / 10;
+      const fat      = Math.round(((per100Fat     / 100) * qty) * 10) / 10;
+
       const mealData = {
         trainee_id:          trainee?.id,
         user_id:             user?.id,
@@ -1165,31 +1175,52 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         unit:                unitLabel,
         grams_equivalent:    qty,
         grams_final:         qty,
-        calories:  Math.round((per100Kcal    / 100) * qty),
-        protein:   Math.round(((per100Protein / 100) * qty) * 10) / 10,
-        carbs:     Math.round(((per100Carbs   / 100) * qty) * 10) / 10,
-        fat:       Math.round(((per100Fat     / 100) * qty) * 10) / 10,
+        calories,
+        protein,
+        carbs,
+        fat,
         per100_kcal:    per100Kcal,
         per100_protein: per100Protein,
         per100_carbs:   per100Carbs,
         per100_fat:     per100Fat,
       };
 
-      console.log('[BarcodeScanner] Creating meal entry:', mealData);
-      const result = await base44.entities.MealEntry.create(mealData);
-      console.log('[BarcodeScanner] Meal entry created:', result?.id);
+      console.log('[BC] ADD_MEAL_PAYLOAD_READY', {
+        food_name: mealData.food_name,
+        qty, unit: unitLabel, nutritionBasis,
+        calories, protein, carbs, fat,
+        food_item_id: mealData.food_item_id,
+      });
 
-      // Update TraineeNutritionProfile so barcode meals count toward total_meals_logged,
-      // average_calories_per_meal, and meal_timing_habits — same as NutritionLog-routed saves.
+      // 15-second timeout — prevents indefinite "מוסיף..." if server doesn't respond.
+      const createTimeout = new Promise((_, rej) =>
+        setTimeout(() => rej(new Error('timeout: שרת לא הגיב תוך 15 שניות')), 15000)
+      );
+
+      console.log('[BC] ADD_MEAL_CREATE_BEGIN');
+      const result = await Promise.race([
+        base44.entities.MealEntry.create(mealData),
+        createTimeout,
+      ]);
+      console.log('[BC] ADD_MEAL_CREATE_SUCCESS id=', result?.id);
+
+      // Invalidate meal queries IMMEDIATELY so the log refreshes.
+      // This is called BEFORE fire-and-forget writes so any subsequent errors
+      // don't prevent the meal from appearing.
+      queryClient.invalidateQueries({ queryKey: ['meals'] });
+      console.log('[BC] QUERY_INVALIDATION_DONE');
+
+      // ── Non-critical fire-and-forget writes ────────────────────────────────
+      // These must NOT throw synchronously — each is isolated in its own try/catch
+      // or wrapped in .catch() so errors here cannot prevent the success path.
+
       if (trainee) {
         batchUpdateNutritionMemory({ trainee, meals: [mealData] }).catch(err =>
-          console.warn('[NON-FATAL] barcode meal profile flush failed — MealEntry already committed.', err)
+          console.warn('[BC] NON-FATAL nutrition profile flush:', err?.message)
         );
       }
 
-      // ── OFacts caching: save product to FitCoach DB so next scan is instant (no re-fetch) ──
-      // per100Kcal >= 0: allow zero-calorie OFacts products (use != null check, not > 0)
-      if (productSource === 'openfoodfacts' && productData.name && per100Kcal != null) {
+      if (productSource === 'openfoodfacts' && productData.name) {
         base44.functions.invoke('saveLearnedProduct', {
           barcode:         productData.barcode,
           name:            productData.name,
@@ -1201,43 +1232,52 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           serving_size_g:  productData.serving_size_g || undefined,
           nutrition_basis: nutritionBasis,
           source:          'openfoodfacts',
-        }).then(r => console.log('[BarcodeScanner] OFacts product cached in FitCoach DB:', r?.data?.action))
-          .catch(err => console.warn('[BarcodeScanner] OFacts cache failed (non-fatal):', err?.message));
+        }).then(r => console.log('[BC] OFacts cached:', r?.data?.action))
+          .catch(err => console.warn('[BC] OFacts cache failed (non-fatal):', err?.message));
       }
 
-      // ── UserFoodItem learning write — personal record / canonical lock ──────────
-      // isManualCorrection=false: canonical lock fires — existing per-100g values never overwritten.
-      // Fire-and-forget: learning failure must not block the meal save.
+      // saveAIFoodCorrection — isolated in its own try/catch.
+      // Previously used undefined variable `grams` (instead of `qty`), causing
+      // a ReferenceError that looked like meal-add failure to the user even though
+      // the MealEntry was already committed. Fixed: use qty + unitLabel.
       if (trainee) {
-        saveAIFoodCorrection({
-          user,
-          trainee,
-          originalItem: { name: foodName },
-          correctedMeal: {
-            food_name:       foodName,
-            meal_type:       'snack',
-            quantity:        grams,
-            unit:            'gram',
-            grams_equivalent: grams,
-            grams_final:     grams,
-            corrected_grams: grams,
-            calories:  mealData.calories,
-            protein:   mealData.protein,
-            carbs:     mealData.carbs,
-            fat:       mealData.fat,
-            original_ai_text: `barcode:${productData.barcode}`,
-          },
-          imageContext: '',
-          notes: `barcode:${productData.barcode}`,
-          isManualCorrection: false,
-        }).catch(err => console.warn('[BarcodeScanner] Learning write failed (non-fatal):', err?.message));
+        try {
+          saveAIFoodCorrection({
+            user,
+            trainee,
+            originalItem: { name: foodName },
+            correctedMeal: {
+              food_name:        foodName,
+              meal_type:        'snack',
+              quantity:         qty,
+              unit:             unitLabel,
+              grams_equivalent: qty,
+              grams_final:      qty,
+              corrected_grams:  qty,
+              calories,
+              protein,
+              carbs,
+              fat,
+              original_ai_text: `barcode:${productData.barcode}`,
+            },
+            imageContext:       '',
+            notes:              `barcode:${productData.barcode}`,
+            isManualCorrection: false,
+          }).catch(err => console.warn('[BC] learning write failed (non-fatal):', err?.message));
+        } catch (corrErr) {
+          console.warn('[BC] saveAIFoodCorrection arg error (non-fatal):', corrErr?.message);
+        }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['meals'] });
+      console.log('[BC] SCANNER_CLOSE_BEGIN');
       onClose();
     } catch (err) {
-      console.error('[BarcodeScanner] Error adding product:', err);
+      console.error('[BC] ADD_MEAL_ERROR', err?.message);
+      // Invalidate even on error — the meal may have been written before the error.
+      queryClient.invalidateQueries({ queryKey: ['meals'] });
       setError(`שגיאה בהוספת מוצר: ${err.message || 'שגיאה לא ידועה'}`);
+    } finally {
+      // Always reset loading — prevents infinite "מוסיף..." on any failure or timeout.
       setLoading(false);
     }
   };
@@ -1872,6 +1912,19 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </p>
             )}
 
+            {/* Quantity hint for liquid products */}
+            {productData.nutrition_basis === '100ml' && !loading && (
+              <p className="text-white/40 text-[10px] text-center">
+                יתווסף כ-250 מ"ל (ניתן לשנות ידנית בדיוחן)
+              </p>
+            )}
+
+            {error && (
+              <div className="w-full max-w-md p-3 bg-red-500/20 border border-red-500/40 rounded-lg text-sm text-red-200 whitespace-pre-line text-center">
+                {error}
+              </div>
+            )}
+
             <div className="flex gap-2 w-full max-w-md">
               <Button
                 onClick={() => {
@@ -1882,16 +1935,21 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   setImagePreview(null);
                 }}
                 variant="outline"
-                className="flex-1 border-white/30 text-white hover:bg-white/10"
+                className="flex-1 border-white/30 text-white bg-transparent hover:bg-white/10"
               >
                 סריקה חדשה
               </Button>
               <Button
                 onClick={() => addProductToMeal()}
                 disabled={loading}
-                className="flex-1 bg-green-600 hover:bg-green-700"
+                className="flex-1 bg-green-600 hover:bg-green-700 text-white"
               >
-                {loading ? 'מוסיף...' : 'הוסף מוצר'}
+                {loading ? (
+                  <span className="flex items-center gap-2 text-white">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    מוסיף...
+                  </span>
+                ) : 'הוסף מוצר'}
               </Button>
             </div>
           </div>
@@ -2261,7 +2319,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 <Button
                   onClick={() => { setLearnStep('extracting'); setTimeout(() => fileInputRef.current?.click(), 100); }}
                   variant="outline"
-                  className="border-white/30 text-white hover:bg-white/10"
+                  className="border-white/30 text-white bg-transparent hover:bg-white/10"
                 >
                   📷 צלם שוב
                 </Button>
@@ -2269,7 +2327,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               <Button
                 onClick={() => setMode('not-found')}
                 variant="outline"
-                className="flex-1 border-white/30 text-white hover:bg-white/10"
+                className="flex-1 border-white/30 text-white bg-transparent hover:bg-white/10"
               >
                 ביטול
               </Button>
@@ -2277,61 +2335,82 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 disabled={!confirmProduct.name || confirmProduct.kcal_per_100 === '' || loading}
                 onClick={async () => {
                   setLoading(true);
+                  setError(null);
                   try {
-                    // Parse calorie value — 0 is valid (Coke Zero etc.)
                     const kcalStr = String(confirmProduct.kcal_per_100 ?? '');
                     const kcalNum = kcalStr === '' ? null : Number(kcalStr);
                     if (kcalNum === null || isNaN(kcalNum) || kcalNum < 0) {
                       setError('יש להזין ערך קלורי תקין (0 ומעלה)');
-                      setLoading(false);
                       return;
                     }
 
-                    // learnStep tells us the origin: 'extracting'=AI label, 'manual-entry'=user typed
-                    const confirmSource = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
-                    const saveRes = await base44.functions.invoke('saveLearnedProduct', {
-                      barcode: confirmProduct.barcode || scannedBarcode,
+                    const confirmSource   = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
+                    const saveBarcode     = confirmProduct.barcode || scannedBarcode;
+                    const saveNutritionBasis = confirmProduct.serving_basis || '100g';
+
+                    console.log('[BC] SAVE_PRODUCT_BEGIN', {
+                      barcode: saveBarcode,
                       name: confirmProduct.name,
-                      brand: confirmProduct.brand || undefined,
+                      kcal: kcalNum,
+                      nutrition_basis: saveNutritionBasis,
+                      source: confirmSource,
+                    });
+
+                    const saveRes = await base44.functions.invoke('saveLearnedProduct', {
+                      barcode:         saveBarcode,
+                      name:            confirmProduct.name,
+                      brand:           confirmProduct.brand || undefined,
                       kcal_per_100:    kcalNum,
                       protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
                       carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
                       fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
-                      nutrition_basis: confirmProduct.serving_basis || '100g',
-                      // extracted_name: original AI label name. If user renamed it, both
-                      // names become FoodSynonym aliases → text/photo analysis finds either.
+                      nutrition_basis: saveNutritionBasis,
                       extracted_name:  (confirmProduct.extracted_name && confirmProduct.extracted_name !== confirmProduct.name)
                                          ? confirmProduct.extracted_name : undefined,
                       source:          confirmSource,
                     });
-                    if (saveRes?.ok !== false) {
+
+                    console.log('[BC] SAVE_PRODUCT_RESPONSE', {
+                      ok: saveRes?.ok,
+                      action: saveRes?.data?.action,
+                      id: saveRes?.data?.product?.id,
+                      error: saveRes?.error,
+                    });
+
+                    if (saveRes?.ok === true && saveRes?.data?.product?.id) {
+                      // Real DB persistence confirmed — product has a valid ID.
+                      const savedProduct = saveRes.data.product;
+                      console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id);
                       setProductData({
-                        food_item_id:    saveRes?.data?.product?.id || null,
+                        food_item_id:    savedProduct.id,
                         name:            confirmProduct.name,
                         brand:           confirmProduct.brand || '',
-                        barcode:         confirmProduct.barcode || scannedBarcode,
+                        barcode:         saveBarcode,
                         kcal_per_100:    kcalNum,
                         protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
                         carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
                         fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                         serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
-                        nutrition_basis: confirmProduct.serving_basis || '100g',
+                        nutrition_basis: saveNutritionBasis,
                       });
                       setProductSource('fitcoach_db');
                       setMode('result');
                     } else {
-                      setError(saveRes?.error || 'שגיאה בשמירה');
+                      const errMsg = saveRes?.error || 'שגיאה בשמירת המוצר';
+                      console.error('[BC] SAVE_PRODUCT_ERROR', errMsg);
+                      setError(errMsg);
                     }
                   } catch (err) {
-                    setError(err.message || 'שגיאה בשמירה');
+                    console.error('[BC] SAVE_PRODUCT_EXCEPTION', err?.message);
+                    setError(err.message || 'שגיאה בשמירת המוצר');
                   } finally {
                     setLoading(false);
                   }
                 }}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white"
               >
-                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'שמור מוצר'}
+                {loading ? <Loader2 className="w-4 h-4 animate-spin text-white" /> : 'שמור מוצר'}
               </Button>
             </div>
             {error && <p className="text-red-400 text-xs">{error}</p>}
