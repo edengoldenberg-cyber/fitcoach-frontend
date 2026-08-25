@@ -984,15 +984,18 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           const toField = (v) => (v != null ? String(v) : '');
 
           setConfirmProduct({
-            barcode:         scannedBarcode || '',
-            name:            d.name || '',
-            brand:           d.brand || '',
-            kcal_per_100:    toField(d.calories),
-            protein_per_100: toField(d.protein),
-            carbs_per_100:   toField(d.carbs),
-            fat_per_100:     toField(d.fat),
-            serving_size_g:  '',
-            serving_basis:   d.serving_basis || '100g',
+            barcode:          scannedBarcode || '',
+            name:             d.name || '',
+            brand:            d.brand || '',
+            kcal_per_100:     toField(d.calories),
+            protein_per_100:  toField(d.protein),
+            carbs_per_100:    toField(d.carbs),
+            fat_per_100:      toField(d.fat),
+            serving_size_g:   '',
+            serving_basis:    d.serving_basis || '100g',
+            // extracted_name: AI-read name before user edits. Saved as alias so both
+            // the original ("Coke Zero") and confirmed ("קוקה קולה זירו") resolve.
+            extracted_name:   d.name || '',
           });
           setLabelDiagState(labelDiag);
           setMode('confirm-product');
@@ -1131,15 +1134,23 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     try {
       setLoading(true);
 
-      // productData from lookupBarcode already has per-100g values
+      // productData from lookupBarcode already has per-100g/ml values
       const per100Kcal    = Number(productData.kcal_per_100)    || 0;
       const per100Protein = Number(productData.protein_per_100) || 0;
       const per100Carbs   = Number(productData.carbs_per_100)   || 0;
       const per100Fat     = Number(productData.fat_per_100)     || 0;
 
+      // nutrition_basis: '100g' for solids (default), '100ml' for beverages.
+      // The formula (kcal_per_100 / 100) × quantity is the same either way —
+      // the number is correct. But the unit label must reflect the actual substance.
+      const nutritionBasis = productData.nutrition_basis || '100g';
+      const isLiquid       = nutritionBasis === '100ml';
+      const unitLabel      = isLiquid ? 'ml' : 'gram';
+      const defaultQty     = productData.serving_size_g || (isLiquid ? 250 : 100);
+
       const foodName = productData.name;
 
-      const grams = overrideGrams || productData.serving_size_g || 100;
+      const qty = overrideGrams || defaultQty;
       const mealData = {
         trainee_id:          trainee?.id,
         user_id:             user?.id,
@@ -1150,14 +1161,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         food_item_id:        productData.food_item_id || null,
         food_database_scope: productSource === 'fitcoach_db' ? 'global' : 'external',
         learning_event_type: 'barcode',
-        quantity:            grams,
-        unit:                'gram',
-        grams_equivalent:    grams,
-        grams_final:         grams,
-        calories:  Math.round((per100Kcal    / 100) * grams),
-        protein:   Math.round(((per100Protein / 100) * grams) * 10) / 10,
-        carbs:     Math.round(((per100Carbs   / 100) * grams) * 10) / 10,
-        fat:       Math.round(((per100Fat     / 100) * grams) * 10) / 10,
+        quantity:            qty,
+        unit:                unitLabel,
+        grams_equivalent:    qty,
+        grams_final:         qty,
+        calories:  Math.round((per100Kcal    / 100) * qty),
+        protein:   Math.round(((per100Protein / 100) * qty) * 10) / 10,
+        carbs:     Math.round(((per100Carbs   / 100) * qty) * 10) / 10,
+        fat:       Math.round(((per100Fat     / 100) * qty) * 10) / 10,
         per100_kcal:    per100Kcal,
         per100_protein: per100Protein,
         per100_carbs:   per100Carbs,
@@ -1177,9 +1188,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       }
 
       // ── OFacts caching: save product to FitCoach DB so next scan is instant (no re-fetch) ──
-      // Only runs when this product came from OpenFoodFacts and is not already in FitCoach DB.
-      // Fire-and-forget: a caching failure must NOT prevent the meal from being saved.
-      if (productSource === 'openfoodfacts' && productData.name && per100Kcal > 0) {
+      // per100Kcal >= 0: allow zero-calorie OFacts products (use != null check, not > 0)
+      if (productSource === 'openfoodfacts' && productData.name && per100Kcal != null) {
         base44.functions.invoke('saveLearnedProduct', {
           barcode:         productData.barcode,
           name:            productData.name,
@@ -1189,7 +1199,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           carbs_per_100:   per100Carbs,
           fat_per_100:     per100Fat,
           serving_size_g:  productData.serving_size_g || undefined,
-          source:          'openfoodfacts',  // tracked for provenance
+          nutrition_basis: nutritionBasis,
+          source:          'openfoodfacts',
         }).then(r => console.log('[BarcodeScanner] OFacts product cached in FitCoach DB:', r?.data?.action))
           .catch(err => console.warn('[BarcodeScanner] OFacts cache failed (non-fatal):', err?.message));
       }
@@ -1823,7 +1834,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               <h3 className="font-bold text-xl text-white text-center">{productData.name}</h3>
               {productData.brand && <p className="text-center text-white/50 text-sm">{productData.brand}</p>}
 
-              <div className="text-center text-white/50 text-xs">ל-100 גרם</div>
+              <div className="text-center text-white/50 text-xs">
+                {productData.nutrition_basis === '100ml' ? 'ל-100 מ"ל' : 'ל-100 גרם'}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-slate-800/50 rounded-lg p-3 text-center">
                   <p className="text-white/60 text-xs mb-1">קלוריות</p>
@@ -2286,6 +2299,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
                       nutrition_basis: confirmProduct.serving_basis || '100g',
+                      // extracted_name: original AI label name. If user renamed it, both
+                      // names become FoodSynonym aliases → text/photo analysis finds either.
+                      extracted_name:  (confirmProduct.extracted_name && confirmProduct.extracted_name !== confirmProduct.name)
+                                         ? confirmProduct.extracted_name : undefined,
                       source:          confirmSource,
                     });
                     if (saveRes?.ok !== false) {
@@ -2299,6 +2316,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                         carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
                         fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                         serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                        nutrition_basis: confirmProduct.serving_basis || '100g',
                       });
                       setProductSource('fitcoach_db');
                       setMode('result');
