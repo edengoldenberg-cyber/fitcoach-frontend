@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { BrowserMultiFormatReader, BarcodeFormat as ZxingBarcodeFormat } from '@zxing/browser';
+import { DecodeHintType } from '@zxing/library';
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
@@ -11,7 +13,9 @@ import { batchUpdateNutritionMemory, normalizeFoodName, saveAIFoodCorrection } f
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDate }) {
-  const scannerRef = useRef(null);
+  const scannerRef = useRef(null);          // html5-qrcode instance (fallback only)
+  const zxingControlsRef = useRef(null);    // @zxing/browser IScannerControls (primary)
+  const scannerEngineRef = useRef(null);    // 'zxing' | 'html5-qrcode' | null
   const scanTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const lastScannedRef = useRef({ barcode: null, timestamp: 0 });
@@ -25,16 +29,16 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   // returns the current value regardless of when the closure was created.
   const scannedOnceRef = useRef(false);
   const [scannedOnce, setScannedOnce] = useState(false); // kept for UI/external state
-  // Decode attempt counter (incremented by onScanError on every non-decode frame).
+  // Decode attempt counter (incremented on every non-decode frame).
   // Visible in camera UI — proves the scanning loop is running.
   const [decodeAttempts, setDecodeAttempts] = useState(0);
   const decodeAttemptsRef = useRef(0);
-  // A/B decoder config state:
-  //   A = no qrbox, retail formats (EAN/UPC) — tried first
-  //   B = no qrbox, no formatsToSupport — let ZXing try all formats
-  const [scanConfigMode, setScanConfigMode] = useState('A');
-  const scanConfigModeRef = useRef('A');
-  // Timer that switches A→B after 8s with no successful decode.
+  // Active engine label displayed in camera UI ('ZXING' | 'A' | 'B')
+  const [scanConfigMode, setScanConfigMode] = useState('ZXING');
+  const scanConfigModeRef = useRef('ZXING');
+  // Active scanner engine (for UI display)
+  const [scannerEngine, setScannerEngine] = useState(null); // 'zxing' | 'html5-qrcode' | null
+  // Timer that switches html5-qrcode A→B after 8s (fallback only — ZXing has no A/B).
   const scanFallbackTimerRef = useRef(null);
   // Set when camera start fails; drives the diagnostics panel.
   const [cameraDiag, setCameraDiag] = useState(null);
@@ -64,8 +68,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     decodeMode: null,
     lastDecodeError: null,
     lastDetectedBarcode: null,
+    lastDetectedFormat: null,
+    timeToDetectionMs: null,
     barcodeDetectorSupported: 'BarcodeDetector' in window,
-    scannerType: 'html5-qrcode'
+    scannerType: 'zxing/browser',
   });
   
   const queryClient = useQueryClient();
@@ -125,8 +131,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       scannedOnceRef.current = false;
       decodeAttemptsRef.current = 0;
       setDecodeAttempts(0);
-      scanConfigModeRef.current = 'A';
-      setScanConfigMode('A');
+      scanConfigModeRef.current = 'ZXING';
+      setScanConfigMode('ZXING');
+      scannerEngineRef.current = null;
+      setScannerEngine(null);
       if (scanFallbackTimerRef.current) { clearTimeout(scanFallbackTimerRef.current); scanFallbackTimerRef.current = null; }
       setCameraDiag(null);
       diagRef.current = null;
@@ -135,7 +143,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         cameraOpened: false,
         decodeMode: null,
         lastDecodeError: null,
-        lastDetectedBarcode: null
+        lastDetectedBarcode: null,
+        lastDetectedFormat: null,
+        timeToDetectionMs: null,
+        scannerType: 'zxing/browser',
       }));
     } else {
       cleanup();
@@ -151,7 +162,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       clearTimeout(scanFallbackTimerRef.current);
       scanFallbackTimerRef.current = null;
     }
-    
+
+    // Stop ZXing scanner (primary engine)
+    if (zxingControlsRef.current) {
+      try { zxingControlsRef.current.stop(); } catch (_) {}
+      zxingControlsRef.current = null;
+    }
+
+    // Stop html5-qrcode scanner (fallback engine)
     if (scannerRef.current) {
       try {
         const isScanning = scannerRef.current.getState() === 2; // SCANNING state
@@ -164,12 +182,114 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       }
       scannerRef.current = null;
     }
-    
+
+    scannerEngineRef.current = null;
+    setScannerEngine(null);
     setCameraActive(false);
     setScannedOnce(false);
     scannedOnceRef.current = false;
     decodeAttemptsRef.current = 0;
-    scanConfigModeRef.current = 'A';
+    scanConfigModeRef.current = 'ZXING';
+  };
+
+  // ── ZXing primary live decoder ──────────────────────────────────────────────
+  // Uses @zxing/browser BrowserMultiFormatReader for continuous EAN/UPC decoding.
+  // Called by startCameraScan(); throws on init failure → html5-qrcode fallback.
+  // Never called directly. Does NOT start if scannedOnceRef is already set.
+  const startZxingCameraScan = async (t0) => {
+    const ms = () => `+${Date.now() - t0}ms`;
+
+    const videoElem = document.getElementById('zxing-video');
+    if (!videoElem) throw new Error('zxing-video element not in DOM');
+
+    // Build format hints — retail 1D formats prioritised for EAN/UPC products
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      ZxingBarcodeFormat.EAN_13,
+      ZxingBarcodeFormat.EAN_8,
+      ZxingBarcodeFormat.UPC_A,
+      ZxingBarcodeFormat.UPC_E,
+      ZxingBarcodeFormat.CODE_128,
+      ZxingBarcodeFormat.CODE_39,
+    ]);
+
+    const reader = new BrowserMultiFormatReader(hints);
+    console.log(`[BC][${ms()}] ZXING_READER_CREATED formats=6`);
+
+    // Callback fires on every decode attempt: result set when barcode found,
+    // NotFoundException when no barcode in frame (normal — not a real error).
+    const onZxingResult = (result, _err) => {
+      if (!result) {
+        // No barcode in frame — increment attempt counter
+        decodeAttemptsRef.current += 1;
+        if (decodeAttemptsRef.current % 10 === 0) {
+          setDecodeAttempts(decodeAttemptsRef.current);
+        }
+        return;
+      }
+
+      const text = result.getText ? result.getText() : String(result);
+      const now = Date.now();
+
+      // Duplicate guard (5s window)
+      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return;
+      // First-scan-only guard — ref always holds current value (no stale closure)
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      setScannedOnce(true);
+
+      // Cancel 30s timeout — barcode found
+      if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
+
+      const formatName = result.getBarcodeFormat ? String(result.getBarcodeFormat()) : 'unknown';
+      const elapsed = now - t0;
+      console.log('[BC] ZXING_SUCCESS', { text, formatName, elapsed });
+      addLog('success', 'barcode', 'scan_success', { barcode: text, formatName, engine: 'zxing', elapsed });
+
+      lastScannedRef.current = { barcode: text, timestamp: now };
+      setScanStatus('✅ BARCODE DETECTED: ' + text);
+      setCameraActive(false);
+      setDebugInfo(prev => ({
+        ...prev,
+        lastDetectedBarcode: text,
+        lastDetectedFormat: formatName,
+        timeToDetectionMs: elapsed,
+      }));
+
+      // Stop ZXing scanner — use ref (controls captured after await below)
+      try { zxingControlsRef.current?.stop(); } catch (_) {}
+      zxingControlsRef.current = null;
+
+      handleBarcodeDetected(text);
+    };
+
+    // decodeFromVideoDevice(null, ...) → deviceId=null → facingMode: environment
+    // Awaits until stream is established and scan loop is running.
+    // Throws NotAllowedError / NotFoundError / etc. on camera failure.
+    console.log(`[BC][${ms()}] ZXING_DECODE_FROM_VIDEO_DEVICE`);
+    const controls = await reader.decodeFromVideoDevice(null, videoElem, onZxingResult);
+
+    // Promise resolved → camera stream is live, scan loop running
+    zxingControlsRef.current = controls;
+    scannerEngineRef.current = 'zxing';
+    setScannerEngine('zxing');
+    scanConfigModeRef.current = 'ZXING';
+    setScanConfigMode('ZXING');
+
+    setCameraActive(true);
+    setPermissionGranted(true);
+    setLoading(false);
+    setDebugInfo(prev => ({ ...prev, cameraOpened: true, scannerType: 'zxing/browser' }));
+    addLog('success', 'barcode', 'zxing_camera_active', {});
+    console.log(`[BC][${ms()}] ZXING_STREAM_ACTIVE`);
+
+    // 30-second overall timeout
+    scanTimeoutRef.current = setTimeout(async () => {
+      await cleanup();
+      setError('⏱️ לא הצלחנו לזהות ברקוד תוך 30 שניות.\nנסה/י: תאורה טובה יותר, התקרבות למוצר, או ייצוב הידיים.');
+      setMode('choose');
+      setDebugInfo(prev => ({ ...prev, lastDecodeError: 'timeout' }));
+    }, 30000);
   };
 
   // סריקה חיה מהמצלמה
@@ -249,7 +369,31 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         throw Object.assign(new Error('getUserMedia not supported'), { name: 'UnsupportedError' });
       }
 
-      // ── Scanner constructor ────────────────────────────────────────────────
+      // ── Try ZXing primary decoder ─────────────────────────────────────────
+      // ZXing is the primary engine. html5-qrcode is fallback only.
+      // Only one engine runs at a time. ZXing uses #zxing-video;
+      // html5-qrcode uses #barcode-reader. They never overlap.
+      stage('zxing-attempt');
+      console.log(`[BC][${ms()}] ZXING_ATTEMPT`);
+      try {
+        await startZxingCameraScan(t0);
+        return; // ZXing started successfully — camera live, scan loop running
+      } catch (zxingErr) {
+        console.warn(`[BC][${ms()}] ZXING_FAIL_FALLBACK_H5Q:`, String(zxingErr).substring(0, 200));
+        addLog('warn', 'barcode', 'zxing_init_failed', { err: String(zxingErr).substring(0, 200) });
+        if (zxingControlsRef.current) {
+          try { zxingControlsRef.current.stop(); } catch (_) {}
+          zxingControlsRef.current = null;
+        }
+        scannerEngineRef.current = null;
+        setScannerEngine(null);
+        scanConfigModeRef.current = 'A';
+        setScanConfigMode('A');
+        // Fall through to html5-qrcode fallback below
+      }
+      setDebugInfo(prev => ({ ...prev, scannerType: 'html5-qrcode' }));
+
+      // ── html5-qrcode fallback (runs only if ZXing fails to init) ──────────
       stage('constructor');
       console.log(`[BC][${ms()}] HTML5_CONSTRUCTOR`);
       if (!scannerRef.current) {
@@ -447,6 +591,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
       stage('stream-active');
       console.log(`[BC][${ms()}] STREAM_ACTIVE`);
+      scannerEngineRef.current = 'html5-qrcode';
+      setScannerEngine('html5-qrcode');
 
       // Torch support check (non-fatal, doesn't affect camera)
       try {
@@ -1146,11 +1292,19 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         {/* MODE: CAMERA */}
         {mode === 'camera' && (
           <div className="flex-1 relative bg-black overflow-hidden">
-            {/* #barcode-reader MUST always be in the DOM while mode=camera.
-                Html5Qrcode takes over this element to render the video stream.
-                Previously this was inside a cameraActive conditional, causing
-                the constructor to fail because the element didn't exist yet. */}
-            <div id="barcode-reader" className="w-full h-full" />
+            {/* ZXing video element — primary engine. playsInline+muted required on iOS. */}
+            <video
+              id="zxing-video"
+              className={`absolute inset-0 w-full h-full object-cover ${scannerEngine === 'zxing' ? 'z-0' : 'opacity-0 pointer-events-none -z-10'}`}
+              muted
+              playsInline
+            />
+            {/* html5-qrcode container — fallback engine only. Must stay in DOM
+                while mode=camera so html5-qrcode can attach if ZXing fails. */}
+            <div
+              id="barcode-reader"
+              className={`absolute inset-0 w-full h-full ${scannerEngine !== 'zxing' ? 'z-0' : 'opacity-0 pointer-events-none -z-10'}`}
+            />
 
             {/* Loading overlay — covers the scanner div until camera is live */}
             {loading && (
@@ -1184,13 +1338,17 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     {scanStatus}
                   </p>
                   <p className={`text-[10px] px-3 py-1 rounded-full inline-block font-mono ${
-                    scanConfigMode === 'A'
-                      ? 'bg-blue-900/60 text-blue-300'
-                      : 'bg-orange-900/60 text-orange-300'
+                    scanConfigMode === 'ZXING'
+                      ? 'bg-green-900/60 text-green-300'
+                      : scanConfigMode === 'A'
+                        ? 'bg-blue-900/60 text-blue-300'
+                        : 'bg-orange-900/60 text-orange-300'
                   }`}>
-                    {scanConfigMode === 'A'
-                      ? 'MODE A — FULL FRAME / RETAIL FORMATS'
-                      : 'MODE B — FULL FRAME / DEFAULT FORMATS'}
+                    {scanConfigMode === 'ZXING'
+                      ? 'ENGINE: ZXING — FULL FRAME'
+                      : scanConfigMode === 'A'
+                        ? 'ENGINE: html5-qrcode / MODE A (FALLBACK)'
+                        : 'ENGINE: html5-qrcode / MODE B (FALLBACK)'}
                   </p>
                   {decodeAttempts > 0 && (
                     <p className="text-white/50 text-[10px] bg-black/40 px-3 py-1 rounded-full inline-block">
@@ -1251,12 +1409,20 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/70">Scanner Type:</span>
-                        <span className="text-blue-400 font-bold">{debugInfo.scannerType}</span>
+                        <span className="text-white/70">Engine:</span>
+                        <span className="text-green-400 font-bold">{scannerEngine || debugInfo.scannerType}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-white/70">Last Detected Barcode:</span>
                         <span className="text-green-400 font-bold">{debugInfo.lastDetectedBarcode || 'none'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Format:</span>
+                        <span className="text-yellow-400">{debugInfo.lastDetectedFormat || 'none'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Time to detect:</span>
+                        <span className="text-yellow-400">{debugInfo.timeToDetectionMs != null ? `${debugInfo.timeToDetectionMs}ms` : '—'}</span>
                       </div>
                       {debugInfo.lastDecodeError && (
                         <div className="border-t border-white/20 my-1 pt-1">

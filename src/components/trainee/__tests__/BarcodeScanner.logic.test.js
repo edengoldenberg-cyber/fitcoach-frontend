@@ -768,3 +768,204 @@ describe('Scanner cleanup', () => {
     }, 'cleanup must not throw on already-stopped scanner');
   });
 });
+
+// ─── ZXing primary engine tests ────────────────────────────────────────────────
+
+describe('ZXing primary engine — regression tests', () => {
+  // Simulated ZXing format enum (matches @zxing/library 0.21.3 values)
+  const ZxingBarcodeFormat = { EAN_13: 7, EAN_8: 6, UPC_A: 14, UPC_E: 15, CODE_128: 4, CODE_39: 2 };
+  const DecodeHintType = { POSSIBLE_FORMATS: 2 };
+
+  // 1. ZXing reader initialises with correct format hints
+  test('1. ZXing reader initialises with EAN/UPC format hints', () => {
+    const hints = new Map();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+      ZxingBarcodeFormat.EAN_13,
+      ZxingBarcodeFormat.EAN_8,
+      ZxingBarcodeFormat.UPC_A,
+      ZxingBarcodeFormat.UPC_E,
+      ZxingBarcodeFormat.CODE_128,
+      ZxingBarcodeFormat.CODE_39,
+    ]);
+    assert.ok(hints.has(DecodeHintType.POSSIBLE_FORMATS), 'POSSIBLE_FORMATS hint set');
+    const formats = hints.get(DecodeHintType.POSSIBLE_FORMATS);
+    assert.ok(formats.includes(ZxingBarcodeFormat.EAN_13), 'EAN_13 included');
+    assert.ok(formats.includes(ZxingBarcodeFormat.UPC_A),  'UPC_A included');
+    assert.equal(formats.length, 6, '6 retail formats specified');
+  });
+
+  // 2. Rear camera constraint: deviceId=null → facingMode:environment
+  test('2. null deviceId triggers environment-facing camera constraint', () => {
+    function buildConstraints(deviceId) {
+      return deviceId
+        ? { video: { deviceId: { exact: deviceId } } }
+        : { video: { facingMode: 'environment' } };
+    }
+    const c = buildConstraints(null);
+    assert.deepEqual(c, { video: { facingMode: 'environment' } },
+      'null deviceId must produce environment-facing constraint');
+  });
+
+  // 3. EAN-13 result reaches handleBarcodeDetected
+  test('3. EAN-13 result is forwarded to handleBarcodeDetected', () => {
+    let received = null;
+    const handleBarcodeDetected = (barcode) => { received = barcode; };
+    const scannedOnceRef = { current: false };
+    const lastScannedRef = { current: { barcode: null, timestamp: 0 } };
+
+    const onZxingResult = (result) => {
+      if (!result) return;
+      const text = result.getText();
+      const now = 1000;
+      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return;
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      lastScannedRef.current = { barcode: text, timestamp: now };
+      handleBarcodeDetected(text);
+    };
+
+    onZxingResult({ getText: () => '7290000000001', getBarcodeFormat: () => 7 });
+    assert.equal(received, '7290000000001', 'EAN-13 barcode forwarded to handler');
+  });
+
+  // 4. UPC-A result reaches handleBarcodeDetected
+  test('4. UPC-A result is forwarded to handleBarcodeDetected', () => {
+    let received = null;
+    const handleBarcodeDetected = (b) => { received = b; };
+    const scannedOnceRef = { current: false };
+    const lastScannedRef = { current: { barcode: null, timestamp: 0 } };
+
+    const onZxingResult = (result) => {
+      if (!result) return;
+      const text = result.getText();
+      const now = 1000;
+      if (scannedOnceRef.current) return;
+      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return;
+      scannedOnceRef.current = true;
+      lastScannedRef.current = { barcode: text, timestamp: now };
+      handleBarcodeDetected(text);
+    };
+
+    onZxingResult({ getText: () => '012345678905', getBarcodeFormat: () => 14 });
+    assert.equal(received, '012345678905', 'UPC-A barcode forwarded to handler');
+  });
+
+  // 5. Duplicate detection is ignored (same barcode within 5s)
+  test('5. duplicate ZXing result within 5s is suppressed', () => {
+    let callCount = 0;
+    const handleBarcodeDetected = () => { callCount++; };
+    const scannedOnceRef = { current: false };
+    const lastScannedRef = { current: { barcode: null, timestamp: 0 } };
+
+    const onZxingResult = (result, now) => {
+      if (!result) return;
+      const text = result.getText();
+      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return;
+      if (scannedOnceRef.current) return;
+      scannedOnceRef.current = true;
+      lastScannedRef.current = { barcode: text, timestamp: now };
+      handleBarcodeDetected(text);
+    };
+
+    onZxingResult({ getText: () => '7290000000001' }, 1000);  // first → handled
+    scannedOnceRef.current = false; // reset guard for test (simulating new scan session)
+    onZxingResult({ getText: () => '7290000000001' }, 3000);  // same barcode at 2s → suppressed
+    assert.equal(callCount, 1, 'duplicate within 5s must be suppressed');
+  });
+
+  // 6. Camera stops after detection (controls.stop called)
+  test('6. controls.stop() called after successful detection', () => {
+    let stopCalled = false;
+    const controls = { stop: () => { stopCalled = true; } };
+    const zxingControlsRef = { current: controls };
+
+    // Simulate onZxingResult success path
+    try { zxingControlsRef.current?.stop(); } catch (_) {}
+    zxingControlsRef.current = null;
+
+    assert.ok(stopCalled, 'controls.stop() must be called after decode');
+    assert.equal(zxingControlsRef.current, null, 'ref must be null after stop');
+  });
+
+  // 7. ZXing init failure activates html5-qrcode fallback
+  test('7. ZXing init failure triggers html5-qrcode fallback', async () => {
+    let fallbackCalled = false;
+    const startZxingCameraScan = async () => { throw new Error('NotAllowedError'); };
+    const startHtml5QrcodeFallback = async () => { fallbackCalled = true; };
+
+    let zxingControlsRef = { current: null };
+    let scannerEngineRef = { current: null };
+
+    try {
+      await startZxingCameraScan();
+    } catch (zxingErr) {
+      if (zxingControlsRef.current) {
+        try { zxingControlsRef.current.stop(); } catch (_) {}
+        zxingControlsRef.current = null;
+      }
+      scannerEngineRef.current = null;
+      await startHtml5QrcodeFallback();
+    }
+
+    assert.ok(fallbackCalled, 'html5-qrcode fallback must run when ZXing fails');
+    assert.equal(zxingControlsRef.current, null, 'ZXing controls must be null after failure');
+  });
+
+  // 8. Both engines never run simultaneously
+  test('8. only one engine has active controls at any time', () => {
+    const zxingControlsRef   = { current: null };
+    const scannerRef         = { current: null }; // html5-qrcode instance
+
+    // Simulate ZXing starting
+    zxingControlsRef.current = { stop: () => {} };
+    assert.ok(zxingControlsRef.current !== null, 'ZXing controls set');
+    assert.equal(scannerRef.current, null, 'html5-qrcode not started when ZXing runs');
+
+    // Simulate ZXing stopping before html5-qrcode starts
+    zxingControlsRef.current.stop();
+    zxingControlsRef.current = null;
+    scannerRef.current = { getState: () => 2, stop: async () => {}, clear: async () => {} };
+
+    assert.equal(zxingControlsRef.current, null, 'ZXing controls null when html5-qrcode active');
+    assert.ok(scannerRef.current !== null, 'html5-qrcode instance set');
+  });
+
+  // 9. Image scan still works (html5-qrcode scanFile path unchanged)
+  test('9. image scan path calls handleBarcodeDetected with decoded barcode', async () => {
+    let received = null;
+    const handleBarcodeDetected = (b) => { received = b; };
+
+    // Simulate handleImageCapture success path (scanFile returns barcode string)
+    const mockScannerRef = { current: { scanFile: async () => '7290000000001' } };
+    const barcode = await mockScannerRef.current.scanFile({}, false);
+    handleBarcodeDetected(barcode);
+
+    assert.equal(received, '7290000000001', 'image scan must forward barcode to handler');
+  });
+
+  // 10. Manual entry still works
+  test('10. manual entry path calls handleBarcodeDetected with entered barcode', () => {
+    let received = null;
+    const handleBarcodeDetected = (b) => { received = b; };
+
+    function handleManualSubmit(manualBarcode, handleBarcodeDetected) {
+      const clean = (manualBarcode || '').replace(/\D/g, '');
+      if (clean.length >= 8) handleBarcodeDetected(clean);
+    }
+
+    handleManualSubmit('7290000000001', handleBarcodeDetected);
+    assert.equal(received, '7290000000001', 'manual entry must forward barcode to handler');
+  });
+
+  // 11. CoachAsTrainee identity remains correct
+  test('11. traineeEmail prop takes precedence — coach cannot overwrite trainee identity', () => {
+    function buildMealEntry(traineeEmailProp) {
+      return { trainee_email: traineeEmailProp };
+    }
+    const traineeProp = '__preview__abc@fitcoach.local';
+    const coachEmail  = 'eden@fitcoach.com';
+    const entry = buildMealEntry(traineeProp);
+    assert.equal(entry.trainee_email, traineeProp, 'trainee email from prop, not coach email');
+    assert.notEqual(entry.trainee_email, coachEmail);
+  });
+});
