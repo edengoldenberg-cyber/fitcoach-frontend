@@ -12,6 +12,26 @@ import { analyzeBarcodeIssue } from '@/components/shared/barcodeDiagnostics';
 import { batchUpdateNutritionMemory, normalizeFoodName, saveAIFoodCorrection } from '@/components/trainee/nutritionLearning';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
+// Rotate a source canvas by degrees (90 or 270) into a new offscreen canvas.
+// Used for barcode orientation fallback — never mutates the visible UI.
+function rotateCanvasFrame(sourceCanvas, degrees) {
+  const sw = sourceCanvas.width;
+  const sh = sourceCanvas.height;
+  const canvas = document.createElement('canvas');
+  if (degrees === 90 || degrees === 270) {
+    canvas.width = sh;
+    canvas.height = sw;
+  } else {
+    canvas.width = sw;
+    canvas.height = sh;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((degrees * Math.PI) / 180);
+  ctx.drawImage(sourceCanvas, -sw / 2, -sh / 2);
+  return canvas;
+}
+
 export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDate }) {
   const scannerRef = useRef(null);          // html5-qrcode instance (fallback only)
   const zxingControlsRef = useRef(null);    // @zxing/browser IScannerControls (primary)
@@ -71,7 +91,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     lastDetectedFormat: null,
     timeToDetectionMs: null,
     barcodeDetectorSupported: 'BarcodeDetector' in window,
-    scannerType: 'zxing/browser',
+    scannerType: 'zxing/browser (custom-loop)',
+    videoWidth: null,
+    videoHeight: null,
+    streamSettings: null,
   });
   
   const queryClient = useQueryClient();
@@ -146,7 +169,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         lastDetectedBarcode: null,
         lastDetectedFormat: null,
         timeToDetectionMs: null,
-        scannerType: 'zxing/browser',
+        scannerType: 'zxing/browser (custom-loop)',
+        videoWidth: null,
+        videoHeight: null,
+        streamSettings: null,
       }));
     } else {
       cleanup();
@@ -192,17 +218,35 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     scanConfigModeRef.current = 'ZXING';
   };
 
-  // ── ZXing primary live decoder ──────────────────────────────────────────────
-  // Uses @zxing/browser BrowserMultiFormatReader for continuous EAN/UPC decoding.
-  // Called by startCameraScan(); throws on init failure → html5-qrcode fallback.
-  // Never called directly. Does NOT start if scannedOnceRef is already set.
+  // ── ZXing primary live decoder — custom decode loop ──────────────────────────
+  //
+  // ROOT CAUSE FIXED: BrowserCodeReader.scan() creates the canvas once from
+  // video.videoWidth × video.videoHeight at startup. On iOS Safari, videoWidth
+  // is 0 immediately after play() resolves — the first frame hasn't arrived yet.
+  // This produces a 0×0 canvas, so every decode silently fails with NotFoundException.
+  //
+  // Fix: bypass decodeFromVideoDevice() entirely. Call getUserMedia() directly,
+  // wait for videoWidth > 0 (first frame ready), then run our own decode loop
+  // that creates a fresh canvas at native resolution on every iteration.
+  //
+  // Also adds: TRY_HARDER hint, high-resolution stream request, rotation fallback.
   const startZxingCameraScan = async (t0) => {
     const ms = () => `+${Date.now() - t0}ms`;
 
     const videoElem = document.getElementById('zxing-video');
     if (!videoElem) throw new Error('zxing-video element not in DOM');
 
-    // Build format hints — retail 1D formats prioritised for EAN/UPC products
+    // Make video element visible BEFORE requesting stream.
+    // iOS Safari may withhold frames for elements with opacity:0 / visibility:hidden.
+    setScannerEngine('zxing');
+    scannerEngineRef.current = 'zxing';
+    setScanConfigMode('ZXING');
+    scanConfigModeRef.current = 'ZXING';
+    // Yield so React commits the visibility change before getUserMedia.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (!open) return;
+
+    // Build format hints — retail 1D formats + TRY_HARDER for difficult angles/lighting
     const hints = new Map();
     hints.set(DecodeHintType.POSSIBLE_FORMATS, [
       ZxingBarcodeFormat.EAN_13,
@@ -212,39 +256,109 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       ZxingBarcodeFormat.CODE_128,
       ZxingBarcodeFormat.CODE_39,
     ]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
 
     const reader = new BrowserMultiFormatReader(hints);
-    console.log(`[BC][${ms()}] ZXING_READER_CREATED formats=6`);
+    console.log(`[BC][${ms()}] ZXING_READER_CREATED TRY_HARDER=true formats=6`);
 
-    // Callback fires on every decode attempt: result set when barcode found,
-    // NotFoundException when no barcode in frame (normal — not a real error).
-    const onZxingResult = (result, _err) => {
-      if (!result) {
-        // No barcode in frame — increment attempt counter
-        decodeAttemptsRef.current += 1;
-        if (decodeAttemptsRef.current % 10 === 0) {
-          setDecodeAttempts(decodeAttemptsRef.current);
+    // Request rear camera with high-resolution preference.
+    // iOS Safari honors 'ideal' constraints and will give best available rear cam.
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    });
+    console.log(`[BC][${ms()}] ZXING_GUM_OK tracks=${stream.getVideoTracks().length}`);
+
+    // Attach stream to video — ZXing's prepareVideoElement sets these same attributes
+    videoElem.srcObject = stream;
+    videoElem.setAttribute('autoplay', 'true');
+    videoElem.setAttribute('muted', 'true');
+    videoElem.setAttribute('playsinline', 'true');
+    try { await videoElem.play(); } catch (_) { /* may auto-play without explicit call */ }
+
+    // Wait for video to report valid frame dimensions (critical iOS fix).
+    // On iOS, videoWidth === 0 immediately after play() resolves.
+    // We poll until dimensions are available or 5s elapses.
+    await new Promise((resolve, reject) => {
+      if (videoElem.videoWidth > 0 && videoElem.videoHeight > 0) return resolve();
+      const deadline = Date.now() + 5000;
+      const onMeta = () => { if (videoElem.videoWidth > 0) resolve(); };
+      videoElem.addEventListener('loadedmetadata', onMeta, { once: true });
+      const poll = () => {
+        if (videoElem.videoWidth > 0 && videoElem.videoHeight > 0) return resolve();
+        if (Date.now() > deadline) {
+          videoElem.removeEventListener('loadedmetadata', onMeta);
+          return reject(new Error(`Video dims not ready after 5s (${videoElem.videoWidth}x${videoElem.videoHeight})`));
         }
-        return;
-      }
+        setTimeout(poll, 50);
+      };
+      poll();
+    });
 
+    const vw = videoElem.videoWidth;
+    const vh = videoElem.videoHeight;
+    console.log(`[BC][${ms()}] ZXING_DIMS_READY ${vw}x${vh}`);
+
+    // Collect stream track settings for diagnostics
+    let streamSettings = null;
+    try { streamSettings = stream.getVideoTracks()[0]?.getSettings() ?? null; } catch (_) {}
+    addLog('info', 'barcode', 'zxing_stream_ready', { videoWidth: vw, videoHeight: vh, ...streamSettings });
+    console.log('[BC] FRAME_CAPTURE', {
+      nativeWidth: vw, nativeHeight: vh,
+      facingMode: streamSettings?.facingMode,
+      frameRate: streamSettings?.frameRate,
+    });
+
+    setCameraActive(true);
+    setPermissionGranted(true);
+    setLoading(false);
+    setDebugInfo(prev => ({
+      ...prev,
+      cameraOpened: true,
+      scannerType: 'zxing/browser (custom-loop)',
+      videoWidth: vw,
+      videoHeight: vh,
+      streamSettings,
+    }));
+    addLog('success', 'barcode', 'zxing_camera_active', { vw, vh });
+    console.log(`[BC][${ms()}] ZXING_STREAM_ACTIVE`);
+
+    // ── Custom decode loop ────────────────────────────────────────────────────
+    // Creates a fresh canvas at native resolution every iteration.
+    // This is the key fix: canvas dimensions are always current, never stale.
+    let stopDecode = false;
+    let loopId = null;
+
+    const stopFn = () => {
+      stopDecode = true;
+      if (loopId) { clearTimeout(loopId); loopId = null; }
+      try { stream.getTracks().forEach(t => t.stop()); } catch (_) {}
+      videoElem.srcObject = null;
+    };
+    zxingControlsRef.current = { stop: stopFn };
+
+    const handleSuccess = (result) => {
       const text = result.getText ? result.getText() : String(result);
       const now = Date.now();
 
       // Duplicate guard (5s window)
-      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return;
-      // First-scan-only guard — ref always holds current value (no stale closure)
-      if (scannedOnceRef.current) return;
+      if (lastScannedRef.current.barcode === text && now - lastScannedRef.current.timestamp < 5000) return false;
+      // First-scan-only guard (ref-based, no stale closure)
+      if (scannedOnceRef.current) return false;
       scannedOnceRef.current = true;
       setScannedOnce(true);
+      stopDecode = true;
 
-      // Cancel 30s timeout — barcode found
       if (scanTimeoutRef.current) { clearTimeout(scanTimeoutRef.current); scanTimeoutRef.current = null; }
 
-      const formatName = result.getBarcodeFormat ? String(result.getBarcodeFormat()) : 'unknown';
+      const formatNum = result.getBarcodeFormat ? result.getBarcodeFormat() : -1;
+      const formatName = formatNum >= 0 ? String(formatNum) : 'unknown';
       const elapsed = now - t0;
-      console.log('[BC] ZXING_SUCCESS', { text, formatName, elapsed });
-      addLog('success', 'barcode', 'scan_success', { barcode: text, formatName, engine: 'zxing', elapsed });
+      console.log('[BC] ZXING_SUCCESS', { text, formatNum, elapsed });
+      addLog('success', 'barcode', 'scan_success', { barcode: text, formatNum, engine: 'zxing/custom', elapsed });
 
       lastScannedRef.current = { barcode: text, timestamp: now };
       setScanStatus('✅ BARCODE DETECTED: ' + text);
@@ -256,32 +370,68 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         timeToDetectionMs: elapsed,
       }));
 
-      // Stop ZXing scanner — use ref (controls captured after await below)
       try { zxingControlsRef.current?.stop(); } catch (_) {}
       zxingControlsRef.current = null;
-
       handleBarcodeDetected(text);
+      return true;
     };
 
-    // decodeFromVideoDevice(null, ...) → deviceId=null → facingMode: environment
-    // Awaits until stream is established and scan loop is running.
-    // Throws NotAllowedError / NotFoundError / etc. on camera failure.
-    console.log(`[BC][${ms()}] ZXING_DECODE_FROM_VIDEO_DEVICE`);
-    const controls = await reader.decodeFromVideoDevice(null, videoElem, onZxingResult);
+    const decodeLoop = () => {
+      if (stopDecode || scannedOnceRef.current) return;
 
-    // Promise resolved → camera stream is live, scan loop running
-    zxingControlsRef.current = controls;
-    scannerEngineRef.current = 'zxing';
-    setScannerEngine('zxing');
-    scanConfigModeRef.current = 'ZXING';
-    setScanConfigMode('ZXING');
+      const w = videoElem.videoWidth;
+      const h = videoElem.videoHeight;
 
-    setCameraActive(true);
-    setPermissionGranted(true);
-    setLoading(false);
-    setDebugInfo(prev => ({ ...prev, cameraOpened: true, scannerType: 'zxing/browser' }));
-    addLog('success', 'barcode', 'zxing_camera_active', {});
-    console.log(`[BC][${ms()}] ZXING_STREAM_ACTIVE`);
+      if (w === 0 || h === 0) {
+        // Dimensions disappeared — retry quickly
+        loopId = setTimeout(decodeLoop, 100);
+        return;
+      }
+
+      // Fresh full-resolution canvas every iteration (fixes the 0×0 iOS bug)
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(videoElem, 0, 0, w, h);
+
+      decodeAttemptsRef.current += 1;
+      if (decodeAttemptsRef.current % 5 === 0) {
+        setDecodeAttempts(decodeAttemptsRef.current);
+      }
+
+      let decoded = false;
+
+      // Attempt 1: 0° (native orientation)
+      try {
+        const result = reader.decodeFromCanvas(canvas);
+        if (result) decoded = handleSuccess(result);
+      } catch (_) { /* NotFoundException / FormatException — normal */ }
+
+      // Attempts 2–3: rotated orientations, throttled to every 3rd iteration.
+      // Handles barcodes held sideways. Does NOT rotate the visible UI.
+      if (!decoded && !scannedOnceRef.current && decodeAttemptsRef.current % 3 === 0) {
+        try {
+          const rot90 = rotateCanvasFrame(canvas, 90);
+          const r = reader.decodeFromCanvas(rot90);
+          if (r) decoded = handleSuccess(r);
+        } catch (_) {}
+
+        if (!decoded && !scannedOnceRef.current) {
+          try {
+            const rot270 = rotateCanvasFrame(canvas, 270);
+            const r = reader.decodeFromCanvas(rot270);
+            if (r) decoded = handleSuccess(r);
+          } catch (_) {}
+        }
+      }
+
+      if (!stopDecode && !scannedOnceRef.current) {
+        loopId = setTimeout(decodeLoop, 150); // ~6 decode attempts/second
+      }
+    };
+
+    decodeLoop();
 
     // 30-second overall timeout
     scanTimeoutRef.current = setTimeout(async () => {
@@ -1413,7 +1563,25 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                         <span className="text-green-400 font-bold">{scannerEngine || debugInfo.scannerType}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/70">Last Detected Barcode:</span>
+                        <span className="text-white/70">Video dims:</span>
+                        <span className="text-cyan-400 font-mono text-[9px]">
+                          {debugInfo.videoWidth != null ? `${debugInfo.videoWidth}×${debugInfo.videoHeight}` : 'pending'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Facing:</span>
+                        <span className="text-cyan-400 text-[9px]">
+                          {debugInfo.streamSettings?.facingMode ?? '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Stream res:</span>
+                        <span className="text-cyan-400 font-mono text-[9px]">
+                          {debugInfo.streamSettings ? `${debugInfo.streamSettings.width}×${debugInfo.streamSettings.height}` : '—'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-white/70">Last Detected:</span>
                         <span className="text-green-400 font-bold">{debugInfo.lastDetectedBarcode || 'none'}</span>
                       </div>
                       <div className="flex justify-between">
