@@ -1955,11 +1955,13 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </div>
             )}
 
-            {/* Admin/coach: edit name_he for existing DB products */}
-            {showDebug && productData && (
+            {/* Coach/admin: correct Hebrew name for existing products.
+                Condition: role-based, not debug-flag — this is a product correction
+                feature, not diagnostics. Visible to coach/admin only; never to trainees. */}
+            {(isAdmin || isCoach) && productData && (
               <button
                 onClick={() => {
-                  setLearnStep(productSource === 'openfoodfacts' ? 'extracting' : 'manual-entry');
+                  setLearnStep('manual-entry');
                   setConfirmProduct({
                     barcode:         scannedBarcode || productData.barcode || '',
                     name_he:         '',
@@ -1975,7 +1977,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   });
                   setMode('confirm-product');
                 }}
-                className="text-xs text-white/40 hover:text-white/70 underline"
+                className="text-sm text-white/60 hover:text-white border border-white/20 hover:border-white/50 rounded-lg px-3 py-1.5 transition-colors"
               >
                 ✏️ ערוך שם בעברית
               </button>
