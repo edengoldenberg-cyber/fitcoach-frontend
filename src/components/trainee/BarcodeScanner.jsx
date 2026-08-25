@@ -12,6 +12,34 @@ import { analyzeBarcodeIssue } from '@/components/shared/barcodeDiagnostics';
 import { batchUpdateNutritionMemory, normalizeFoodName, saveAIFoodCorrection } from '@/components/trainee/nutritionLearning';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
+// Detects meaningful discrepancies between external barcode nutrition data and
+// values extracted from the physical package label. Same algorithm as backend.
+// Returns Array of conflicts (empty = no meaningful conflict).
+function detectNutritionConflicts(external, label, pctTol = 0.10) {
+  const FIELDS = [
+    { key: 'kcal_per_100',    absTol: 5 },
+    { key: 'protein_per_100', absTol: 1 },
+    { key: 'carbs_per_100',   absTol: 1 },
+    { key: 'fat_per_100',     absTol: 1 },
+  ];
+  const conflicts = [];
+  for (const { key, absTol } of FIELDS) {
+    const ext = external?.[key];
+    const lab = label?.[key];
+    if (ext == null || lab == null) continue;
+    const extN = Number(ext);
+    const labN = Number(lab);
+    const absDiff = Math.abs(extN - labN);
+    if (absDiff <= absTol) continue;
+    const avg = (Math.abs(extN) + Math.abs(labN)) / 2;
+    const pctDiff = avg > 0 ? absDiff / avg : 1;
+    if (pctDiff > pctTol) {
+      conflicts.push({ field: key, external: extN, label: labN, pctDiff: Math.round(pctDiff * 100) });
+    }
+  }
+  return conflicts;
+}
+
 // Rotate a source canvas by degrees (90 or 270) into a new offscreen canvas.
 // Used for barcode orientation fallback — never mutates the visible UI.
 function rotateCanvasFrame(sourceCanvas, degrees) {
@@ -74,10 +102,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const [loading, setLoading] = useState(false);
   const [scannedBarcode, setScannedBarcode] = useState(null);
   const [productData, setProductData] = useState(null);
-  const [productSource, setProductSource] = useState(null); // 'fitcoach_db' | 'openfoodfacts' | null
+  const [productSource, setProductSource] = useState(null); // 'fitcoach_db' | 'fitcoach_cached' | 'openfoodfacts' | null
   // Product learning flow state
-  const [learnStep, setLearnStep] = useState('choose'); // 'choose' | 'extracting' | 'manual-entry'
+  const [learnStep, setLearnStep] = useState('choose'); // 'choose' | 'extracting' | 'manual-entry' | 'verify' | 'failed'
   const [confirmProduct, setConfirmProduct] = useState(null); // product data to confirm before saving
+  // For verify-label flow: conflicts between external (OFacts/cached) and label values
+  const [verifyConflicts, setVerifyConflicts] = useState(null); // null | Array<{field,external,label,pctDiff}>
   const [error, setError] = useState(null);
   const [manualBarcode, setManualBarcode] = useState('');
   const [imagePreview, setImagePreview] = useState(null);
@@ -154,6 +184,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setProductSource(null);
       setLearnStep('choose');
       setConfirmProduct(null);
+      setVerifyConflicts(null);
       setManualBarcode('');
       setImagePreview(null);
       setCameraActive(false);
@@ -899,6 +930,71 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const handleImageCapture = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // ── VERIFY-LABEL PATH: compare extracted label values against known OFacts data ──
+    // Triggered when user taps "אמת מול תווית המוצר" from result screen for an
+    // unverified/external product. Runs AI extraction then conflict detection.
+    if (learnStep === 'verify') {
+      setMode('learn-product');
+      setLearnStep('extracting');
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise((res, rej) => {
+          reader.onload = ev => res(ev.target.result);
+          reader.onerror = rej;
+          reader.readAsDataURL(file);
+        });
+        const mimeMatch = base64.match(/^data:([^;]+);base64,/);
+        const mime = mimeMatch?.[1]?.toLowerCase() ?? 'unknown';
+        if (['image/heic','image/heif','image/heics'].includes(mime)) {
+          setLearnStep('failed');
+          e.target.value = '';
+          return;
+        }
+        const aiRes = await base44.functions.invoke('analyzeLabelPhoto', {
+          image_url: base64,
+          barcode:   scannedBarcode || undefined,
+        });
+        const d = aiRes?.data;
+        const hasAnyMacro = d != null && (d.calories != null || d.protein != null || d.carbs != null || d.fat != null);
+        if (hasAnyMacro) {
+          const toField = (v) => (v != null ? String(v) : '');
+          const labelValues = {
+            kcal_per_100:    d.calories != null ? Number(d.calories) : null,
+            protein_per_100: d.protein  != null ? Number(d.protein)  : null,
+            carbs_per_100:   d.carbs    != null ? Number(d.carbs)    : null,
+            fat_per_100:     d.fat      != null ? Number(d.fat)      : null,
+          };
+          // Compare label values against the external (OFacts/cached) product values
+          const conflicts = detectNutritionConflicts(productData, labelValues);
+          setVerifyConflicts(conflicts);
+          console.log('[BC] VERIFY_CONFLICTS', conflicts);
+          // Pre-fill confirm-product with label values (label wins on conflict)
+          setConfirmProduct({
+            barcode:          scannedBarcode || productData?.barcode || '',
+            name_he:          d.name_he || '',
+            name:             d.name || productData?.name || '',
+            brand:            d.brand_he || d.brand || productData?.brand || '',
+            kcal_per_100:     toField(d.calories),
+            protein_per_100:  toField(d.protein),
+            carbs_per_100:    toField(d.carbs),
+            fat_per_100:      toField(d.fat),
+            serving_size_g:   '',
+            serving_basis:    d.serving_basis || productData?.nutrition_basis || '100g',
+            extracted_name:   d.name || '',
+          });
+          setLearnStep('verify');
+          setMode('confirm-product');
+        } else {
+          setLearnStep('failed');
+        }
+      } catch (verErr) {
+        console.error('[BC] VERIFY_LABEL_ERROR', verErr);
+        setLearnStep('failed');
+      }
+      e.target.value = '';
+      return;
+    }
 
     // ── LEARN-PRODUCT PATH: extract nutrition label via AI ───────────────────
     // Uses analyzeLabelPhoto — a dedicated nutrition-label reader that:
@@ -1893,9 +1989,13 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               {scannedBarcode && <p className="text-xs text-white/50 mb-1">ברקוד: {scannedBarcode}</p>}
               {productSource && (
                 <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                  productSource === 'fitcoach_db' ? 'bg-green-700/40 text-green-300' : 'bg-blue-700/40 text-blue-300'
+                  productSource === 'fitcoach_db'     ? 'bg-green-700/40 text-green-300'
+                : productSource === 'fitcoach_cached' ? 'bg-yellow-700/40 text-yellow-300'
+                : 'bg-blue-700/40 text-blue-300'
                 }`}>
-                  {productSource === 'fitcoach_db' ? '✓ מאגר FitCoach' : '○ OpenFoodFacts'}
+                  {productSource === 'fitcoach_db'     ? '✓ מאגר FitCoach'
+                 : productSource === 'fitcoach_cached' ? '○ שמור מ-OpenFoodFacts'
+                 : '○ OpenFoodFacts'}
                 </span>
               )}
             </div>
@@ -1935,11 +2035,26 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               )}
             </div>
 
-            {/* OFacts attribution (CC BY-SA required) + cache notice */}
-            {productSource === 'openfoodfacts' && (
-              <p className="text-white/30 text-[9px] text-center max-w-xs">
-                מקור: Open Food Facts (CC BY-SA) · לאחר הוספה, נתוני המוצר יישמרו ב-FitCoach לשימוש עתידי
-              </p>
+            {/* Attribution + data-quality notice for external/unverified products */}
+            {(productSource === 'openfoodfacts' || productSource === 'fitcoach_cached') && (
+              <div className="w-full max-w-md space-y-2">
+                <p className="text-white/30 text-[9px] text-center">
+                  {productSource === 'openfoodfacts'
+                    ? 'מקור: Open Food Facts (CC BY-SA) · לאחר הוספה, נתוני המוצר יישמרו ב-FitCoach'
+                    : 'נתוני תזונה ממאגר OpenFoodFacts · לא אומתו מול האריזה הפיזית'}
+                </p>
+                {/* Verify with label button — lets user confirm OFacts values against the real package */}
+                <button
+                  onClick={() => {
+                    setVerifyConflicts(null);
+                    setLearnStep('verify');
+                    setTimeout(() => fileInputRef.current?.click(), 100);
+                  }}
+                  className="w-full text-sm text-yellow-300/80 hover:text-yellow-200 border border-yellow-400/30 hover:border-yellow-400/60 rounded-lg px-3 py-2 transition-colors text-center"
+                >
+                  📷 אמת מול תווית המוצר
+                </button>
+              </div>
             )}
 
             {/* Quantity hint for liquid products */}
@@ -2322,11 +2437,41 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           <div className="flex-1 flex flex-col p-5 space-y-4 overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-white font-bold text-lg">
-                {learnStep === 'extracting' ? '✅ זיהינו את הערכים הבאים' : 'הזנת מוצר ידנית'}
+                {learnStep === 'extracting' ? '✅ זיהינו את הערכים הבאים'
+               : learnStep === 'verify'     ? '📷 ערכי תווית המוצר'
+               : 'הזנת מוצר ידנית'}
               </h3>
-              <button onClick={() => setMode('not-found')} className="text-white/50 hover:text-white"><X className="w-5 h-5" /></button>
+              <button onClick={() => {
+                learnStep === 'verify' ? setMode('result') : setMode('not-found');
+                setVerifyConflicts(null);
+              }} className="text-white/50 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <p className="text-white/50 text-xs">בדוק/י את הפרטים לפני השמירה. ניתן לערוך כל שדה.</p>
+
+            {/* Conflict warning — shown when label values differ materially from OFacts */}
+            {learnStep === 'verify' && verifyConflicts != null && (
+              verifyConflicts.length > 0 ? (
+                <div className="bg-yellow-900/30 border border-yellow-500/50 rounded-lg p-3 space-y-1">
+                  <p className="text-yellow-300 text-xs font-bold">⚠️ מצאנו הבדל בין נתוני הברקוד לתווית המוצר</p>
+                  <p className="text-yellow-200/70 text-xs">מומלץ להשתמש בערכים שעל האריזה (מוצגים כעת בטופס).</p>
+                  <div className="mt-1 space-y-0.5">
+                    {verifyConflicts.map(c => {
+                      const label = { kcal_per_100: 'קלוריות', protein_per_100: 'חלבון', carbs_per_100: 'פחמימות', fat_per_100: 'שומן' }[c.field] || c.field;
+                      return (
+                        <p key={c.field} className="text-yellow-100/60 text-[10px] font-mono">
+                          {label}: ברקוד {c.external} → אריזה {c.label} ({c.pctDiff}% הבדל)
+                        </p>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-green-900/30 border border-green-500/40 rounded-lg p-3">
+                  <p className="text-green-300 text-xs font-bold">✅ הנתונים תואמים את תווית המוצר</p>
+                  <p className="text-green-200/60 text-xs">הערכים מ-OpenFoodFacts עקביים עם האריזה.</p>
+                </div>
+              )
+            )}
 
             {/* serving_basis selector — 100g vs 100ml */}
             <div>
@@ -2385,7 +2530,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 </Button>
               )}
               <Button
-                onClick={() => setMode('not-found')}
+                onClick={() => {
+                  learnStep === 'verify' ? setMode('result') : setMode('not-found');
+                  setVerifyConflicts(null);
+                }}
                 variant="outline"
                 className="flex-1 border-white/30 text-white bg-transparent hover:bg-white/10"
               >
@@ -2404,7 +2552,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       return;
                     }
 
-                    const confirmSource      = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
+                    // 'verify' = user photographed label + reviewed conflicts → user_learned (rank 3 > openfoodfacts rank 2 → allows upgrade)
+                    // 'extracting' = AI read label without user comparison → ai_label (rank 1, lower trust, kept for provenance)
+                    // 'manual-entry' = user typed values → user_learned
+                    const confirmSource = (learnStep === 'verify' || learnStep === 'manual-entry') ? 'user_learned' : 'ai_label';
                     const saveBarcode        = confirmProduct.barcode || scannedBarcode;
                     const saveNutritionBasis = confirmProduct.serving_basis || '100g';
                     // Canonical display name: Hebrew if provided, else fall back to English/original.
@@ -2455,6 +2606,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                         nutrition_basis: saveNutritionBasis,
                       });
                       setProductSource('fitcoach_db');
+                      setVerifyConflicts(null);
                       setMode('result');
                     } else {
                       const errMsg = saveRes?.error || 'שגיאה בשמירת המוצר';
