@@ -49,6 +49,11 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   // returns the current value regardless of when the closure was created.
   const scannedOnceRef = useRef(false);
   const [scannedOnce, setScannedOnce] = useState(false); // kept for UI/external state
+  // Synchronous guard against double-tap creating duplicate MealEntries.
+  // disabled={loading} cannot prevent this — React state updates are async and
+  // the second tap fires before the re-render applying disabled. The ref is
+  // mutated synchronously so the guard is effective on the same JS turn.
+  const addInFlightRef = useRef(false);
   // Decode attempt counter (incremented on every non-decode frame).
   // Visible in camera UI — proves the scanning loop is running.
   const [decodeAttempts, setDecodeAttempts] = useState(0);
@@ -154,6 +159,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setCameraActive(false);
       setScannedOnce(false);
       scannedOnceRef.current = false;
+      addInFlightRef.current = false;
       decodeAttemptsRef.current = 0;
       setDecodeAttempts(0);
       scanConfigModeRef.current = 'ZXING';
@@ -217,6 +223,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     setCameraActive(false);
     setScannedOnce(false);
     scannedOnceRef.current = false;
+    addInFlightRef.current = false;
     decodeAttemptsRef.current = 0;
     scanConfigModeRef.current = 'ZXING';
   };
@@ -985,8 +992,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
           setConfirmProduct({
             barcode:          scannedBarcode || '',
+            // name_he: Hebrew canonical name from AI (preferred display in Israeli UI).
+            // If AI saw Hebrew text on label, it returns it here. Otherwise empty —
+            // user types it manually before saving.
+            name_he:          d.name_he || '',
             name:             d.name || '',
-            brand:            d.brand || '',
+            brand:            d.brand_he || d.brand || '',
             kcal_per_100:     toField(d.calories),
             protein_per_100:  toField(d.protein),
             carbs_per_100:    toField(d.carbs),
@@ -1132,7 +1143,20 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const addProductToMeal = async (overrideQty) => {
     if (!productData || !traineeEmail) return;
 
-    console.log('[BC] ADD_MEAL_BEGIN', { product: productData?.name, source: productSource });
+    // Synchronous double-tap guard. disabled={loading} cannot prevent two taps
+    // landing before React re-renders. The ref is mutated in the same JS turn,
+    // so a second call within the same event loop sees it immediately.
+    if (addInFlightRef.current) {
+      console.warn('[BC] ADD_PRODUCT_CLICK_IGNORED: already in flight');
+      addLog('warn', 'barcode', 'ADD_PRODUCT_CLICK_IGNORED', { product: productData?.name });
+      return;
+    }
+    addInFlightRef.current = true;
+
+    const requestId = Math.random().toString(36).slice(2, 10);
+    console.log('[BC] ADD_MEAL_FUNCTION_ENTER', { requestId, product: productData?.name, source: productSource });
+    addLog('info', 'barcode', 'ADD_MEAL_FUNCTION_ENTER', { requestId, product: productData?.name });
+
     setLoading(true);
     setError(null);
 
@@ -1197,12 +1221,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         setTimeout(() => rej(new Error('timeout: שרת לא הגיב תוך 15 שניות')), 15000)
       );
 
-      console.log('[BC] ADD_MEAL_CREATE_BEGIN');
+      console.log('[BC] ADD_MEAL_CREATE_BEGIN', { requestId });
+      addLog('info', 'barcode', 'ADD_MEAL_CREATE_BEGIN', { requestId, food_name: mealData.food_name });
       const result = await Promise.race([
         base44.entities.MealEntry.create(mealData),
         createTimeout,
       ]);
-      console.log('[BC] ADD_MEAL_CREATE_SUCCESS id=', result?.id);
+      console.log('[BC] ADD_MEAL_CREATE_SUCCESS', { requestId, id: result?.id });
+      addLog('success', 'barcode', 'ADD_MEAL_CREATE_SUCCESS', { requestId, id: result?.id });
 
       // Invalidate meal queries IMMEDIATELY so the log refreshes.
       // This is called BEFORE fire-and-forget writes so any subsequent errors
@@ -1269,16 +1295,20 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         }
       }
 
-      console.log('[BC] SCANNER_CLOSE_BEGIN');
+      console.log('[BC] ADD_MEAL_FUNCTION_EXIT', { requestId, status: 'success' });
+      addLog('success', 'barcode', 'ADD_MEAL_FUNCTION_EXIT', { requestId, status: 'success' });
       onClose();
     } catch (err) {
-      console.error('[BC] ADD_MEAL_ERROR', err?.message);
+      console.error('[BC] ADD_MEAL_CREATE_ERROR', { requestId, err: err?.message });
+      addLog('error', 'barcode', 'ADD_MEAL_CREATE_ERROR', { requestId, err: err?.message });
       // Invalidate even on error — the meal may have been written before the error.
       queryClient.invalidateQueries({ queryKey: ['meals'] });
       setError(`שגיאה בהוספת מוצר: ${err.message || 'שגיאה לא ידועה'}`);
+      console.log('[BC] ADD_MEAL_FUNCTION_EXIT', { requestId, status: 'error' });
     } finally {
-      // Always reset loading — prevents infinite "מוסיף..." on any failure or timeout.
+      // Always reset both — prevents infinite "מוסיף..." and re-enables the guard.
       setLoading(false);
+      addInFlightRef.current = false;
     }
   };
 
@@ -1925,6 +1955,32 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </div>
             )}
 
+            {/* Admin/coach: edit name_he for existing DB products */}
+            {showDebug && productData && (
+              <button
+                onClick={() => {
+                  setLearnStep(productSource === 'openfoodfacts' ? 'extracting' : 'manual-entry');
+                  setConfirmProduct({
+                    barcode:         scannedBarcode || productData.barcode || '',
+                    name_he:         '',
+                    name:            productData.name || '',
+                    brand:           productData.brand || '',
+                    kcal_per_100:    String(productData.kcal_per_100 ?? ''),
+                    protein_per_100: String(productData.protein_per_100 ?? ''),
+                    carbs_per_100:   String(productData.carbs_per_100 ?? ''),
+                    fat_per_100:     String(productData.fat_per_100 ?? ''),
+                    serving_size_g:  String(productData.serving_size_g ?? ''),
+                    serving_basis:   productData.nutrition_basis || '100g',
+                    extracted_name:  '',
+                  });
+                  setMode('confirm-product');
+                }}
+                className="text-xs text-white/40 hover:text-white/70 underline"
+              >
+                ✏️ ערוך שם בעברית
+              </button>
+            )}
+
             <div className="flex gap-2 w-full max-w-md">
               <Button
                 onClick={() => {
@@ -2159,6 +2215,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   setLearnStep('manual-entry');
                   setConfirmProduct({
                     barcode: scannedBarcode || '',
+                    name_he: '',
                     name: '',
                     brand: '',
                     kcal_per_100: '',
@@ -2205,7 +2262,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     className="bg-blue-600 hover:bg-blue-700">📷 צלם שוב</Button>
                   <Button onClick={() => {
                     setLearnStep('manual-entry');
-                    setConfirmProduct({ barcode: scannedBarcode || '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '', serving_basis: '100g' });
+                    setConfirmProduct({ barcode: scannedBarcode || '', name_he: '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '', serving_basis: '100g' });
                     setMode('confirm-product');
                   }} variant="outline" className="border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
                 </div>
@@ -2293,7 +2350,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             {(() => {
               const basis = (confirmProduct.serving_basis || '100g') === '100ml' ? '100מ"ל' : '100ג׳';
               return [
-                { key: 'name',            label: 'שם מוצר',              type: 'text'   },
+                { key: 'name_he',         label: 'שם בעברית (תצוגה)',    type: 'text'   },
+                { key: 'name',            label: 'שם מקורי/אנגלית',       type: 'text'   },
                 { key: 'brand',           label: 'מותג',                  type: 'text'   },
                 { key: 'kcal_per_100',    label: `קלוריות (${basis})`,   type: 'number' },
                 { key: 'protein_per_100', label: `חלבון (${basis})`,     type: 'number' },
@@ -2332,7 +2390,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 ביטול
               </Button>
               <Button
-                disabled={!confirmProduct.name || confirmProduct.kcal_per_100 === '' || loading}
+                disabled={(!confirmProduct.name && !confirmProduct.name_he) || confirmProduct.kcal_per_100 === '' || loading}
                 onClick={async () => {
                   setLoading(true);
                   setError(null);
@@ -2344,21 +2402,22 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       return;
                     }
 
-                    const confirmSource   = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
-                    const saveBarcode     = confirmProduct.barcode || scannedBarcode;
+                    const confirmSource      = learnStep === 'extracting' ? 'ai_label' : 'user_learned';
+                    const saveBarcode        = confirmProduct.barcode || scannedBarcode;
                     const saveNutritionBasis = confirmProduct.serving_basis || '100g';
+                    // Canonical display name: Hebrew if provided, else fall back to English/original.
+                    const nameHe  = confirmProduct.name_he?.trim() || '';
+                    const nameEn  = confirmProduct.name?.trim()    || nameHe;
 
                     console.log('[BC] SAVE_PRODUCT_BEGIN', {
-                      barcode: saveBarcode,
-                      name: confirmProduct.name,
-                      kcal: kcalNum,
-                      nutrition_basis: saveNutritionBasis,
-                      source: confirmSource,
+                      barcode: saveBarcode, name: nameEn, name_he: nameHe,
+                      kcal: kcalNum, nutrition_basis: saveNutritionBasis, source: confirmSource,
                     });
 
                     const saveRes = await base44.functions.invoke('saveLearnedProduct', {
                       barcode:         saveBarcode,
-                      name:            confirmProduct.name,
+                      name:            nameEn,
+                      name_he:         nameHe || undefined,
                       brand:           confirmProduct.brand || undefined,
                       kcal_per_100:    kcalNum,
                       protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
@@ -2366,25 +2425,24 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
                       serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
                       nutrition_basis: saveNutritionBasis,
-                      extracted_name:  (confirmProduct.extracted_name && confirmProduct.extracted_name !== confirmProduct.name)
+                      extracted_name:  (confirmProduct.extracted_name && confirmProduct.extracted_name !== nameEn)
                                          ? confirmProduct.extracted_name : undefined,
                       source:          confirmSource,
                     });
 
                     console.log('[BC] SAVE_PRODUCT_RESPONSE', {
-                      ok: saveRes?.ok,
-                      action: saveRes?.data?.action,
-                      id: saveRes?.data?.product?.id,
-                      error: saveRes?.error,
+                      ok: saveRes?.ok, action: saveRes?.data?.action,
+                      id: saveRes?.data?.product?.id, error: saveRes?.error,
                     });
 
                     if (saveRes?.ok === true && saveRes?.data?.product?.id) {
-                      // Real DB persistence confirmed — product has a valid ID.
                       const savedProduct = saveRes.data.product;
-                      console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id);
+                      // Display name prefers name_he from DB → what was just saved.
+                      const displayName = savedProduct.name_he || savedProduct.name || nameHe || nameEn;
+                      console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id, 'display=', displayName);
                       setProductData({
                         food_item_id:    savedProduct.id,
-                        name:            confirmProduct.name,
+                        name:            displayName,
                         brand:           confirmProduct.brand || '',
                         barcode:         saveBarcode,
                         kcal_per_100:    kcalNum,
