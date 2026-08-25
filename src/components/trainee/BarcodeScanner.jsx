@@ -1083,14 +1083,21 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
           // toField: convert extracted value to display string.
           // 0 → "0"  (not blank, not "-")
-          // null → "" (empty — user must fill in)
+          // null → "" (empty — user must fill in; may be uncertain from extraction)
+          // IMPORTANT: null stays "" not "0" — null ≠ 0.
           const toField = (v) => (v != null ? String(v) : '');
 
+          // uncertain_fields from v4 extraction: fields where cross-validation
+          // failed or value was unreadable. Show visually marked in the form.
+          const uncertainFields = Array.isArray(d.uncertain_fields) ? d.uncertain_fields : [];
+          console.log('[LabelDiag] v4 uncertain_fields:', uncertainFields);
+          if (uncertainFields.length > 0) {
+            console.warn('[LabelDiag] UNCERTAIN FIELDS — require user verification:', uncertainFields);
+          }
+
+          setVerifyConflicts(null); // clear any previous verify-label conflicts
           setConfirmProduct({
             barcode:          scannedBarcode || '',
-            // name_he: Hebrew canonical name from AI (preferred display in Israeli UI).
-            // If AI saw Hebrew text on label, it returns it here. Otherwise empty —
-            // user types it manually before saving.
             name_he:          d.name_he || '',
             name:             d.name || '',
             brand:            d.brand_he || d.brand || '',
@@ -1100,9 +1107,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             fat_per_100:      toField(d.fat),
             serving_size_g:   '',
             serving_basis:    d.serving_basis || '100g',
-            // extracted_name: AI-read name before user edits. Saved as alias so both
-            // the original ("Coke Zero") and confirmed ("קוקה קולה זירו") resolve.
             extracted_name:   d.name || '',
+            // uncertain_fields: fields the AI couldn't read with confidence.
+            // The confirm-product form shows these with a warning icon.
+            uncertain_fields: uncertainFields,
           });
           setLabelDiagState(labelDiag);
           setMode('confirm-product');
@@ -2493,9 +2501,34 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </div>
             </div>
 
+            {/* Heading for extraction context */}
+            {(learnStep === 'extracting' || learnStep === 'verify') && (
+              <p className="text-white/40 text-xs">ערכים שנקראו מהתווית ל-{(confirmProduct.serving_basis || '100g') === '100ml' ? '100 מ"ל' : '100 גרם'}</p>
+            )}
+
+            {/* Uncertain fields banner — shown when cross-validation found suspicious values */}
+            {(confirmProduct.uncertain_fields?.length > 0) && (
+              <div className="bg-orange-900/30 border border-orange-500/50 rounded-lg p-3 space-y-1">
+                <p className="text-orange-300 text-xs font-bold">⚠ חלק מהערכים לא נקראו בוודאות — יש לבדוק מול האריזה</p>
+                <p className="text-orange-200/60 text-[10px]">
+                  שדות מסומנים: {confirmProduct.uncertain_fields
+                    .map(f => ({ kcal_per_100:'קלוריות', protein_per_100:'חלבון', carbs_per_100:'פחמימות', fat_per_100:'שומן' })[f] || f)
+                    .join(', ')}
+                </p>
+              </div>
+            )}
+
             {/* Nutrition fields — labels adapt to serving_basis */}
             {(() => {
               const basis = (confirmProduct.serving_basis || '100g') === '100ml' ? '100מ"ל' : '100ג׳';
+              const uncertainSet = new Set(confirmProduct.uncertain_fields || []);
+              // Map between form keys and extraction field names
+              const fieldUncertainMap = {
+                kcal_per_100:    uncertainSet.has('calories'),
+                protein_per_100: uncertainSet.has('protein'),
+                carbs_per_100:   uncertainSet.has('carbs'),
+                fat_per_100:     uncertainSet.has('fat'),
+              };
               return [
                 { key: 'name_he',         label: 'שם בעברית (תצוגה)',    type: 'text'   },
                 { key: 'name',            label: 'שם מקורי/אנגלית',       type: 'text'   },
@@ -2505,18 +2538,31 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 { key: 'carbs_per_100',   label: `פחמימות (${basis})`,   type: 'number' },
                 { key: 'fat_per_100',     label: `שומן (${basis})`,      type: 'number' },
                 { key: 'serving_size_g',  label: 'גודל מנה (ג׳/מ"ל)',    type: 'number' },
-              ].map(({ key, label, type }) => (
-                <div key={key}>
-                  <label className="text-white/60 text-xs block mb-1">{label}</label>
-                  <input
-                    type={type}
-                    value={confirmProduct[key] ?? ''}
-                    onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
-                    className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
-                    placeholder={type === 'number' ? '0' : label}
-                  />
-                </div>
-              ));
+              ].map(({ key, label, type }) => {
+                const isUncertain = fieldUncertainMap[key] === true;
+                const isEmpty = (confirmProduct[key] ?? '') === '';
+                return (
+                  <div key={key}>
+                    <label className={`text-xs block mb-1 ${isUncertain ? 'text-orange-400' : 'text-white/60'}`}>
+                      {label}
+                      {isUncertain && <span className="ml-1 text-[10px] text-orange-400/80">⚠ לא נקרא בוודאות — יש לבדוק</span>}
+                    </label>
+                    <input
+                      type={type}
+                      value={confirmProduct[key] ?? ''}
+                      onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
+                      className={`w-full text-white rounded-lg px-3 py-2 text-sm focus:outline-none ${
+                        isUncertain
+                          ? 'bg-orange-900/20 border border-orange-500/60 focus:border-orange-400'
+                          : isEmpty && type === 'number' && ['kcal_per_100','protein_per_100','carbs_per_100','fat_per_100'].includes(key)
+                            ? 'bg-slate-800 border border-yellow-500/40 focus:border-blue-400'
+                            : 'bg-slate-800 border border-white/20 focus:border-blue-400'
+                      }`}
+                      placeholder={isUncertain ? 'בדוק/י מול האריזה' : type === 'number' ? '0' : label}
+                    />
+                  </div>
+                );
+              });
             })()}
 
             <div className="flex gap-2 pt-2">
