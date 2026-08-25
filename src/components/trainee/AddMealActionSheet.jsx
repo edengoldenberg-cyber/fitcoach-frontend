@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Zap, Star, X } from 'lucide-react';
+import { Search, Zap, Star, X, ScanBarcode } from 'lucide-react';
 
 const MEAL_LABELS = {
   breakfast: 'ארוחת בוקר',
@@ -24,7 +24,7 @@ function ActionOption({ icon, title, subtitle, className, onClick }) {
   );
 }
 
-export default function AddMealActionSheet({ open, mealType, onClose, onPhoto, onText, onSearch, onQuick, onSaved }) {
+export default function AddMealActionSheet({ open, mealType, onClose, onPhoto, onText, onBarcode, onSearch, onQuick, onSaved }) {
   if (!open) return null;
 
   return (
@@ -57,6 +57,15 @@ export default function AddMealActionSheet({ open, mealType, onClose, onPhoto, o
             className="bg-gradient-to-r from-purple-500 to-purple-600 text-white"
             onClick={onText}
           />
+          {onBarcode && (
+            <ActionOption
+              icon="📷"
+              title="סריקת ברקוד"
+              subtitle="סרוק ברקוד מוצר לזיהוי מיידי עם ערכים תזונתיים"
+              className="bg-gradient-to-r from-orange-500 to-orange-600 text-white"
+              onClick={onBarcode}
+            />
+          )}
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-2">

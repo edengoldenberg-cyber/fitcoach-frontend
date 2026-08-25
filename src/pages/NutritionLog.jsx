@@ -1126,6 +1126,10 @@ export default function NutritionLog() {
           setShowAddItemSheet(false);
           setShowAnalyzeDialog(true);
         }}
+        onBarcode={() => {
+          setShowAddItemSheet(false);
+          setShowBarcodeScanner(true);
+        }}
         onSearch={() => openManualAdd('search')}
         onQuick={() => openQuickAdd('הוספה מהירה')}
         onSaved={() => openQuickAdd('המאכלים שלי / אחרונים')}

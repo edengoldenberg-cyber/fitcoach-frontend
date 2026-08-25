@@ -859,6 +859,10 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
   // Stable question count: set on first result, only allowed to grow.
   // Prevents the progress counter from jumping when the API returns different questions.
   const [clarificationTotalCount, setClarificationTotalCount] = useState(0);
+  // Hard cap: after MAX_CLARIFICATION_ROUNDS submissions the save button is always enabled.
+  const MAX_CLARIFICATION_ROUNDS = 2;
+  const MAX_CLARIFICATION_QUESTIONS = 5;
+  const [clarificationRound, setClarificationRound] = useState(0);
   // Deterministic question index — tracks position in the stable ordered question list.
   // Replaces the old visibleQuestions.find(first-unanswered) anti-pattern.
   const [clarificationIndex, setClarificationIndex] = useState(0);
@@ -1021,6 +1025,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
       const qCount = Array.isArray(data?.clarifying_questions) ? data.clarifying_questions.length : 0;
       setClarificationTotalCount(qCount);
       setClarificationAnswers({});
+      setClarificationRound(0);
       setStep('result');
     } catch (err) {
       console.warn('[AI_NUTRITION_UI_TRACE] fallback_activation:', err?.response?.data || err?.message);
@@ -1382,6 +1387,7 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
     setClarificationAnswers({});
     setIsClarifying(false);
     setClarificationTotalCount(0);
+    setClarificationRound(0);
     setPhotoUrl(null);
     setPhotoPreview(null);
     setLearningSaved(false);
@@ -1696,6 +1702,23 @@ export default function AIAnalyzeMealDialog({ open, onClose, onSave, onSaveAsync
         if (filtered.length < prevLen) {
           console.log(`[CLARIFICATION-DEDUP] filtered ${prevLen - filtered.length} already-answered question(s)`);
         }
+      }
+
+      // Enforce round cap BEFORE updating result so the save button unlocks immediately.
+      const nextRound = clarificationRound + 1;
+      setClarificationRound(nextRound);
+      const totalAnswered = Object.keys(clarificationAnswers).length;
+      const hitRoundCap   = nextRound >= MAX_CLARIFICATION_ROUNDS;
+      const hitTotalCap   = totalAnswered >= MAX_CLARIFICATION_QUESTIONS;
+      if ((hitRoundCap || hitTotalCap) &&
+          Array.isArray(safeData.clarifying_questions) && safeData.clarifying_questions.length > 0) {
+        safeData.clarifying_questions = [];
+        safeData.questions            = [];
+        safeData.estimated            = safeData.estimated ?? true;
+        if (!safeData.uncertainty_note) {
+          safeData.uncertainty_note = 'מחושב לפי מיטב ההערכה על בסיס כל המידע שנמסר';
+        }
+        console.log(`[CLARIFICATION-CAP] Cleared questions after round ${nextRound} (totalAnswered=${totalAnswered})`);
       }
 
       // Update result without changing step — modal stays visible and stable.
