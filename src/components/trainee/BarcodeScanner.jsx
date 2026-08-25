@@ -2588,10 +2588,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       return;
                     }
 
-                    // 'verify' = user photographed label + reviewed conflicts → user_learned (rank 3 > openfoodfacts rank 2 → allows upgrade)
-                    // 'extracting' = AI read label without user comparison → ai_label (rank 1, lower trust, kept for provenance)
-                    // 'manual-entry' = user typed values → user_learned
-                    const confirmSource = (learnStep === 'verify' || learnStep === 'manual-entry') ? 'user_learned' : 'ai_label';
+                    // Source reflects HOW the user confirmed the product data:
+                    // 'verify'       → label_verified (rank 3.5): photographed label to correct known OFacts data
+                    // 'extracting'   → user_learned  (rank 3):   AI extracted from label, user reviewed & confirmed
+                    // 'manual-entry' → user_learned  (rank 3):   user typed values directly
+                    // All three outrank openfoodfacts (rank 2) and are protected against OFacts overwrite.
+                    const confirmSource = learnStep === 'verify' ? 'label_verified' : 'user_learned';
                     const saveBarcode        = confirmProduct.barcode || scannedBarcode;
                     const saveNutritionBasis = confirmProduct.serving_basis || '100g';
                     // Canonical display name: Hebrew if provided, else fall back to English/original.
