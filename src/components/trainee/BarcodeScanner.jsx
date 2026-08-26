@@ -18,23 +18,14 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 // Detect meaningful discrepancies between external barcode nutrition data and
 // values extracted from the physical package label.
 //
-// CRITICAL: When labelServingSizeG is set, the label values are PER-SERVING (not per-100g).
-// We normalize them to per-100g before comparing.
-// Example: barcode=55kcal/100g, label=110kcal/cup(200g) → normalized label=55kcal/100g → NO conflict.
+// DESIGN INVARIANT: `external` and `label` MUST both be per-100g values.
+// analyzeLabelPhoto() always returns per-100g values — either read from the per-100g
+// column, or derived via serving normalization in the backend. Do NOT pass serving_size_g
+// here to "normalize again" — that would HALVE values and create false conflicts.
+// (e.g. already-normalized 55 kcal × 100/200 = 27.5 ← false 67% conflict — P0 bug)
 //
 // Returns Array of conflicts (empty = no meaningful conflict).
-function detectNutritionConflicts(external, label, pctTol = 0.10, labelServingSizeG = null) {
-  // Normalize label to per-100g if serving size is known
-  let normalizedLabel = label;
-  if (labelServingSizeG && labelServingSizeG > 0) {
-    const factor = 100 / labelServingSizeG;
-    normalizedLabel = {
-      kcal_per_100:    label?.kcal_per_100    != null ? label.kcal_per_100    * factor : null,
-      protein_per_100: label?.protein_per_100 != null ? label.protein_per_100 * factor : null,
-      carbs_per_100:   label?.carbs_per_100   != null ? label.carbs_per_100   * factor : null,
-      fat_per_100:     label?.fat_per_100     != null ? label.fat_per_100     * factor : null,
-    };
-  }
+function detectNutritionConflicts(external, label, pctTol = 0.10) {
   const FIELDS = [
     { key: 'kcal_per_100',    absTol: 5 },
     { key: 'protein_per_100', absTol: 1 },
@@ -44,7 +35,7 @@ function detectNutritionConflicts(external, label, pctTol = 0.10, labelServingSi
   const conflicts = [];
   for (const { key, absTol } of FIELDS) {
     const ext = external?.[key];
-    const lab = normalizedLabel?.[key];
+    const lab = label?.[key];
     if (ext == null || lab == null) continue;
     const extN = Number(ext);
     const labN = Number(lab);
@@ -988,14 +979,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             fat_per_100:     d.fat      != null ? Number(d.fat)      : null,
           };
           // Compare label values against the external (OFacts/cached) product values.
-          // KEY: pass serving_size_g from the label so normalization can happen.
-          // If the label only shows per-cup values (e.g. 110 kcal/200ml cup),
-          // detectNutritionConflicts normalizes to per-100g before comparing.
-          // This prevents the GO Yoplait 67%-discrepancy false alarm.
-          const labelServingSizeG = d.serving_size_g || null;
-          const conflicts = detectNutritionConflicts(productData, labelValues, 0.10, labelServingSizeG);
+          // analyzeLabelPhoto() returns per-100g values directly — either from the per-100g
+          // column or derived by the backend from the serving column. No frontend normalization.
+          // (Passing serving_size_g here would halve already-normalized values — P0 bug.)
+          const conflicts = detectNutritionConflicts(productData, labelValues, 0.10);
           setVerifyConflicts(conflicts);
-          console.log('[BC] VERIFY_CONFLICTS', conflicts, 'labelServingSizeG:', labelServingSizeG);
+          console.log('[BC] VERIFY_CONFLICTS', conflicts);
           // Pre-fill confirm-product with label values (label wins on conflict)
           setConfirmProduct({
             barcode:          scannedBarcode || productData?.barcode || '',
