@@ -50,6 +50,60 @@ function detectNutritionConflicts(external, label, pctTol = 0.10) {
   return conflicts;
 }
 
+// ── Serving unit helpers ──────────────────────────────────────────────────────
+
+const SERVING_FRACTIONS = [
+  { label: '¼',  value: 0.25 },
+  { label: '½',  value: 0.5  },
+  { label: '¾',  value: 0.75 },
+  { label: '1',  value: 1    },
+  { label: '1½', value: 1.5  },
+  { label: '2',  value: 2    },
+];
+
+const UNIT_CHIPS = ['גביע', 'יחידה', 'קופסה', 'פרוסה', 'בקבוק', 'פחית', 'כף'];
+
+function inferServingUnit(productName) {
+  const n = (productName || '').toLowerCase();
+  if (/יוגורט|פרוביוטי|actimel/i.test(n))            return { unit_he: 'גביע'      };
+  if (/קוטג'|פודינג|מוס/.test(n))                    return { unit_he: 'אריזה'     };
+  if (/טונה|סרדינ|שפרוטים/.test(n))                  return { unit_he: 'קופסה'     };
+  if (/חטיף|פרוטאין|protein[\s-]?bar/i.test(n))      return { unit_he: 'יחידה'     };
+  if (/ביצ/.test(n))                                  return { unit_he: 'ביצה'      };
+  if (/פיתה/.test(n))                                 return { unit_he: 'פיתה'      };
+  if (/טורטייה/.test(n))                              return { unit_he: 'יחידה'     };
+  if (/לחמנ/.test(n))                                 return { unit_he: 'לחמנייה'   };
+  if (/פחית/.test(n))                                 return { unit_he: 'פחית'      };
+  if (/בקבוק/.test(n))                                return { unit_he: 'בקבוק'     };
+  if (/שוקולד/.test(n))                               return { unit_he: 'יחידה'     };
+  return null;
+}
+
+function buildServingOptions(productData) {
+  const per100Kcal = Number(productData?.kcal_per_100 || 0);
+  const isLiquid   = productData?.nutrition_basis === '100ml';
+  const mfgGrams   = Number(productData?.serving_size_g) || 0;
+  const storedUnit = productData?.serving_unit_name_he;
+  const inferredUnit = storedUnit || inferServingUnit(productData?.name)?.unit_he;
+  const kcalFor = (g) => Math.round((per100Kcal / 100) * g);
+  const opts = [];
+  if (mfgGrams > 0) {
+    opts.push({
+      id: 'mfg_unit', label: inferredUnit || 'יחידה',
+      grams: mfgGrams, kcal: kcalFor(mfgGrams),
+      unit_he: inferredUnit || 'יחידה', is_recommended: true,
+    });
+  }
+  opts.push({
+    id: 'per_100', label: isLiquid ? '100 מ"ל' : '100 גרם',
+    grams: 100, kcal: kcalFor(100), unit_he: null, is_recommended: !mfgGrams,
+  });
+  opts.push({
+    id: 'custom', label: 'הגדרה אחרת', grams: null, kcal: null, unit_he: null, is_recommended: false,
+  });
+  return { opts, inferredUnit: inferredUnit || null };
+}
+
 // Rotate a source canvas by degrees (90 or 270) into a new offscreen canvas.
 // Used for barcode orientation fallback — never mutates the visible UI.
 function rotateCanvasFrame(sourceCanvas, degrees) {
@@ -118,6 +172,10 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
   const [confirmProduct, setConfirmProduct] = useState(null); // product data to confirm before saving
   // For verify-label flow: conflicts between external (OFacts/cached) and label values
   const [verifyConflicts, setVerifyConflicts] = useState(null); // null | Array<{field,external,label,pctDiff}>
+  // Serving-choice UX state (choose-serving mode)
+  const [selectedServingId, setSelectedServingId] = useState(null);  // 'mfg_unit' | 'per_100' | 'custom'
+  const [servingMultiplier, setServingMultiplier] = useState(1);      // fraction of mfg serving
+  const [customGramsInput, setCustomGramsInput]   = useState('');     // raw string for custom grams input
   // For edit-name mode: only name/name_he, never touches nutrition
   const [editNameState, setEditNameState] = useState({ name: '', name_he: '' });
   const [error, setError] = useState(null);
@@ -197,6 +255,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setLearnStep('choose');
       setConfirmProduct(null);
       setVerifyConflicts(null);
+      setSelectedServingId(null);
+      setServingMultiplier(1);
+      setCustomGramsInput('');
       setEditNameState({ name: '', name_he: '' });
       setManualBarcode('');
       setImagePreview(null);
@@ -270,6 +331,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
     addInFlightRef.current = false;
     decodeAttemptsRef.current = 0;
     scanConfigModeRef.current = 'ZXING';
+    setSelectedServingId(null);
+    setServingMultiplier(1);
+    setCustomGramsInput('');
   };
 
   // ── ZXing primary live decoder — custom decode loop ──────────────────────────
@@ -2057,13 +2121,36 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 </div>
               </div>
 
-              {productData.serving_size_g && (
-                <div className="text-center text-xs text-white/40">
-                  גודל מנה: {productData.serving_size_g}ג׳
-                  {' · '}
-                  {Math.round((productData.kcal_per_100 / 100) * productData.serving_size_g)} קל׳ למנה
-                </div>
-              )}
+              {/* Serving display — shows unit name if known, otherwise raw grams */}
+              {productData.serving_size_g > 0 && (() => {
+                const { inferredUnit } = buildServingOptions(productData);
+                const servingG    = productData.serving_size_g;
+                const servingKcal = Math.round((productData.kcal_per_100    / 100) * servingG);
+                const servingProt = Math.round(((productData.protein_per_100 / 100) * servingG) * 10) / 10;
+                const servingCarb = Math.round(((productData.carbs_per_100   / 100) * servingG) * 10) / 10;
+                const unitLabel   = inferredUnit || 'מנה';
+                return (
+                  <div className="mt-2 bg-slate-700/30 border border-white/10 rounded-lg p-3 space-y-1">
+                    <p className="text-white/50 text-[10px] text-center font-medium">
+                      {unitLabel} שלמ{unitLabel.endsWith('ה') ? 'ה' : ''} · {servingG} גרם
+                    </p>
+                    <div className="flex justify-center gap-4">
+                      <div className="text-center">
+                        <p className="text-green-400 font-bold text-sm">{servingKcal}</p>
+                        <p className="text-white/40 text-[9px]">קל׳</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-blue-400 font-bold text-sm">{servingProt}ג׳</p>
+                        <p className="text-white/40 text-[9px]">חלבון</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-orange-400 font-bold text-sm">{servingCarb}ג׳</p>
+                        <p className="text-white/40 text-[9px]">פחמימות</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Attribution + data-quality notice for external/unverified products */}
@@ -2131,7 +2218,17 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 סריקה חדשה
               </Button>
               <Button
-                onClick={() => addProductToMeal()}
+                onClick={() => {
+                  if (productData?.serving_size_g > 0) {
+                    // Product has a known manufacturer serving — show the choice step
+                    setSelectedServingId(null);
+                    setServingMultiplier(1);
+                    setCustomGramsInput('');
+                    setMode('choose-serving');
+                  } else {
+                    addProductToMeal();
+                  }
+                }}
                 disabled={loading}
                 className="flex-1 bg-green-600 hover:bg-green-700 text-white"
               >
@@ -2140,11 +2237,167 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     <Loader2 className="w-4 h-4 animate-spin" />
                     מוסיף...
                   </span>
-                ) : 'הוסף מוצר'}
+                ) : productData?.serving_size_g > 0 ? 'בחר כמות ↓' : 'הוסף מוצר'}
               </Button>
             </div>
           </div>
         )}
+
+        {/* MODE: CHOOSE-SERVING — "איך תרצה להוסיף את המוצר?" */}
+        {mode === 'choose-serving' && productData && (() => {
+          const { opts, inferredUnit } = buildServingOptions(productData);
+          const mfgOpt      = opts.find(o => o.id === 'mfg_unit');
+          const mfgGrams    = mfgOpt?.grams || 0;
+          const per100Kcal  = Number(productData.kcal_per_100    || 0);
+          const per100Prot  = Number(productData.protein_per_100 || 0);
+          const unitLabel   = mfgOpt?.unit_he || inferredUnit || 'יחידה';
+
+          const currentGrams = (() => {
+            if (selectedServingId === 'mfg_unit' && mfgGrams)  return Math.round(mfgGrams * servingMultiplier);
+            if (selectedServingId === 'per_100')                return 100;
+            if (selectedServingId === 'custom')                 return Number(customGramsInput) || 0;
+            return null;
+          })();
+
+          const currentKcal = currentGrams ? Math.round((per100Kcal / 100) * currentGrams) : null;
+          const currentProt = currentGrams ? Math.round(((per100Prot / 100) * currentGrams) * 10) / 10 : null;
+          const canAdd      = currentGrams > 0;
+
+          return (
+            <div className="flex-1 flex flex-col p-5 space-y-4 overflow-y-auto">
+              <div className="text-center space-y-1">
+                <h3 className="text-white font-bold text-lg">{productData.name}</h3>
+                <p className="text-white/50 text-sm">איך תרצה להוסיף?</p>
+              </div>
+
+              <div className="space-y-2">
+                {opts.map(opt => {
+                  const isSelected = selectedServingId === opt.id;
+                  return (
+                    <div key={opt.id}>
+                      <button
+                        onClick={() => {
+                          setSelectedServingId(opt.id);
+                          if (opt.id === 'mfg_unit') setServingMultiplier(1);
+                          if (opt.id !== 'custom')   setCustomGramsInput('');
+                        }}
+                        className={`w-full rounded-xl p-4 text-right transition-all border-2 ${
+                          isSelected
+                            ? 'bg-green-600/20 border-green-500 text-white'
+                            : 'bg-slate-800/50 border-white/10 text-white hover:bg-slate-700/50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ml-3 ${
+                            isSelected ? 'bg-green-500 border-green-500' : 'border-white/30'
+                          }`} />
+                          <div className="text-right flex-1">
+                            <p className="font-semibold text-base">
+                              {opt.label}
+                              {opt.is_recommended && (
+                                <span className="text-[10px] text-green-400 mr-2 font-normal">✓ מומלץ</span>
+                              )}
+                            </p>
+                            {opt.grams && (
+                              <p className="text-white/50 text-sm">
+                                {opt.grams} גרם · {opt.kcal} קל׳
+                              </p>
+                            )}
+                            {opt.id === 'custom' && (
+                              <p className="text-white/40 text-xs">הזן כמות בגרמים</p>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+
+                      {/* Fraction picker — appears inline when mfg_unit selected */}
+                      {isSelected && opt.id === 'mfg_unit' && mfgGrams > 0 && (
+                        <div className="mt-2 bg-slate-900/60 rounded-xl p-3 space-y-3 border border-green-500/20">
+                          <p className="text-white/60 text-xs text-center">בחר/י כמות:</p>
+                          <div className="flex gap-2 justify-center flex-wrap">
+                            {SERVING_FRACTIONS.map(({ label, value }) => {
+                              const fracGrams = Math.round(mfgGrams * value);
+                              const fracKcal  = Math.round((per100Kcal / 100) * fracGrams);
+                              const isActive  = Math.abs(servingMultiplier - value) < 0.01;
+                              return (
+                                <button
+                                  key={label}
+                                  onClick={() => setServingMultiplier(value)}
+                                  className={`flex flex-col items-center px-2.5 py-2 rounded-lg min-w-[52px] transition-all ${
+                                    isActive
+                                      ? 'bg-green-600 text-white'
+                                      : 'bg-slate-700 text-white/70 hover:bg-slate-600'
+                                  }`}
+                                >
+                                  <span className="font-bold text-sm">{label}</span>
+                                  <span className="text-[9px] text-current/70">{unitLabel}</span>
+                                  <span className="text-[9px] text-white/50">{fracGrams}ג׳</span>
+                                  <span className="text-[9px] text-green-300/80">{fracKcal}קל׳</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {currentGrams > 0 && (
+                            <div className="text-center text-white/60 text-xs">
+                              {servingMultiplier} {unitLabel} = {currentGrams} גרם · {currentKcal} קל׳
+                              {currentProt != null && ` · ${currentProt}ג׳ חלבון`}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Custom gram input — appears inline when custom selected */}
+                      {isSelected && opt.id === 'custom' && (
+                        <div className="mt-2 bg-slate-900/60 rounded-xl p-3 space-y-2 border border-white/10">
+                          <label className="text-white/60 text-xs">כמות בגרמים:</label>
+                          <input
+                            type="number"
+                            value={customGramsInput}
+                            onChange={e => setCustomGramsInput(e.target.value)}
+                            placeholder="גרמים..."
+                            min="1"
+                            className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400"
+                            autoFocus
+                          />
+                          {Number(customGramsInput) > 0 && (
+                            <p className="text-white/50 text-xs">
+                              {Number(customGramsInput)} גרם = {Math.round((per100Kcal / 100) * Number(customGramsInput))} קל׳
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {error && (
+                <p className="text-red-400 text-sm text-center">{error}</p>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <Button
+                  onClick={() => { setMode('result'); setError(null); }}
+                  variant="outline"
+                  className="border-white/30 text-white bg-transparent hover:bg-white/10"
+                >
+                  חזור
+                </Button>
+                <Button
+                  onClick={() => { if (canAdd) addProductToMeal(currentGrams); }}
+                  disabled={!canAdd || loading}
+                  className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                >
+                  {loading ? (
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" /> מוסיף...
+                    </span>
+                  ) : 'הוסף לדיוחן'}
+                </Button>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* MODE: DEBUG */}
         {mode === 'debug' && isAdmin && (() => {
@@ -2566,10 +2819,48 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 { key: 'carbs_per_100',     label: `פחמימות (${basis})`,          type: 'number' },
                 { key: 'fat_per_100',       label: `שומן (${basis})`,             type: 'number' },
                 { key: 'serving_size_g',    label: 'גודל מנה (ג׳/מ"ל)',           type: 'number' },
-                { key: 'serving_unit_name_he', label: 'שם יחידת המנה (גביע/יחידה/קופסה/פרוסה/כף…)', type: 'text' },
+                { key: 'serving_unit_name_he', label: 'יחידת מנה', type: 'text' },
               ].map(({ key, label, type }) => {
                 const isUncertain = fieldUncertainMap[key] === true;
                 const isEmpty = (confirmProduct[key] ?? '') === '';
+                // serving_unit_name_he: smart chips instead of plain text input
+                if (key === 'serving_unit_name_he') {
+                  const autoUnit = inferServingUnit(confirmProduct.name || confirmProduct.name_he)?.unit_he;
+                  const cur      = confirmProduct.serving_unit_name_he ?? '';
+                  return (
+                    <div key={key}>
+                      <label className="text-white/60 text-xs block mb-1">
+                        יחידת מנה
+                        {autoUnit && !cur && (
+                          <span className="text-blue-300/70 mr-2 text-[10px]">💡 זיהינו: {autoUnit}</span>
+                        )}
+                      </label>
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        {UNIT_CHIPS.map(chip => (
+                          <button
+                            key={chip}
+                            type="button"
+                            onClick={() => setConfirmProduct(p => ({ ...p, serving_unit_name_he: cur === chip ? '' : chip }))}
+                            className={`text-xs px-2.5 py-1 rounded-lg border transition-colors ${
+                              cur === chip
+                                ? 'bg-blue-600 border-blue-500 text-white'
+                                : 'bg-slate-700 border-white/20 text-white/60 hover:bg-slate-600'
+                            }`}
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={cur}
+                        onChange={e => setConfirmProduct(p => ({ ...p, serving_unit_name_he: e.target.value }))}
+                        placeholder={autoUnit ? `${autoUnit} (או הקלד/י אחר)` : 'הקלד/י ידנית...'}
+                        className="w-full bg-slate-800 text-white border border-white/20 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-blue-400"
+                      />
+                    </div>
+                  );
+                }
                 return (
                   <div key={key}>
                     <label className={`text-xs block mb-1 ${isUncertain ? 'text-orange-400' : 'text-white/60'}`}>

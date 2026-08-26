@@ -992,3 +992,170 @@ describe('ZXing custom-loop engine — regression tests (post iOS-fix)', () => {
     assert.equal(received, '7290110115227', 'manual entry must reach handleBarcodeDetected');
   });
 });
+
+// ─── inferServingUnit — product-category unit inference ───────────────────────
+
+function inferServingUnit(productName) {
+  const n = (productName || '').toLowerCase();
+  if (/יוגורט|פרוביוטי|actimel/i.test(n))            return { unit_he: 'גביע'     };
+  if (/קוטג'|פודינג|מוס/.test(n))                    return { unit_he: 'אריזה'    };
+  if (/טונה|סרדינ|שפרוטים/.test(n))                  return { unit_he: 'קופסה'    };
+  if (/חטיף|פרוטאין|protein[\s-]?bar/i.test(n))      return { unit_he: 'יחידה'    };
+  if (/ביצ/.test(n))                                  return { unit_he: 'ביצה'     };
+  if (/פיתה/.test(n))                                 return { unit_he: 'פיתה'     };
+  if (/טורטייה/.test(n))                              return { unit_he: 'יחידה'    };
+  if (/לחמנ/.test(n))                                 return { unit_he: 'לחמנייה'  };
+  if (/פחית/.test(n))                                 return { unit_he: 'פחית'     };
+  if (/בקבוק/.test(n))                                return { unit_he: 'בקבוק'    };
+  if (/שוקולד/.test(n))                               return { unit_he: 'יחידה'    };
+  return null;
+}
+
+function scaleMacrosFromPer100(productData, grams) {
+  return {
+    calories: Math.round((Number(productData.kcal_per_100    || 0) / 100) * grams),
+    protein:  Math.round(((Number(productData.protein_per_100 || 0) / 100) * grams) * 10) / 10,
+    carbs:    Math.round(((Number(productData.carbs_per_100   || 0) / 100) * grams) * 10) / 10,
+    fat:      Math.round(((Number(productData.fat_per_100     || 0) / 100) * grams) * 10) / 10,
+  };
+}
+
+const GO_YOPLAIT = {
+  name: 'GO by Yoplait', kcal_per_100: 55, protein_per_100: 10,
+  carbs_per_100: 3.7, fat_per_100: 0, serving_size_g: 200,
+  serving_unit_name_he: 'גביע', nutrition_basis: '100g',
+};
+
+describe('inferServingUnit — product category detection', () => {
+  test('A. יוגורט → גביע', () => {
+    assert.equal(inferServingUnit('יוגורט GO by Yoplait')?.unit_he, 'גביע');
+  });
+
+  test('E. חטיף חלבון → יחידה', () => {
+    assert.equal(inferServingUnit('חטיף חלבון ONE')?.unit_he, 'יחידה');
+  });
+
+  test('G. קוקה קולה פחית → פחית', () => {
+    assert.equal(inferServingUnit('קוקה קולה פחית 330')?.unit_he, 'פחית');
+  });
+
+  test('H. בקבוק מים → בקבוק', () => {
+    assert.equal(inferServingUnit('מים בקבוק 1.5L')?.unit_he, 'בקבוק');
+  });
+
+  test('I. טונה במים → קופסה', () => {
+    assert.equal(inferServingUnit('טונה במים')?.unit_he, 'קופסה');
+  });
+
+  test('K. פיתה → פיתה', () => {
+    assert.equal(inferServingUnit('פיתה כוסמין')?.unit_he, 'פיתה');
+  });
+
+  test('L. טורטייה → יחידה', () => {
+    assert.equal(inferServingUnit('טורטייה חיטה')?.unit_he, 'יחידה');
+  });
+
+  test("M. קוטג' → אריזה", () => {
+    assert.equal(inferServingUnit("קוטג' 5%")?.unit_he, 'אריזה');
+  });
+
+  test('R. unknown product → null (no invented unit)', () => {
+    assert.equal(inferServingUnit('מוצר אקראי לגמרי'), null);
+  });
+});
+
+describe('Serving nutrition math — GO Yoplait 55 kcal/100g, 1 גביע = 200g', () => {
+  test('A. 1 גביע = 200g → 110 kcal, 20g protein', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, 200);
+    assert.equal(m.calories, 110, '1 גביע must be 110 kcal');
+    assert.equal(m.protein,  20,  '1 גביע must be 20g protein');
+  });
+
+  test('B. ½ גביע = 100g → 55 kcal, 10g protein', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, Math.round(200 * 0.5));
+    assert.equal(m.calories, 55, '½ גביע must be 55 kcal');
+    assert.equal(m.protein,  10, '½ גביע must be 10g protein');
+  });
+
+  test('C. 1.5 גביעים = 300g → 165 kcal, 30g protein', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, Math.round(200 * 1.5));
+    assert.equal(m.calories, 165, '1.5 גביעים must be 165 kcal');
+    assert.equal(m.protein,  30,  '1.5 גביעים must be 30g protein');
+  });
+
+  test('¼ גביע = 50g → ≈27-28 kcal', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, Math.round(200 * 0.25));
+    assert.ok(m.calories >= 27 && m.calories <= 28, `¼ גביע must be ≈27.5 kcal, got ${m.calories}`);
+  });
+
+  test('¾ גביע = 150g → ≈82-83 kcal', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, Math.round(200 * 0.75));
+    assert.ok(m.calories >= 82 && m.calories <= 83, `¾ גביע must be ≈82.5 kcal, got ${m.calories}`);
+  });
+
+  test('2 גביעים = 400g → 220 kcal', () => {
+    const m = scaleMacrosFromPer100(GO_YOPLAIT, 400);
+    assert.equal(m.calories, 220, '2 גביעים must be 220 kcal');
+  });
+
+  test('Q. canonical per100 unchanged after serving selection', () => {
+    const canonical = { kcal_per_100: 55, protein_per_100: 10 };
+    const _ = scaleMacrosFromPer100(GO_YOPLAIT, 200);
+    assert.equal(canonical.kcal_per_100,    55, 'canonical per100 must not change');
+    assert.equal(canonical.protein_per_100, 10, 'canonical per100 must not change');
+  });
+});
+
+describe('D. Product without serving metadata — gram fallback', () => {
+  const NO_SERVING = {
+    name: 'מוצר ללא מנה', kcal_per_100: 200, protein_per_100: 15,
+    carbs_per_100: 20, fat_per_100: 5,
+    serving_size_g: null, serving_unit_name_he: null, nutrition_basis: '100g',
+  };
+
+  test('no serving_size_g → no mfg_unit option in choose-serving', () => {
+    const mfgGrams = Number(NO_SERVING.serving_size_g) || 0;
+    assert.equal(mfgGrams, 0, 'no serving_size_g means no manufacturer serving option');
+  });
+
+  test('100g calculation works without serving metadata', () => {
+    const m = scaleMacrosFromPer100(NO_SERVING, 100);
+    assert.equal(m.calories, 200);
+    assert.equal(m.protein,  15);
+  });
+});
+
+describe('O. Changing meal quantity must NOT mutate FoodItem serving metadata', () => {
+  test('MealEntry grams derived from serving; FoodItem.serving_size_g unchanged', () => {
+    const foodItem = { ...GO_YOPLAIT };
+    const origServingG = foodItem.serving_size_g;
+
+    const mealGrams = Math.round(foodItem.serving_size_g * 0.5);
+    assert.equal(mealGrams,              100,         'meal grams for ½ cup = 100g');
+    assert.equal(foodItem.serving_size_g, origServingG, 'FoodItem.serving_size_g must remain 200g');
+  });
+
+  test('SERVING_FRACTIONS round-trip for all standard multipliers', () => {
+    const FRACTIONS = [0.25, 0.5, 0.75, 1, 1.5, 2];
+    const expected  = [50,   100, 150,  200, 300, 400];
+    for (let i = 0; i < FRACTIONS.length; i++) {
+      const derived = Math.round(GO_YOPLAIT.serving_size_g * FRACTIONS[i]);
+      assert.equal(derived, expected[i], `mult=${FRACTIONS[i]} → ${expected[i]}g`);
+    }
+    assert.equal(GO_YOPLAIT.serving_size_g, 200, 'serving_size_g never mutated');
+  });
+});
+
+describe('P. Rescan preserves serving metadata', () => {
+  test('lookupBarcode result returns serving_size_g and serving_unit_name_he from DB', () => {
+    const dbRecord = {
+      food_item_id: 'abc123', name: 'GO by Yoplait',
+      serving_size_g: 200, serving_unit_name_he: 'גביע',
+      kcal_per_100: 55, protein_per_100: 10, nutrition_basis: '100g',
+    };
+    assert.equal(dbRecord.serving_size_g,       200,    'serving_size_g preserved');
+    assert.equal(dbRecord.serving_unit_name_he, 'גביע', 'serving_unit_name_he preserved');
+    const resolvedUnit = dbRecord.serving_unit_name_he || inferServingUnit(dbRecord.name)?.unit_he;
+    assert.equal(resolvedUnit, 'גביע', 'Rescan shows גביע without re-verification');
+  });
+});

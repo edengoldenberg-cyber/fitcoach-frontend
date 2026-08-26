@@ -175,3 +175,69 @@ describe('meal total aggregation', () => {
     expect(daily.protein).toBe(120);
   });
 });
+
+// ── GO Yoplait serving / quantity engine (test matrix items A-C, F, N) ────────
+
+const GO_PER100 = { kcal: 55, protein: 10, carbs: 3.7, fat: 0 };
+const GO_SERVING_G = 200; // 1 גביע
+
+describe('GO Yoplait serving math — 55 kcal/100g, 1 גביע = 200g', () => {
+  it('A. 1 גביע (200g) → 110 kcal, 20g protein, 7.4g carbs, 0g fat', () => {
+    const m = calcMacrosFromPer100(GO_PER100, GO_SERVING_G);
+    expect(m.calories).toBe(110);
+    expect(m.protein).toBe(20);
+    expect(m.carbs).toBeCloseTo(7.4, 1);
+    expect(m.fat).toBe(0);
+  });
+
+  it('B. ½ גביע (100g) → 55 kcal, 10g protein', () => {
+    const m = calcMacrosFromPer100(GO_PER100, Math.round(GO_SERVING_G * 0.5));
+    expect(m.calories).toBe(55);
+    expect(m.protein).toBe(10);
+  });
+
+  it('C. 1.5 גביעים (300g) → 165 kcal, 30g protein', () => {
+    const m = calcMacrosFromPer100(GO_PER100, Math.round(GO_SERVING_G * 1.5));
+    expect(m.calories).toBe(165);
+    expect(m.protein).toBe(30);
+  });
+
+  it('¼ גביע (50g) → ≈27-28 kcal', () => {
+    const m = calcMacrosFromPer100(GO_PER100, Math.round(GO_SERVING_G * 0.25));
+    expect(m.calories).toBeGreaterThanOrEqual(27);
+    expect(m.calories).toBeLessThanOrEqual(28);
+  });
+
+  it('¾ גביע (150g) → ≈82-83 kcal', () => {
+    const m = calcMacrosFromPer100(GO_PER100, Math.round(GO_SERVING_G * 0.75));
+    expect(m.calories).toBeGreaterThanOrEqual(82);
+    expect(m.calories).toBeLessThanOrEqual(83);
+  });
+
+  it('2 גביעים (400g) → 220 kcal, 40g protein', () => {
+    const m = calcMacrosFromPer100(GO_PER100, GO_SERVING_G * 2);
+    expect(m.calories).toBe(220);
+    expect(m.protein).toBe(40);
+  });
+
+  it('N. manufacturer serving (200g) ≠ typical package (assumed 4-pack = 800g)', () => {
+    // Package size (total in box) is NOT the same as serving size (1 cup = 200g).
+    // Nutrition is per cup (200g), not per entire package.
+    const packageSizeG = 800; // 4-cup pack
+    const servingSizeG = 200; // 1 cup
+    expect(servingSizeG).toBeLessThan(packageSizeG);
+    // Nutrition is calculated from servingSizeG, not packageSizeG
+    const mPerServing = calcMacrosFromPer100(GO_PER100, servingSizeG);
+    const mPerPackage = calcMacrosFromPer100(GO_PER100, packageSizeG);
+    expect(mPerServing.calories).toBe(110);
+    expect(mPerPackage.calories).toBe(440);
+  });
+
+  it('Q. selecting 1 גביע does not change per-100g anchor', () => {
+    const anchor = { ...GO_PER100 };
+    const _ = calcMacrosFromPer100(anchor, GO_SERVING_G); // "selected 1 גביע"
+    // anchor must remain unchanged
+    expect(anchor.kcal).toBe(55);
+    expect(anchor.protein).toBe(10);
+  });
+});
