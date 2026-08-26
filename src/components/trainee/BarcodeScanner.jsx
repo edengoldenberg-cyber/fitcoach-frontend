@@ -985,19 +985,25 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
           const conflicts = detectNutritionConflicts(productData, labelValues, 0.10);
           setVerifyConflicts(conflicts);
           console.log('[BC] VERIFY_CONFLICTS', conflicts);
-          // Pre-fill confirm-product with label values (label wins on conflict)
+          // Pre-fill confirm-product with label values (label wins on conflict).
+          // serving_size_g is auto-populated from label extraction — do NOT leave it empty.
+          // no_per_hundred_column signals that the backend reinterpreted a serving-only label.
           setConfirmProduct({
-            barcode:          scannedBarcode || productData?.barcode || '',
-            name_he:          d.name_he || '',
-            name:             d.name || productData?.name || '',
-            brand:            d.brand_he || d.brand || productData?.brand || '',
-            kcal_per_100:     toField(d.calories),
-            protein_per_100:  toField(d.protein),
-            carbs_per_100:    toField(d.carbs),
-            fat_per_100:      toField(d.fat),
-            serving_size_g:   '',
-            serving_basis:    d.serving_basis || productData?.nutrition_basis || '100g',
-            extracted_name:   d.name || '',
+            barcode:               scannedBarcode || productData?.barcode || '',
+            name_he:               d.name_he || '',
+            name:                  d.name || productData?.name || '',
+            brand:                 d.brand_he || d.brand || productData?.brand || '',
+            kcal_per_100:          toField(d.calories),
+            protein_per_100:       toField(d.protein),
+            carbs_per_100:         toField(d.carbs),
+            fat_per_100:           toField(d.fat),
+            serving_size_g:        d.serving_size_g ? String(d.serving_size_g) : '',
+            serving_unit_name_he:  '',
+            serving_basis:         d.serving_basis || productData?.nutrition_basis || '100g',
+            extracted_name:        d.name || '',
+            uncertain_fields:      d.uncertain_fields || [],
+            no_per_hundred_column: d.no_per_hundred_column || false,
+            derived_from_serving:  d.derived_from_serving || false,
           });
           setLearnStep('verify');
           setMode('confirm-product');
@@ -1113,20 +1119,21 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
           setVerifyConflicts(null); // clear any previous verify-label conflicts
           setConfirmProduct({
-            barcode:          scannedBarcode || '',
-            name_he:          d.name_he || '',
-            name:             d.name || '',
-            brand:            d.brand_he || d.brand || '',
-            kcal_per_100:     toField(d.calories),
-            protein_per_100:  toField(d.protein),
-            carbs_per_100:    toField(d.carbs),
-            fat_per_100:      toField(d.fat),
-            serving_size_g:   '',
-            serving_basis:    d.serving_basis || '100g',
-            extracted_name:   d.name || '',
-            // uncertain_fields: fields the AI couldn't read with confidence.
-            // The confirm-product form shows these with a warning icon.
-            uncertain_fields: uncertainFields,
+            barcode:               scannedBarcode || '',
+            name_he:               d.name_he || '',
+            name:                  d.name || '',
+            brand:                 d.brand_he || d.brand || '',
+            kcal_per_100:          toField(d.calories),
+            protein_per_100:       toField(d.protein),
+            carbs_per_100:         toField(d.carbs),
+            fat_per_100:           toField(d.fat),
+            serving_size_g:        d.serving_size_g ? String(d.serving_size_g) : '',
+            serving_unit_name_he:  '',
+            serving_basis:         d.serving_basis || '100g',
+            extracted_name:        d.name || '',
+            uncertain_fields:      uncertainFields,
+            no_per_hundred_column: d.no_per_hundred_column || false,
+            derived_from_serving:  d.derived_from_serving || false,
           });
           setLabelDiagState(labelDiag);
           setMode('confirm-product');
@@ -2484,6 +2491,24 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               )
             )}
 
+            {/* Serving-only label banner — shown when backend derived per-100g from serving column */}
+            {(confirmProduct?.derived_from_serving || confirmProduct?.no_per_hundred_column) && (
+              <div className="bg-blue-900/30 border border-blue-500/40 rounded-lg p-3 space-y-1">
+                <p className="text-blue-300 text-xs font-bold">
+                  ℹ️ ערכי התווית נרמלו ל-{confirmProduct.serving_basis === '100ml' ? '100 מ"ל' : '100 גרם'}
+                </p>
+                <p className="text-blue-200/70 text-xs">
+                  התווית הציגה ערכים לכל{confirmProduct.serving_size_g ? ` ${confirmProduct.serving_size_g} גרם/מ"ל` : ' מנה'}.
+                  הערכים בטופס כבר מחושבים ל-100 {confirmProduct.serving_basis === '100ml' ? 'מ"ל' : 'גרם'} — ניתן לבדוק מול האריזה.
+                </p>
+                {confirmProduct.serving_size_g && (
+                  <p className="text-blue-200/50 text-[10px]">
+                    לדוגמה: {confirmProduct.kcal_per_100 !== '' ? `${confirmProduct.kcal_per_100} קל׳ × ${confirmProduct.serving_size_g} ÷ 100 = ${Math.round((Number(confirmProduct.kcal_per_100) * Number(confirmProduct.serving_size_g)) / 100)} קל׳ למנה שלמה` : 'נרמול אוטומטי'}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* serving_basis selector — 100g vs 100ml */}
             <div>
               <label className="text-white/60 text-xs block mb-1">בסיס ערכים</label>
@@ -2536,11 +2561,12 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 { key: 'name_he',         label: 'שם בעברית (תצוגה)',    type: 'text'   },
                 { key: 'name',            label: 'שם מקורי/אנגלית',       type: 'text'   },
                 { key: 'brand',           label: 'מותג',                  type: 'text'   },
-                { key: 'kcal_per_100',    label: `קלוריות (${basis})`,   type: 'number' },
-                { key: 'protein_per_100', label: `חלבון (${basis})`,     type: 'number' },
-                { key: 'carbs_per_100',   label: `פחמימות (${basis})`,   type: 'number' },
-                { key: 'fat_per_100',     label: `שומן (${basis})`,      type: 'number' },
-                { key: 'serving_size_g',  label: 'גודל מנה (ג׳/מ"ל)',    type: 'number' },
+                { key: 'kcal_per_100',       label: `קלוריות (${basis})`,          type: 'number' },
+                { key: 'protein_per_100',   label: `חלבון (${basis})`,            type: 'number' },
+                { key: 'carbs_per_100',     label: `פחמימות (${basis})`,          type: 'number' },
+                { key: 'fat_per_100',       label: `שומן (${basis})`,             type: 'number' },
+                { key: 'serving_size_g',    label: 'גודל מנה (ג׳/מ"ל)',           type: 'number' },
+                { key: 'serving_unit_name_he', label: 'שם יחידת המנה (גביע/יחידה/קופסה/פרוסה/כף…)', type: 'text' },
               ].map(({ key, label, type }) => {
                 const isUncertain = fieldUncertainMap[key] === true;
                 const isEmpty = (confirmProduct[key] ?? '') === '';
@@ -2619,19 +2645,20 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     });
 
                     const saveRes = await base44.functions.invoke('saveLearnedProduct', {
-                      barcode:         saveBarcode,
-                      name:            nameEn,
-                      name_he:         nameHe || undefined,
-                      brand:           confirmProduct.brand || undefined,
-                      kcal_per_100:    kcalNum,
-                      protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
-                      carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
-                      fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
-                      serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
-                      nutrition_basis: saveNutritionBasis,
-                      extracted_name:  (confirmProduct.extracted_name && confirmProduct.extracted_name !== nameEn)
-                                         ? confirmProduct.extracted_name : undefined,
-                      source:          confirmSource,
+                      barcode:              saveBarcode,
+                      name:                 nameEn,
+                      name_he:              nameHe || undefined,
+                      brand:                confirmProduct.brand || undefined,
+                      kcal_per_100:         kcalNum,
+                      protein_per_100:      confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
+                      carbs_per_100:        confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
+                      fat_per_100:          confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
+                      serving_size_g:       confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                      serving_unit_name_he: confirmProduct.serving_unit_name_he?.trim() || undefined,
+                      nutrition_basis:      saveNutritionBasis,
+                      extracted_name:       (confirmProduct.extracted_name && confirmProduct.extracted_name !== nameEn)
+                                              ? confirmProduct.extracted_name : undefined,
+                      source:               confirmSource,
                     });
 
                     console.log('[BC] SAVE_PRODUCT_RESPONSE', {
@@ -2645,16 +2672,17 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       const displayName = savedProduct.name_he || savedProduct.name || nameHe || nameEn;
                       console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id, 'display=', displayName);
                       setProductData({
-                        food_item_id:    savedProduct.id,
-                        name:            displayName,
-                        brand:           confirmProduct.brand || '',
-                        barcode:         saveBarcode,
-                        kcal_per_100:    kcalNum,
-                        protein_per_100: confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
-                        carbs_per_100:   confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
-                        fat_per_100:     confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
-                        serving_size_g:  confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
-                        nutrition_basis: saveNutritionBasis,
+                        food_item_id:          savedProduct.id,
+                        name:                  displayName,
+                        brand:                 confirmProduct.brand || '',
+                        barcode:               saveBarcode,
+                        kcal_per_100:          kcalNum,
+                        protein_per_100:       confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
+                        carbs_per_100:         confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
+                        fat_per_100:           confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
+                        serving_size_g:        confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
+                        serving_unit_name_he:  confirmProduct.serving_unit_name_he?.trim() || null,
+                        nutrition_basis:       saveNutritionBasis,
                       });
                       setProductSource('fitcoach_db');
                       setVerifyConflicts(null);
