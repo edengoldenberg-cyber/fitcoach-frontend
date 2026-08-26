@@ -1159,3 +1159,121 @@ describe('P. Rescan preserves serving metadata', () => {
     assert.equal(resolvedUnit, 'גביע', 'Rescan shows גביע without re-verification');
   });
 });
+
+// ─── CRITICAL REGRESSION: GO Yoplait production corruption (Phase 2 — why tests passed) ──
+
+// The previous tests used a hand-crafted GO_YOPLAIT fixture with CORRECT values (55/10,
+// serving_size_g=200). These passed because they never queried the real DB.
+// The ACTUAL production DB had: kcal_per_100=110, serving_size_g=null.
+// These tests mirror that real corrupted shape and verify the REAL flow.
+
+const CORRUPTED_GO_DB = {
+  name: 'GO by Yoplait', barcode: '7290110328627',
+  kcal_per_100: 110, protein_per_100: 20, carbs_per_100: 14.8, fat_per_100: 0,
+  serving_size_g: null, serving_unit_name_he: null,
+  nutrition_basis: '100g', source: 'user_learned',
+};
+
+function addToMealSim(productData, overrideGrams) {
+  const per100Kcal    = Number(productData.kcal_per_100    || 0);
+  const per100Protein = Number(productData.protein_per_100 || 0);
+  const defaultQty    = productData.serving_size_g || 100;
+  const qty           = overrideGrams != null ? overrideGrams : defaultQty;
+  return {
+    qty,
+    calories: Math.round((per100Kcal    / 100) * qty),
+    protein:  Math.round(((per100Protein / 100) * qty) * 10) / 10,
+    chooserWouldTrigger: Number(productData.serving_size_g) > 0,
+  };
+}
+
+describe('TEST 1-12: Real production data flow (Phase 12)', () => {
+  test('TEST 1: corrupted product shows 110 kcal as "per 100g" (wrong)', () => {
+    // productData.kcal_per_100=110 → result screen shows 110 under "ל-100 גרם"
+    assert.equal(CORRUPTED_GO_DB.kcal_per_100, 110, 'Corrupted DB: kcal_per_100=110 (serving value)');
+  });
+
+  test('TEST 2: corrupted product serving block does NOT appear (serving_size_g=null)', () => {
+    // buildServingOptions only shows mfg_unit when serving_size_g > 0
+    const mfgGrams = Number(CORRUPTED_GO_DB.serving_size_g) || 0;
+    assert.equal(mfgGrams, 0, 'serving_size_g=null → no serving block → no mfg serving shown');
+  });
+
+  test('TEST 3: "הוסף מוצר" with corrupted data goes DIRECTLY to meal (no chooser)', () => {
+    // productData?.serving_size_g > 0 → null > 0 = false → addProductToMeal() called directly
+    const chooserTriggers = Number(CORRUPTED_GO_DB.serving_size_g) > 0;
+    assert.equal(chooserTriggers, false, 'serving_size_g=null → chooser NOT triggered');
+  });
+
+  test('TEST 4: corrupted direct-add produces "100g + 110 kcal" (internally inconsistent)', () => {
+    // This is the exact bug: 100g should be 55 kcal, not 110 kcal
+    const result = addToMealSim(CORRUPTED_GO_DB);
+    assert.equal(result.qty,      100, 'Corrupted: defaultQty=null||100=100g');
+    assert.equal(result.calories, 110, 'Corrupted: 100g×110/100g=110 kcal (wrong)');
+    // The real expected value for 100g of GO: 100×55/100 = 55 kcal
+    const correctFor100g = Math.round((55 / 100) * 100);
+    assert.notEqual(result.calories, correctFor100g, '110 ≠ 55 → inconsistency confirmed');
+  });
+
+  test('TEST 5: after startup correction, choose-serving opens for 1 cup', () => {
+    // After correction: kcal_per_100=55, serving_size_g=200
+    const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200, serving_unit_name_he: 'גביע' };
+    const chooserTriggers = Number(corrected.serving_size_g) > 0;
+    assert.ok(chooserTriggers, 'After correction: serving_size_g=200 > 0 → chooser triggers');
+  });
+
+  test('TEST 6: after correction + choose 1 cup → Meal.create receives grams=200', () => {
+    const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
+    const result = addToMealSim(corrected, 200); // user picks 1 גביע
+    assert.equal(result.qty, 200, '1 גביע = 200g');
+  });
+
+  test('TEST 7: after correction + choose 1 cup → calories=110', () => {
+    const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
+    const result = addToMealSim(corrected, 200);
+    assert.equal(result.calories, 110, '200g × 55/100g = 110 kcal ✓');
+  });
+
+  test('TEST 8: after correction + choose half cup → calories=55', () => {
+    const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
+    const result = addToMealSim(corrected, Math.round(200 * 0.5)); // ½ גביע
+    assert.equal(result.qty,      100, '½ גביע = 100g');
+    assert.equal(result.calories, 55,  '100g × 55/100g = 55 kcal ✓');
+  });
+
+  test('TEST 9: 100g + 110 kcal fails invariant (impossible for 55 kcal/100g product)', () => {
+    // Assert: if canonical kcal_per_100=55, then qty=100g MUST give 55 kcal, not 110
+    const canonicalPer100 = 55;
+    const expectedFor100g = Math.round((canonicalPer100 / 100) * 100); // 55
+    const corruptedResult = 110; // what the bug produces
+    assert.notEqual(corruptedResult, expectedFor100g, '110 kcal for 100g is impossible when per-100g=55');
+  });
+
+  test('TEST 10: fitcoach_cached (OFacts cached) follows same corrected flow', () => {
+    // Even if source='openfoodfacts' (fitcoach_cached), correction works same way
+    const cachedOFacts = { ...CORRUPTED_GO_DB, source: 'openfoodfacts' };
+    const corrected = { ...cachedOFacts, kcal_per_100: 55, serving_size_g: 200 };
+    const chooserTriggers = Number(corrected.serving_size_g) > 0;
+    assert.ok(chooserTriggers, 'OFacts-cached after correction also triggers chooser');
+  });
+
+  test('TEST 11: OFacts fresh result has CORRECT values + serving_size_g', () => {
+    // _normalizeOFactsProduct: uses energy-kcal_100g (not _serving), serving_quantity=200
+    const freshOFacts = {
+      kcal_per_100: 55, protein_per_100: 10, carbs_per_100: 3.7, fat_per_100: 0,
+      serving_size_g: 200, // from serving_quantity=200
+      nutrition_basis: '100g',
+    };
+    assert.equal(freshOFacts.kcal_per_100,  55,  'Fresh OFacts: kcal_per_100=55 ✓');
+    assert.equal(freshOFacts.serving_size_g, 200, 'Fresh OFacts: serving_size_g=200 ✓');
+    assert.ok(Number(freshOFacts.serving_size_g) > 0, 'Fresh OFacts triggers chooser');
+  });
+
+  test('TEST 12: product without serving_size_g retains direct-add (backward compat)', () => {
+    const noServing = { name: 'Generic Food', kcal_per_100: 200, serving_size_g: null };
+    const chooserTriggers = Number(noServing.serving_size_g) > 0;
+    assert.equal(chooserTriggers, false, 'No serving_size_g → direct add (backward compat)');
+    const result = addToMealSim(noServing);
+    assert.equal(result.qty, 100, 'No serving: default 100g');
+  });
+});

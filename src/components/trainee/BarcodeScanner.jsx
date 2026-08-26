@@ -1438,18 +1438,25 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       }
 
       if (productSource === 'openfoodfacts' && productData.name) {
+        // Infer Hebrew unit name from OFacts product if not explicitly provided.
+        // This ensures serving_unit_name_he is stored on first cache, even without
+        // a physical label scan. inferServingUnit() is pure/safe — never makes network calls.
+        const ofactsServingUnit = productData.serving_unit_name_he
+          || (productData.serving_size_g > 0 ? inferServingUnit(productData.name)?.unit_he : undefined)
+          || undefined;
         base44.functions.invoke('saveLearnedProduct', {
-          barcode:         productData.barcode,
-          name:            productData.name,
-          brand:           productData.brand || undefined,
-          kcal_per_100:    per100Kcal,
-          protein_per_100: per100Protein,
-          carbs_per_100:   per100Carbs,
-          fat_per_100:     per100Fat,
-          serving_size_g:  productData.serving_size_g || undefined,
-          nutrition_basis: nutritionBasis,
-          source:          'openfoodfacts',
-        }).then(r => console.log('[BC] OFacts cached:', r?.data?.action))
+          barcode:              productData.barcode,
+          name:                 productData.name,
+          brand:                productData.brand || undefined,
+          kcal_per_100:         per100Kcal,
+          protein_per_100:      per100Protein,
+          carbs_per_100:        per100Carbs,
+          fat_per_100:          per100Fat,
+          serving_size_g:       productData.serving_size_g || undefined,
+          serving_unit_name_he: ofactsServingUnit,
+          nutrition_basis:      nutritionBasis,
+          source:               'openfoodfacts',
+        }).then(r => console.log('[BC] OFacts cached:', r?.data?.action, 'serving=', productData.serving_size_g, ofactsServingUnit))
           .catch(err => console.warn('[BC] OFacts cache failed (non-fatal):', err?.message));
       }
 
