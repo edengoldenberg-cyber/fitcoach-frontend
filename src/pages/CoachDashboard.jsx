@@ -32,6 +32,8 @@ import WorkoutPerformanceAnalyzer from '../components/coach/WorkoutPerformanceAn
 import ResendInviteDialog from '../components/coach/ResendInviteDialog';
 import TraineeNotificationsTab from '../components/coach/TraineeNotificationsTab';
 import TraineeLearningInsights from '../components/coach/TraineeLearningInsights';
+import TraineeActionableSummary from '../components/coach/TraineeActionableSummary';
+import QuickAlertModal from '../components/coach/QuickAlertModal';
 import TraineePersonalDetailsDialog from '../components/coach/TraineePersonalDetailsDialog';
 import TraineePanelVisibilityDialog from '../components/coach/TraineePanelVisibilityDialog';
 import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
@@ -52,6 +54,89 @@ function getStatusBadge(badge) {
 // ─── MiniCard (in list) ─────────────────────────────────────────────────────
 const DAY_LABELS_SHORT = { sunday: 'א', monday: 'ב', tuesday: 'ג', wednesday: 'ד', thursday: 'ה', friday: 'ו', saturday: 'ש' };
 
+// ─── Recent Changes — compact inline block ────────────────────────────────────
+// Derives up to 3 meaningful change signals from summary fields.
+// Never fabricates: every signal is guarded by data availability checks.
+function buildRecentChanges(summary, todayStats) {
+  if (!summary) return [];
+  const items = [];
+
+  const dsMeal    = summary.days_since_last_meal;
+  const dsWorkout = summary.days_since_last_workout;
+  const thisWk    = summary.this_week;
+  const prevWk    = summary.prev_week;
+  const trends    = summary.trends;
+
+  // 1. Days without nutrition logging (≥ 3 days — already an at-risk trigger)
+  if (dsMeal !== null && dsMeal !== undefined && dsMeal >= 3) {
+    items.push({
+      key:   'no_meal',
+      icon:  '🥗',
+      text:  `${dsMeal} ימים ללא דיווח תזונה`,
+      color: dsMeal >= 5 ? 'text-red-600' : 'text-amber-600',
+    });
+  }
+
+  // 2. Days without workout (≥ 7 days — only if workout is tracked for this trainee)
+  if (dsWorkout !== null && dsWorkout !== undefined && dsWorkout >= 7) {
+    items.push({
+      key:   'no_workout',
+      icon:  '🏋️',
+      text:  `${dsWorkout} ימים ללא אימון`,
+      color: 'text-amber-600',
+    });
+  }
+
+  // 3. Workout count vs last week (only when both weeks have data)
+  if (prevWk && thisWk && thisWk.workouts_completed !== null && prevWk.workouts_completed !== null) {
+    const diff = thisWk.workouts_completed - prevWk.workouts_completed;
+    if (diff <= -1) {
+      items.push({
+        key:   'workout_down',
+        icon:  '📉',
+        text:  `↓ ${Math.abs(diff)} אימון${Math.abs(diff) > 1 ? 'ים' : ''} לעומת שבוע שעבר`,
+        color: 'text-amber-600',
+      });
+    } else if (diff >= 1) {
+      items.push({
+        key:   'workout_up',
+        icon:  '📈',
+        text:  `↑ ${diff} אימון${diff > 1 ? 'ים' : ''} לעומת שבוע שעבר`,
+        color: 'text-emerald-600',
+      });
+    }
+  }
+
+  // 4. Nutrition reporting decline (score-based, only when sufficient history)
+  if (trends?.has_sufficient_history && trends?.reporting?.direction === 'down') {
+    const delta = Math.abs(trends.reporting.delta ?? 0);
+    if (delta >= 5 && !items.some(i => i.key === 'no_meal')) {
+      items.push({
+        key:   'reporting_down',
+        icon:  '📉',
+        text:  'ירידה בהתמדת דיווח',
+        color: 'text-amber-600',
+      });
+    }
+  }
+
+  // 5. Nutrition reporting improvement
+  if (trends?.has_sufficient_history && trends?.reporting?.direction === 'up') {
+    const delta = trends.reporting.delta ?? 0;
+    if (delta >= 10 && items.length < 2) {
+      items.push({
+        key:   'reporting_up',
+        icon:  '🌟',
+        text:  'שיפור בהתמדת דיווח',
+        color: 'text-emerald-600',
+      });
+    }
+  }
+
+  // Return at most 3 signals, prioritising negative signals first (they already come first)
+  return items.slice(0, 3);
+}
+
 function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, selectMode, onSelect, onDelete, onClick, notifStatus, coachEmail, firstMealDate, meals = [], workouts = [] }) {
   const initials = trainee.full_name?.split(' ').map(n => n[0]).join('') || '?';
   // Badge comes from backend today_status — time-aware, no invented defaults
@@ -60,6 +145,7 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, se
   const mutedDays = notifStatus?.mutedDays || [];
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [alertOpen, setAlertOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const resetOnboardingMutation = useMutation({
@@ -125,23 +211,32 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, se
                 ⚖️ {daysUntilWeighIn} ימים
               </Badge>
             )}
-            {/* notif status indicator — click navigates to Automation Builder */}
-            <Link to={createPageUrl('ReminderAutomations')} onClick={e => e.stopPropagation()} title="עבור לבנאי האוטומציות">
-            {!remindersOn ? (
-              <span className="flex items-center gap-0.5 text-[10px] text-red-400 font-medium hover:text-red-600 cursor-pointer">
-                <BellOff className="w-3 h-3" />כבוי
-              </span>
-            ) : mutedDays.length > 0 ? (
-              <span title={`מושתק: ${mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}`} className="flex items-center gap-0.5 text-[10px] text-amber-500 font-medium hover:text-amber-700 cursor-pointer">
-                <BellOff className="w-3 h-3" />{mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}
-              </span>
-            ) : (
-              <Bell className="w-3 h-3 text-teal-400 hover:text-teal-600 cursor-pointer" />
-            )}
-            </Link>
+            {/* Bell — opens Quick Alert modal for this trainee */}
+            <button
+              onClick={e => { e.stopPropagation(); setAlertOpen(true); }}
+              title="שלח התראת בזק"
+              className="min-h-0 min-w-0 p-0.5 rounded hover:bg-slate-100 transition-colors"
+            >
+              {!remindersOn ? (
+                <span className="flex items-center gap-0.5 text-[10px] text-red-400 font-medium">
+                  <BellOff className="w-3 h-3" />כבוי
+                </span>
+              ) : mutedDays.length > 0 ? (
+                <span title={`מושתק: ${mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}`}
+                  className="flex items-center gap-0.5 text-[10px] text-amber-500 font-medium">
+                  <BellOff className="w-3 h-3" />{mutedDays.map(d => DAY_LABELS_SHORT[d]).join(',')}
+                </span>
+              ) : (
+                <Bell className="w-3 h-3 text-teal-400 hover:text-teal-600" />
+              )}
+            </button>
           </div>
+          {/* Actionable summary — surfaces backend action_item tier (deterministic, no AI) */}
+          {summary?.action_item && !selectMode && (
+            <TraineeActionableSummary actionItem={summary.action_item} />
+          )}
           {/* Dual activity indicators — nutrition (🥗) and workout (🏋️) shown independently */}
-          <div className="flex items-center gap-3 text-[11px]">
+          <div className="flex items-center gap-3 text-[11px] mt-1.5">
             {/* Nutrition activity */}
             <span className="flex items-center gap-1">
               <Utensils className={`w-3 h-3 flex-shrink-0 ${todayStats?.nutritionLogged ? 'text-emerald-500' : 'text-slate-300'}`} />
@@ -181,6 +276,26 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, se
       {!selectMode && (
         <div className="px-3 pb-3 space-y-3" onClick={e => e.stopPropagation()}>
           <TraineeLearningInsights trainee={trainee} meals={meals} workouts={workouts} />
+
+          {/* Recent Changes — up to 3 data-backed signals, hidden when nothing meaningful */}
+          {(() => {
+            const changes = buildRecentChanges(summary, todayStats);
+            if (changes.length === 0) return null;
+            return (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                <p className="text-[10px] font-semibold text-slate-500 mb-1.5 uppercase tracking-wide">שינויים אחרונים</p>
+                <div className="space-y-1">
+                  {changes.map(c => (
+                    <div key={c.key} className={`flex items-center gap-1.5 text-[11px] font-medium ${c.color}`}>
+                      <span>{c.icon}</span>
+                      <span>{c.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
           <div className="flex gap-2 items-center">
             <div className="flex-1">
               <SendLoginLinkButton trainee={trainee} variant="outline" size="sm" showStatus={true} />
@@ -220,6 +335,13 @@ function TraineeMiniCard({ trainee, todayStats, weekStats, summary, selected, se
           </div>
         </div>
       )}
+      {/* Quick Alert modal — rendered outside the Card click-zone */}
+      <QuickAlertModal
+        open={alertOpen}
+        onClose={() => setAlertOpen(false)}
+        trainee={trainee}
+        summary={summary}
+      />
     </Card>
   );
 }
