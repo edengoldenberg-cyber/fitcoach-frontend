@@ -105,6 +105,21 @@ function DeliveryResult({ result }) {
     );
   }
 
+  // VAPID not configured on server — push delivery is disabled
+  if (result.push_system_enabled === false) {
+    return (
+      <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-sm">
+        <BellOff className="w-4 h-4 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="font-medium">Push notifications לא מופעל</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            מפתח ה-VAPID לא מוגדר בשרת. אפשר לשלוח ל-{result.trainee_name || 'המתאמן'} דרך WhatsApp במקום.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!result.has_push_subscription) {
     return (
       <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-700 text-sm">
