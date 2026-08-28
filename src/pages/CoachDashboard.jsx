@@ -38,6 +38,82 @@ import TraineePersonalDetailsDialog from '../components/coach/TraineePersonalDet
 import TraineePanelVisibilityDialog from '../components/coach/TraineePanelVisibilityDialog';
 import SetTraineePasswordDialog from '../components/coach/SetTraineePasswordDialog';
 
+// ─── TraineePushStatusCard ──────────────────────────────────────────────────
+// Shows a trainee's push subscription state to the coach (read-only, no secrets).
+// Used in the Notifications tab of TraineeDetail.
+
+function TraineePushStatusCard({ traineeEmail, traineeName }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['traineePushStatus', traineeEmail],
+    queryFn:  () => base44.functions.invoke('getTraineePushStatus', { trainee_email: traineeEmail })
+      .then(r => r?.result ?? r),
+    enabled:   !!traineeEmail,
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <Card className="p-3 border border-slate-100">
+        <div className="flex items-center gap-2 text-sm text-slate-400 animate-pulse">
+          <Bell className="w-4 h-4" />
+          <span>טוען סטטוס התראות...</span>
+        </div>
+      </Card>
+    );
+  }
+
+  const hasPush = data?.has_active_push;
+  const sysOn   = data?.push_system_enabled !== false;
+  const devs    = data?.devices || [];
+
+  if (!sysOn) {
+    return (
+      <Card className="p-3 border border-slate-200">
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <BellOff className="w-4 h-4 text-slate-400" />
+          <span>Push לא מוגדר בשרת</span>
+        </div>
+      </Card>
+    );
+  }
+
+  if (hasPush) {
+    const deviceLabel = devs.length > 1
+      ? `${devs.length} מכשירים`
+      : devs[0]?.device_type === 'android' ? 'Android'
+      : devs[0]?.device_type === 'ios'     ? 'iOS'
+      : devs[0]?.device_type === 'desktop'  ? 'מחשב'
+      : 'מכשיר';
+
+    return (
+      <Card className="p-3 border border-emerald-100 bg-emerald-50">
+        <div className="flex items-center gap-2 text-sm text-emerald-800">
+          <span className="text-base">🟢</span>
+          <div>
+            <span className="font-medium">Push פעיל</span>
+            <span className="text-xs text-emerald-600 mr-2">{deviceLabel} רשום</span>
+          </div>
+        </div>
+        <p className="text-xs text-emerald-600 mt-1">
+          לחץ על פעמון כדי לשלוח התראת בזק ל-{traineeName}
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="p-3 border border-amber-100 bg-amber-50">
+      <div className="flex items-center gap-2 text-sm text-amber-800">
+        <span className="text-base">🟠</span>
+        <span className="font-medium">אין מכשיר רשום</span>
+      </div>
+      <p className="text-xs text-amber-600 mt-1">
+        {traineeName} צריך לפתוח את האפליקציה ולהפעיל התראות Push בהגדרות ← אוטומציות
+      </p>
+    </Card>
+  );
+}
+
 // ─── helpers ───────────────────────────────────────────────────────────────
 // Accepts today_status.overall_badge strings from the backend.
 function getStatusBadge(badge) {
@@ -762,7 +838,8 @@ function TraineeDetail({ trainee, onBack, currentUser }) {
           </TabsContent>
 
           {/* NOTIFICATIONS */}
-          <TabsContent value="notifications">
+          <TabsContent value="notifications" className="space-y-3 mt-3">
+            <TraineePushStatusCard traineeEmail={email} traineeName={trainee.full_name} />
             <TraineeNotificationsTab trainee={trainee} />
           </TabsContent>
 

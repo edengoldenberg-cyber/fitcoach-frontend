@@ -5,8 +5,161 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Bell, MessageCircle, Dumbbell, Utensils, Droplets, Scale, Brain, Megaphone, Trophy, Smartphone } from 'lucide-react';
+import { Bell, MessageCircle, Dumbbell, Utensils, Droplets, Scale, Brain, Megaphone, Trophy, Smartphone, CheckCircle2, AlertCircle, BellOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { usePushSubscription } from '@/hooks/usePushSubscription';
+
+// ─── PushStatusSection ──────────────────────────────────────────────────────
+// Full push registration management for trainees.
+// Shows real status (browser permission + PushManager subscription + DB record)
+// and provides appropriate action without any technical jargon.
+
+function PushStatusSection({ userEmail }) {
+  const {
+    status, permission, dbSubs,
+    subscribe, unsubscribe,
+    isSubscribing, isUnsubscribing,
+    subscribeError, isChecking,
+  } = usePushSubscription(userEmail);
+
+  if (status === 'unsupported') {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <BellOff className="w-4 h-4 text-slate-400" />
+          <span className="font-semibold text-slate-700 text-sm">התראות Push</span>
+        </div>
+        <p className="text-sm text-slate-500">
+          הדפדפן / מכשיר זה אינו תומך בהתראות Push.
+          התקן את האפליקציה על המסך הראשי כדי לאפשר התראות.
+        </p>
+      </Card>
+    );
+  }
+
+  const statusConfig = {
+    active: {
+      icon:  <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
+      label: 'פעילות',
+      color: 'text-emerald-700',
+      bg:    'bg-emerald-50 border-emerald-200',
+      desc:  `המכשיר הזה רשום לקבלת התראות (${dbSubs.length} רישום${dbSubs.length > 1 ? 'ים' : ''})`,
+    },
+    not_synced: {
+      icon:  <AlertCircle className="w-4 h-4 text-amber-500" />,
+      label: 'לא מסונכרן',
+      color: 'text-amber-700',
+      bg:    'bg-amber-50 border-amber-200',
+      desc:  'הדפדפן מאפשר התראות אך המכשיר לא רשום בשרת',
+    },
+    no_registration: {
+      icon:  <AlertCircle className="w-4 h-4 text-orange-500" />,
+      label: 'נדרשת רישום',
+      color: 'text-orange-700',
+      bg:    'bg-orange-50 border-orange-200',
+      desc:  'ההרשאה ניתנה אך המכשיר לא רשום. לחץ "רשום את המכשיר".',
+    },
+    no_permission: {
+      icon:  <Bell className="w-4 h-4 text-blue-500" />,
+      label: 'לא הופעלו',
+      color: 'text-blue-700',
+      bg:    'bg-blue-50 border-blue-200',
+      desc:  'לחץ "הפעל התראות" כדי לקבל התראות בזמן אמת',
+    },
+    blocked: {
+      icon:  <BellOff className="w-4 h-4 text-red-400" />,
+      label: 'חסומות בדפדפן',
+      color: 'text-red-700',
+      bg:    'bg-red-50 border-red-200',
+      desc:  null,
+    },
+  };
+
+  const cfg = statusConfig[status] || statusConfig.no_permission;
+
+  const actionButton = (() => {
+    if (isSubscribing) {
+      return (
+        <Button disabled size="sm" className="gap-1.5">
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          מפעיל...
+        </Button>
+      );
+    }
+    if (isUnsubscribing) {
+      return (
+        <Button disabled variant="outline" size="sm">
+          מכבה...
+        </Button>
+      );
+    }
+    if (status === 'active') {
+      return (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => unsubscribe()}
+          className="text-slate-600"
+        >
+          כבה התראות
+        </Button>
+      );
+    }
+    if (status === 'blocked') return null;
+    if (status === 'no_registration' || status === 'not_synced') {
+      return (
+        <Button
+          size="sm"
+          onClick={() => subscribe()}
+          style={{ backgroundColor: '#79DBD6', color: 'white' }}
+        >
+          רשום את המכשיר
+        </Button>
+      );
+    }
+    return (
+      <Button
+        size="sm"
+        onClick={() => subscribe()}
+        style={{ backgroundColor: '#79DBD6', color: 'white' }}
+      >
+        הפעל התראות
+      </Button>
+    );
+  })();
+
+  return (
+    <Card className={`p-4 border ${cfg.bg}`}>
+      <div className="flex items-center gap-2 mb-2">
+        {isChecking
+          ? <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+          : cfg.icon}
+        <span className="font-semibold text-slate-800 text-sm">התראות Push</span>
+        <span className={`text-xs font-medium ml-auto ${cfg.color}`}>{cfg.label}</span>
+      </div>
+
+      {status === 'blocked' ? (
+        <div className="text-sm text-red-700 space-y-1">
+          <p>התראות חסומות בהגדרות הדפדפן/המכשיר.</p>
+          <p className="text-xs text-red-600">
+            <strong>iOS:</strong> הגדרות ← Safari ← התראות ← FitCoach → אפשר<br />
+            <strong>Android:</strong> הגדרות ← אפליקציות ← Chrome ← הרשאות ← התראות → אפשר
+          </p>
+        </div>
+      ) : (
+        <p className="text-sm text-slate-600 mb-3">{cfg.desc}</p>
+      )}
+
+      {subscribeError && (
+        <p className="text-xs text-red-600 mb-2">{subscribeError.message}</p>
+      )}
+
+      {actionButton && (
+        <div className="flex justify-end">{actionButton}</div>
+      )}
+    </Card>
+  );
+}
 
 const PREF_GROUPS = [
   {
@@ -66,12 +219,14 @@ const PREF_GROUPS = [
       { key: 'league_notifications_enabled', label: 'התראות Shape League' },
     ],
   },
+  // Push device registration is handled by PushStatusSection above;
+  // only the consent toggle (push_notifications_enabled) remains here.
   {
     label: 'Push',
     icon: Smartphone,
     color: 'text-slate-600',
     prefs: [
-      { key: 'push_notifications_enabled', label: 'התראות Push במכשיר' },
+      { key: 'push_notifications_enabled', label: 'אפשר שליחת Push מהמאמן ותזכורות' },
     ],
   },
   {
@@ -207,6 +362,9 @@ export default function AutomationSettings() {
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
+        {/* Push device registration — shown before the pref toggles */}
+        {user?.email && <PushStatusSection userEmail={user.email} />}
+
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
           <strong>ברירת מחדל: כל האוטומציות כבויות.</strong>{' '}
           הפעל רק את מה שאתה רוצה לקבל. לא נשלח שום הודעה ללא הסכמה מפורשת שלך.

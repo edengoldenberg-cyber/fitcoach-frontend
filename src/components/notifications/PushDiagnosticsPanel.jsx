@@ -123,22 +123,19 @@ export default function PushDiagnosticsPanel() {
 
   const sendTestPushMutation = useMutation({
     mutationFn: async () => {
-      const result = await base44.functions.invoke('sendWebPushNotification', {
-        user_email: user?.email,
-        title: '🔔 בדיקת Push',
-        body: 'זוהי הודעת בדיקה מ-FitCoach Pro',
-        data: {
-          action_url: '/',
-          type: 'test'
-        }
-      });
-      return result.data;
+      // Uses the same webPush infrastructure as Quick Alert — NOT a separate implementation
+      const result = await base44.functions.invoke('sendTestPushToSelf', {});
+      return result?.result ?? result;
     },
     onSuccess: (data) => {
-      if (data.ok && data.sent_count > 0) {
-        toast.success(`✅ Push נשלח בהצלחה ל-${data.sent_count} מכשירים`);
+      if (data?.sent > 0) {
+        toast.success(`✅ Push נשלח בהצלחה ל-${data.sent} מכשיר${data.sent > 1 ? 'ים' : ''}`);
+      } else if (data?.push_system_enabled === false) {
+        toast.error('❌ מפתח VAPID לא מוגדר בשרת');
+      } else if (data?.removed > 0) {
+        toast.warning('⚠️ הרישום פג תוקף — נוקה. יש לרשום מחדש.');
       } else {
-        toast.error(`❌ Push נכשל: ${data.error || 'לא ידוע'}`);
+        toast.error('❌ לא נשלח — אין מכשיר רשום');
       }
     },
     onError: (error) => {

@@ -4,9 +4,52 @@ import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Bell, Search } from 'lucide-react';
+import { Bell, BellOff, Smartphone, Search, CheckCircle2 } from 'lucide-react';
 import NotificationAuditStats from '@/components/notifications/NotificationAuditStats';
 import NotificationTimeline from '@/components/notifications/NotificationTimeline';
+
+// ─── PushSummaryRow ──────────────────────────────────────────────────────────
+// Shows real push subscription counts for this coach's trainees.
+// Data comes from the backend — never hardcoded or estimated.
+
+function PushSummaryRow() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['coachPushSummary'],
+    queryFn:  () => base44.functions.invoke('getCoachPushSummary', {}).then(r => r?.result ?? r),
+    staleTime: 120_000,
+  });
+
+  return (
+    <Card className="p-4 mb-4 border border-slate-100">
+      <div className="flex items-center gap-2 mb-3">
+        <Smartphone className="w-4 h-4 text-slate-600" />
+        <h3 className="font-semibold text-slate-800 text-sm">התראות Push</h3>
+        {data?.push_system_enabled
+          ? <span className="flex items-center gap-1 text-xs text-emerald-600 mr-auto"><CheckCircle2 className="w-3 h-3" />מערכת פעילה</span>
+          : <span className="flex items-center gap-1 text-xs text-red-500 mr-auto"><BellOff className="w-3 h-3" />לא מוגדר</span>
+        }
+      </div>
+      {isLoading ? (
+        <div className="text-sm text-slate-400 animate-pulse">טוען...</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-3 text-center">
+          <div>
+            <div className="text-2xl font-bold text-emerald-700">{data?.with_push ?? '—'}</div>
+            <div className="text-xs text-emerald-600">עם Push פעיל</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-amber-700">{data?.without_push ?? '—'}</div>
+            <div className="text-xs text-amber-600">ללא מכשיר רשום</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-slate-700">{data?.total_trainees ?? '—'}</div>
+            <div className="text-xs text-slate-500">סה״כ מתאמנים</div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
 
 export default function CoachNotificationControlCenter() {
   const params = new URLSearchParams(window.location.search);
@@ -55,6 +98,9 @@ export default function CoachNotificationControlCenter() {
           <p className="text-sm text-slate-500">מעקב מלא אחרי שליחה, מסירה, פתיחה וחסימות כפילות</p>
         </div>
       </div>
+
+      {/* Push Summary */}
+      <PushSummaryRow />
 
       <NotificationAuditStats logs={filteredLogs} />
 
