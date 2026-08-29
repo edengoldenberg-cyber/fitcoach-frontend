@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import WhatsAppKillSwitch from '@/components/admin/WhatsAppKillSwitch';
 import AutomationControlCenter from '@/components/automation/AutomationControlCenter';
 import ReminderCenterTab from '@/components/mission-control/ReminderCenterTab';
+import ArboxBroadcastManager from '@/components/mission-control/ArboxBroadcastManager';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -1133,6 +1134,16 @@ function ArboxSection({ coachEmail, arboxStatus, onRefresh }) {
           </div>
         </div>
       )}
+
+      {/* WhatsApp Broadcast — שאלון שביעות רצון */}
+      <div className="border border-teal-200 rounded-xl overflow-hidden bg-white">
+        <div className="bg-teal-700 text-white px-4 py-2.5 text-sm font-bold flex items-center gap-2">
+          <MessageSquare className="w-4 h-4" /> WhatsApp Broadcast — שאלון שביעות רצון
+        </div>
+        <div className="p-4">
+          <ArboxBroadcastManager coachEmail={coachEmail} />
+        </div>
+      </div>
 
       {/* Raw Arbox Data — ניפוי שגיאות בלבד, לא נתוני עסק */}
       {dbStats && (
