@@ -17,11 +17,22 @@
 
     <!--
       iOS Service Worker Guard
-      iOS WebKit freezes cross-origin fetch() calls when any SW is controlling the page —
-      even when the SW has no matching route and never calls respondWith().
-      Fix: on iOS, unregister all existing SWs + clear Workbox caches + reload once.
-      After the reload no SW controls the page and all API fetches go directly to the network.
-      On non-iOS the SW is registered normally (same behaviour as the old registerSW.js).
+      iOS WebKit freezes cross-origin fetch() calls when any full (Workbox) SW is controlling
+      the page — even without respondWith(). This guard cleans up legacy Workbox registrations
+      that cause that freeze.
+
+      EXCEPTION — push-only-sw.js:
+      This minimal SW has no fetch listener, no navigation interception, no caching, and no
+      clientsClaim. It cannot cause fetch-freeze or white screens. iOS Home Screen PWAs run in
+      an isolated storage context (separate from Safari), so push-only-sw.js in a PWA session
+      is never visible to Safari's guard execution. We keep it alive so Push subscriptions
+      persist across PWA restarts.
+
+      The guard identifies SWs by their already-registered scriptURL — a pure data check with
+      no matchMedia, no display-mode detection, and no conditional SW registration. This is the
+      strictly minimal change that achieves persistent iOS Push without touching boot logic.
+
+      On non-iOS the SW is registered normally.
     -->
     <script>
       (function () {
@@ -32,24 +43,51 @@
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
         if (isIOS) {
-          // Unregister + clear caches + reload once.
-          // Only reloads if registrations exist — prevents an infinite reload loop.
           navigator.serviceWorker.getRegistrations().then(function (regs) {
-            if (!regs.length) return;   // Already clean — nothing to do, no reload.
-            Promise.all(regs.map(function (r) { return r.unregister(); }))
+            if (!regs.length) return;   // No registrations — nothing to do.
+
+            // Classify registrations. push-only-sw.js is safe to keep:
+            //   - no fetch listener      → cannot freeze iOS cross-origin fetches
+            //   - no NavigationRoute     → cannot intercept page navigation
+            //   - no clientsClaim        → does not seize control of current clients
+            // Legacy sw.js / Workbox SWs must be cleaned up — they can freeze fetches.
+            var legacy = regs.filter(function (r) {
+              var url = (r.active    && r.active.scriptURL)    ||
+                        (r.installing && r.installing.scriptURL) ||
+                        (r.waiting   && r.waiting.scriptURL)   || '';
+              return url.indexOf('push-only-sw.js') === -1;
+            });
+
+            if (!legacy.length) return;   // Only push-only-sw.js present — keep it, no reload.
+
+            // Legacy registrations found: unregister them, remove their caches, reload once.
+            // Only reloads when legacy SWs actually exist — prevents infinite reload loops.
+            //
+            // Cache cleanup is scoped to known FitCoach Workbox caches ONLY:
+            //   workbox-*      — Workbox precache (prefix is a Workbox framework constant)
+            //   google-fonts   — CacheFirst route defined in sw.js
+            //   js-assets      — CacheFirst route defined in sw.js
+            // push-only-sw.js creates no caches, so nothing from it is affected here.
+            // We do NOT delete all caches indiscriminately.
+            Promise.all(legacy.map(function (r) { return r.unregister(); }))
               .then(function () {
                 return ('caches' in window)
                   ? caches.keys().then(function (keys) {
-                      return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                      var workboxCaches = keys.filter(function (k) {
+                        return k.indexOf('workbox-') === 0 ||
+                               k === 'google-fonts'        ||
+                               k === 'js-assets';
+                      });
+                      return Promise.all(workboxCaches.map(function (k) { return caches.delete(k); }));
                     })
                   : Promise.resolve();
               })
               .then(function () { window.location.reload(); });
           });
-          return; // Never register a new SW on iOS.
+          return; // Never register a new SW on iOS from index.html.
         }
 
-        // Non-iOS: register the SW normally.
+        // Non-iOS: register the full SW normally.
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('/sw.js', { scope: '/' });
         });

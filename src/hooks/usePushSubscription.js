@@ -4,15 +4,30 @@
  * Core hook for push notification state management.
  *
  * Status values:
- *   'unsupported'    — browser cannot support push
+ *   'unsupported'    — browser/device cannot support push (no PushManager)
+ *   'ios_safari'     — iOS Safari (non-standalone): Push requires Home Screen PWA install
  *   'blocked'        — user denied permission (cannot prompt again)
  *   'no_permission'  — permission default, user hasn't been asked yet
  *   'no_registration'— permission granted but no browser PushSubscription
  *   'not_synced'     — browser subscription exists but missing from DB
  *   'active'         — fully registered, subscription in DB and active
  *
+ * iOS architecture:
+ *   Regular iOS Safari → 'ios_safari'. No SW attempt, no register button.
+ *   iOS standalone PWA → register /push-only-sw.js after explicit user action.
+ *     push-only-sw has NO NavigationRoute, NO caching, NO clientsClaim.
+ *     It cannot cause white screens or network freezes.
+ *     The index.html guard keeps push-only-sw.js alive across PWA restarts
+ *     (it only removes legacy sw.js registrations by scriptURL inspection).
+ *     Push subscriptions persist across close/reopen on iOS 16.4+.
+ *   Non-iOS → Push works fully: sw.js registered at boot, persists across sessions.
+ *
+ * Push failure invariant: any failure (SW, PushManager, permission, backend) produces
+ * only a toast error and a status change. The app shell is already mounted and functional
+ * before any Push operation begins. No reload, no unregister, no boot coupling.
+ *
  * Security: trainee_email is always taken from the JWT via the backend;
- * the userEmail prop is used only to scope queries (not trusted for writes).
+ * userEmail is used only to scope queries (not trusted for writes).
  */
 
 import { useState, useEffect } from 'react';
@@ -22,9 +37,13 @@ import { toast } from 'sonner';
 
 const VAPID_PUBLIC_KEY = 'BLYV4o1VzRU6RAseJHuj0YOyPhV9fkkC_NNR38jKtXbCcOHTIYe1zK7UdxT6Sg433UwOnGXngdUqw-s_VV003HY';
 
-// Milliseconds to wait for navigator.serviceWorker.ready before giving up.
-// Keeps iOS (which may have no SW) from hanging indefinitely.
+// Maximum milliseconds to wait for an active SW registration before giving up.
 const SW_READY_TIMEOUT_MS = 12_000;
+
+// push-only-sw.js is used for iOS PWA mode.
+// It contains only push/notificationclick handlers — no navigation interception,
+// no caching, no clientsClaim. Safe for iOS: cannot cause white screen or fetch freeze.
+const PUSH_ONLY_SW_PATH = '/push-only-sw.js';
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -42,8 +61,32 @@ function detectDeviceType() {
   return 'desktop';
 }
 
-// Returns the active ServiceWorkerRegistration within the timeout, or null.
-// Prevents an infinite hang on iOS where the guard may have unregistered all SWs.
+/**
+ * Returns iOS-specific Push capability:
+ *   'pwa'    — iOS standalone PWA (window.navigator.standalone === true) — Push works
+ *   'safari' — iOS Safari browser tab — Push not available without Home Screen install
+ *   null     — not iOS
+ *
+ * Uses ONLY window.navigator.standalone (native iOS WebKit boolean).
+ * Does NOT use matchMedia('display-mode: standalone') — that API is unreliable
+ * on iOS at React init time and caused a production white-screen P0 when used
+ * in index.html boot-path logic.
+ */
+export function detectIosCapability() {
+  if (typeof navigator === 'undefined') return null;
+  const ua = navigator.userAgent;
+  const isIos = /iP(hone|od|ad)/.test(ua) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (!isIos) return null;
+  // navigator.standalone: true = standalone PWA, false/undefined = Safari browser tab
+  return window.navigator.standalone === true ? 'pwa' : 'safari';
+}
+
+/**
+ * Returns the active ServiceWorkerRegistration within the timeout, or null.
+ * Prevents an infinite hang when no SW is registered or activating.
+ * Callers must handle null gracefully (show error, do not crash or reload).
+ */
 async function getActiveRegistration() {
   try {
     return await Promise.race([
@@ -57,6 +100,12 @@ async function getActiveRegistration() {
 
 export function usePushSubscription(userEmail) {
   const queryClient = useQueryClient();
+
+  // iOS capability is stable within a session — computed once at mount.
+  const [iosCapability] = useState(() => {
+    if (typeof navigator === 'undefined') return null;
+    return detectIosCapability();
+  });
 
   const [permission, setPermission] = useState(() => {
     if (typeof Notification === 'undefined') return 'unsupported';
@@ -78,10 +127,12 @@ export function usePushSubscription(userEmail) {
   });
 
   // Check browser state on mount and when userEmail changes.
-  // Uses getActiveRegistration() so we don't return early when the SW is still
-  // installing (which would leave browserSub=null forever until remount).
+  // iOS Safari: skipped — no SW available, status derives entirely from iosCapability.
+  // iOS PWA + others: wait for active SW (with timeout — never hangs).
   useEffect(() => {
     if (!userEmail) return;
+    if (iosCapability === 'safari') return; // no SW on iOS Safari — status is 'ios_safari'
+
     let cancelled = false;
 
     async function checkBrowserState() {
@@ -93,8 +144,6 @@ export function usePushSubscription(userEmail) {
         }
         setPermission(Notification.permission);
 
-        // Wait for an active registration. On iOS without a SW this times out
-        // and correctly resolves to null → status stays no_registration (not hung).
         const reg = await getActiveRegistration();
         if (!reg) {
           setSwReady(false);
@@ -105,7 +154,7 @@ export function usePushSubscription(userEmail) {
         const sub = await reg.pushManager.getSubscription();
         if (!cancelled) setBrowserSub(sub || null);
       } catch {
-        // Non-fatal; gracefully fall through to 'no_registration' status
+        // Non-fatal: gracefully fall through to 'no_registration'.
       } finally {
         if (!cancelled) setIsChecking(false);
       }
@@ -113,51 +162,77 @@ export function usePushSubscription(userEmail) {
 
     checkBrowserState();
     return () => { cancelled = true; };
-  }, [userEmail]);
+  }, [userEmail, iosCapability]);
 
-  // Derived status — combines browser + DB state
+  // ─── Derived status ─────────────────────────────────────────────────────────
   const status = (() => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return 'unsupported';
-    if (permission === 'denied')    return 'blocked';
-    if (permission !== 'granted')   return 'no_permission';
-    if (!browserSub)                return 'no_registration';
-    if (dbSubs.length === 0)        return 'not_synced';
+    if (permission === 'denied')     return 'blocked';
+    // iOS 16.4+ Safari: PushManager exists but Push requires standalone PWA.
+    if (iosCapability === 'safari')  return 'ios_safari';
+    if (permission !== 'granted')    return 'no_permission';
+    if (!browserSub)                 return 'no_registration';
+    if (dbSubs.length === 0)         return 'not_synced';
     return 'active';
   })();
 
   // ─── Subscribe ─────────────────────────────────────────────────────────────
   const subscribeMutation = useMutation({
     mutationFn: async () => {
-      // 1. Request permission if needed
+      // Guard: iOS Safari cannot register Push — guide the user to install as PWA.
+      // This is a user-facing error, not a crash. The app is already rendered and healthy.
+      if (iosCapability === 'safari') {
+        throw new Error(
+          'כדי לקבל התראות באייפון, יש להוסיף את FitCoach למסך הבית תחילה:\n' +
+          'לחץ על ⎙ ← "הוסף למסך הבית" ← פתח מהמסך הראשי.'
+        );
+      }
+
+      // 1. Request permission if needed (only on explicit user action — never auto-prompted)
       if (Notification.permission !== 'granted') {
         const result = await Notification.requestPermission();
         setPermission(result);
         if (result !== 'granted') {
           throw new Error(
             result === 'denied'
-              ? 'ההרשאה להתראות נדחתה. ניתן לשנות זאת בהגדרות הדפדפן/המכשיר.'
+              ? 'ההרשאה להתראות נדחתה. ניתן לשנות בהגדרות הדפדפן/המכשיר.'
               : 'ההרשאה להתראות לא ניתנה.'
           );
         }
       }
 
-      // 2. Ensure SW is registered (registers one if none exists)
+      // 2. Ensure a SW is registered.
+      //
+      //    Non-iOS: sw.js is already registered by index.html at page load.
+      //      getRegistration returns it; no re-registration needed.
+      //
+      //    iOS PWA: no SW exists at React mount time (guard only left push-only-sw.js alone
+      //      if it was already registered, or cleared nothing since there was nothing to clear).
+      //      We register push-only-sw.js — a minimal SW with ONLY push/notificationclick.
+      //      It has no NavigationRoute, no caching, no clientsClaim.
+      //      It cannot cause white screens or freeze API calls.
+      //      The index.html guard preserves it on future launches (scriptURL check).
       const existingReg = await navigator.serviceWorker.getRegistration('/');
       if (!existingReg) {
-        await navigator.serviceWorker.register('/sw.js', { scope: '/', type: 'classic' });
+        const swPath = iosCapability === 'pwa' ? PUSH_ONLY_SW_PATH : '/sw.js';
+        try {
+          await navigator.serviceWorker.register(swPath, { scope: '/' });
+        } catch (err) {
+          throw new Error(`לא ניתן לרשום את Service Worker: ${err.message || err}`);
+        }
       }
 
-      // 3. Wait for the active SW (use the resolved value — not the stale getRegistration ref)
+      // 3. Wait for the active SW. Uses resolved value (not stale getRegistration ref).
+      //    Timeout prevents infinite hang if SW fails to activate.
       const reg = await getActiveRegistration();
       if (!reg) {
         throw new Error(
-          'ה-Service Worker לא הוכן בזמן. ' +
-          'ודא שהאפליקציה מותקנת על המסך הראשי (PWA) ונסה שוב.'
+          'ה-Service Worker לא הוכן בזמן. נסה שוב.'
         );
       }
       setSwReady(true);
 
-      // 4. Reuse existing browser subscription if valid; create new one otherwise
+      // 4. Reuse existing browser subscription if present; create a new one otherwise.
       let sub;
       try {
         sub = await reg.pushManager.getSubscription();
@@ -168,13 +243,11 @@ export function usePushSubscription(userEmail) {
           });
         }
       } catch (err) {
-        throw new Error(
-          `לא הצלחנו ליצור מנוי להתראות: ${err.message || err}`
-        );
+        throw new Error(`לא הצלחנו ליצור מנוי להתראות: ${err.message || err}`);
       }
       setBrowserSub(sub);
 
-      // 5. Persist to backend (upsert — safe to call multiple times on same device)
+      // 5. Persist to backend (upsert — safe to call multiple times for same device)
       const subJson = sub.toJSON();
       const result = await base44.functions.invoke('registerPushSubscription', {
         endpoint:    subJson.endpoint,
@@ -205,11 +278,9 @@ export function usePushSubscription(userEmail) {
       const sub = await reg?.pushManager.getSubscription();
       const endpoint = sub?.endpoint || browserSub?.endpoint;
 
-      // Remove from browser
       if (sub) await sub.unsubscribe();
       setBrowserSub(null);
 
-      // Mark inactive in backend
       if (endpoint) {
         await base44.functions.invoke('unregisterPushSubscription', { endpoint });
       }
@@ -224,6 +295,7 @@ export function usePushSubscription(userEmail) {
 
   return {
     status,
+    iosCapability,
     permission,
     swReady,
     browserSub,

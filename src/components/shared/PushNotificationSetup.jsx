@@ -60,7 +60,8 @@ export default function PushNotificationSetup() {
   if (!user?.email) return null;
   if (traineeRecord?.notifications_prompt_enabled === false) return null;
   if (!show) return null;
-  if (status === 'active' || status === 'blocked' || status === 'unsupported') return null;
+  // ios_safari: floating prompt can't help — guidance is in AutomationSettings instead.
+  if (status === 'active' || status === 'blocked' || status === 'unsupported' || status === 'ios_safari') return null;
 
   return (
     <>

@@ -22,6 +22,29 @@ function PushStatusSection({ userEmail }) {
     subscribeError, isChecking,
   } = usePushSubscription(userEmail);
 
+  // iOS Safari: Push requires the app to be installed on the Home Screen.
+  // Show clear instructions instead of a broken register button.
+  if (status === 'ios_safari') {
+    return (
+      <Card className="p-4 border bg-blue-50 border-blue-200">
+        <div className="flex items-center gap-2 mb-2">
+          <Smartphone className="w-4 h-4 text-blue-500" />
+          <span className="font-semibold text-slate-800 text-sm">התראות Push</span>
+          <span className="text-xs font-medium ml-auto text-blue-700">דרוש התקנה</span>
+        </div>
+        <p className="text-sm text-slate-700 mb-2">
+          יש להוסיף את FitCoach למסך הבית כדי לקבל התראות באייפון:
+        </p>
+        <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside">
+          <li>לחץ על כפתור השיתוף <strong>⎙</strong> בתחתית Safari</li>
+          <li>בחר <strong>"הוסף למסך הבית"</strong></li>
+          <li>פתח את FitCoach מהמסך הראשי</li>
+          <li>חזור לדף זה והפעל התראות</li>
+        </ol>
+      </Card>
+    );
+  }
+
   if (status === 'unsupported') {
     return (
       <Card className="p-4">
@@ -30,8 +53,7 @@ function PushStatusSection({ userEmail }) {
           <span className="font-semibold text-slate-700 text-sm">התראות Push</span>
         </div>
         <p className="text-sm text-slate-500">
-          הדפדפן / מכשיר זה אינו תומך בהתראות Push.
-          התקן את האפליקציה על המסך הראשי כדי לאפשר התראות.
+          Push אינו נתמך במצב הנוכחי.
         </p>
       </Card>
     );
@@ -40,7 +62,7 @@ function PushStatusSection({ userEmail }) {
   const statusConfig = {
     active: {
       icon:  <CheckCircle2 className="w-4 h-4 text-emerald-500" />,
-      label: 'פעילות',
+      label: 'פעילות ✓',
       color: 'text-emerald-700',
       bg:    'bg-emerald-50 border-emerald-200',
       desc:  `המכשיר הזה רשום לקבלת התראות (${dbSubs.length} רישום${dbSubs.length > 1 ? 'ים' : ''})`,
@@ -50,11 +72,11 @@ function PushStatusSection({ userEmail }) {
       label: 'לא מסונכרן',
       color: 'text-amber-700',
       bg:    'bg-amber-50 border-amber-200',
-      desc:  'הדפדפן מאפשר התראות אך המכשיר לא רשום בשרת',
+      desc:  'הדפדפן מאפשר התראות אך המכשיר לא רשום בשרת. לחץ "רשום את המכשיר".',
     },
     no_registration: {
       icon:  <AlertCircle className="w-4 h-4 text-orange-500" />,
-      label: 'נדרשת רישום',
+      label: 'לא רשום',
       color: 'text-orange-700',
       bg:    'bg-orange-50 border-orange-200',
       desc:  'ההרשאה ניתנה אך המכשיר לא רשום. לחץ "רשום את המכשיר".',
@@ -117,6 +139,7 @@ function PushStatusSection({ userEmail }) {
         </Button>
       );
     }
+    // no_permission
     return (
       <Button
         size="sm"
@@ -140,9 +163,9 @@ function PushStatusSection({ userEmail }) {
 
       {status === 'blocked' ? (
         <div className="text-sm text-red-700 space-y-1">
-          <p>התראות חסומות בהגדרות הדפדפן/המכשיר.</p>
+          <p>ההתראות חסומות בהגדרות המכשיר.</p>
           <p className="text-xs text-red-600">
-            <strong>iOS:</strong> הגדרות ← Safari ← התראות ← FitCoach → אפשר<br />
+            <strong>iOS:</strong> הגדרות ← FitCoach ← התראות → אפשר<br />
             <strong>Android:</strong> הגדרות ← אפליקציות ← Chrome ← הרשאות ← התראות → אפשר
           </p>
         </div>
