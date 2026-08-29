@@ -19,17 +19,9 @@
       iOS Service Worker Guard
       iOS WebKit freezes cross-origin fetch() calls when any SW is controlling the page —
       even when the SW has no matching route and never calls respondWith().
-      Fix: on iOS Safari (non-standalone), unregister all existing SWs + clear Workbox
-      caches + reload once. After the reload no SW controls the page and API fetches go
-      directly to the network.
-
-      EXCEPTION — iOS PWA standalone mode (added to home screen):
-      The fetch-freeze bug does not affect standalone mode. More importantly, Web Push
-      notifications require an active service worker, and unregistering it here would
-      destroy any active push subscription. We keep the SW alive in standalone mode so
-      Push can work on iOS 16.4+.
-
-      On non-iOS the SW is registered normally.
+      Fix: on iOS, unregister all existing SWs + clear Workbox caches + reload once.
+      After the reload no SW controls the page and all API fetches go directly to the network.
+      On non-iOS the SW is registered normally (same behaviour as the old registerSW.js).
     -->
     <script>
       (function () {
@@ -39,14 +31,8 @@
         var isIOS = /iP(hone|od|ad)/.test(navigator.userAgent) ||
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-        // Standalone = PWA added to home screen (window.navigator.standalone on iOS,
-        // display-mode: standalone on Android/desktop via matchMedia).
-        var isStandalone = (window.navigator.standalone === true) ||
-                           (window.matchMedia &&
-                            window.matchMedia('(display-mode: standalone)').matches);
-
-        if (isIOS && !isStandalone) {
-          // iOS Safari (non-PWA): unregister + clear caches + reload once.
+        if (isIOS) {
+          // Unregister + clear caches + reload once.
           // Only reloads if registrations exist — prevents an infinite reload loop.
           navigator.serviceWorker.getRegistrations().then(function (regs) {
             if (!regs.length) return;   // Already clean — nothing to do, no reload.
@@ -60,10 +46,10 @@
               })
               .then(function () { window.location.reload(); });
           });
-          return; // Never register a new SW in iOS Safari (non-standalone).
+          return; // Never register a new SW on iOS.
         }
 
-        // Non-iOS, OR iOS standalone (PWA mode): register the SW normally.
+        // Non-iOS: register the SW normally.
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('/sw.js', { scope: '/' });
         });
