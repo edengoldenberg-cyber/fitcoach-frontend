@@ -18,8 +18,13 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { toast } from 'sonner';
 
 const VAPID_PUBLIC_KEY = 'BLYV4o1VzRU6RAseJHuj0YOyPhV9fkkC_NNR38jKtXbCcOHTIYe1zK7UdxT6Sg433UwOnGXngdUqw-s_VV003HY';
+
+// Milliseconds to wait for navigator.serviceWorker.ready before giving up.
+// Keeps iOS (which may have no SW) from hanging indefinitely.
+const SW_READY_TIMEOUT_MS = 12_000;
 
 function urlBase64ToUint8Array(base64String) {
   const padding = '='.repeat((4 - base64String.length % 4) % 4);
@@ -35,6 +40,19 @@ function detectDeviceType() {
   if (/android/i.test(ua)) return 'android';
   if (/iPad|iPhone|iPod/.test(ua)) return 'ios';
   return 'desktop';
+}
+
+// Returns the active ServiceWorkerRegistration within the timeout, or null.
+// Prevents an infinite hang on iOS where the guard may have unregistered all SWs.
+async function getActiveRegistration() {
+  try {
+    return await Promise.race([
+      navigator.serviceWorker.ready,
+      new Promise(resolve => setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS)),
+    ]);
+  } catch {
+    return null;
+  }
 }
 
 export function usePushSubscription(userEmail) {
@@ -59,7 +77,9 @@ export function usePushSubscription(userEmail) {
     staleTime: 30_000,
   });
 
-  // Check browser state on mount and when userEmail changes
+  // Check browser state on mount and when userEmail changes.
+  // Uses getActiveRegistration() so we don't return early when the SW is still
+  // installing (which would leave browserSub=null forever until remount).
   useEffect(() => {
     if (!userEmail) return;
     let cancelled = false;
@@ -73,8 +93,10 @@ export function usePushSubscription(userEmail) {
         }
         setPermission(Notification.permission);
 
-        const reg = await navigator.serviceWorker.getRegistration('/');
-        if (!reg || !reg.active) {
+        // Wait for an active registration. On iOS without a SW this times out
+        // and correctly resolves to null → status stays no_registration (not hung).
+        const reg = await getActiveRegistration();
+        if (!reg) {
           setSwReady(false);
           setBrowserSub(null);
           return;
@@ -119,37 +141,60 @@ export function usePushSubscription(userEmail) {
         }
       }
 
-      // 2. Register / retrieve service worker
-      let reg = await navigator.serviceWorker.getRegistration('/');
-      if (!reg) {
-        reg = await navigator.serviceWorker.register('/sw.js', { scope: '/', type: 'classic' });
+      // 2. Ensure SW is registered (registers one if none exists)
+      const existingReg = await navigator.serviceWorker.getRegistration('/');
+      if (!existingReg) {
+        await navigator.serviceWorker.register('/sw.js', { scope: '/', type: 'classic' });
       }
-      await navigator.serviceWorker.ready;
+
+      // 3. Wait for the active SW (use the resolved value — not the stale getRegistration ref)
+      const reg = await getActiveRegistration();
+      if (!reg) {
+        throw new Error(
+          'ה-Service Worker לא הוכן בזמן. ' +
+          'ודא שהאפליקציה מותקנת על המסך הראשי (PWA) ונסה שוב.'
+        );
+      }
       setSwReady(true);
 
-      // 3. Reuse existing browser subscription if valid; create new one otherwise
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly:      true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
+      // 4. Reuse existing browser subscription if valid; create new one otherwise
+      let sub;
+      try {
+        sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly:      true,
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+          });
+        }
+      } catch (err) {
+        throw new Error(
+          `לא הצלחנו ליצור מנוי להתראות: ${err.message || err}`
+        );
       }
       setBrowserSub(sub);
 
-      // 4. Persist to backend (upsert — safe to call multiple times on same device)
-      const { endpoint, keys } = sub.toJSON();
-      await base44.functions.invoke('registerPushSubscription', {
-        endpoint,
-        p256dh:      keys.p256dh,
-        auth:        keys.auth,
+      // 5. Persist to backend (upsert — safe to call multiple times on same device)
+      const subJson = sub.toJSON();
+      const result = await base44.functions.invoke('registerPushSubscription', {
+        endpoint:    subJson.endpoint,
+        p256dh:      subJson.keys.p256dh,
+        auth:        subJson.keys.auth,
         device_type: detectDeviceType(),
       });
+
+      // Backend returns { ok: false } with HTTP 200 on failure — must check explicitly.
+      if (!result?.ok) {
+        throw new Error(result?.error || 'שגיאה בשמירת הרישום בשרת. נסה שוב.');
+      }
 
       return sub;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pushSubscriptions', userEmail] });
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'לא הצלחנו לרשום את המכשיר. נסה שוב.');
     },
   });
 
@@ -171,6 +216,9 @@ export function usePushSubscription(userEmail) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pushSubscriptions', userEmail] });
+    },
+    onError: (err) => {
+      toast.error(err?.message || 'שגיאה בניתוק ההתראות.');
     },
   });
 
