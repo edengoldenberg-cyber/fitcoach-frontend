@@ -61,18 +61,30 @@ function VariantCard({ variant, index, total, onUpdate, onDelete, insertRef }) {
   const taRef = useRef(null);
   const cursorRef = useRef({ start: 0, end: 0 });
 
+  // Always-fresh refs so insertRef callback never closes over stale props.
+  // onFocus only fires once per focus event, not on every React re-render,
+  // so without these refs the callback would use the text/variant from the
+  // render that was current when the textarea was first focused.
+  const latestVariantRef = useRef(variant);
+  useEffect(() => { latestVariantRef.current = variant; }, [variant]);
+
+  const latestOnUpdateRef = useRef(onUpdate);
+  useEffect(() => { latestOnUpdateRef.current = onUpdate; }, [onUpdate]);
+
   const trackCursor = e => {
     cursorRef.current = { start: e.target.selectionStart, end: e.target.selectionEnd };
   };
 
-  // Register this textarea as the active insert target when focused
+  // Register this textarea as the active insert target when focused.
   const handleFocus = () => {
     insertRef.current = (variable) => {
       const el = taRef.current;
-      const cur = variant.text || '';
+      // Read from the actual DOM element — always current regardless of
+      // how many React renders have happened since focus.
+      const cur = el?.value ?? latestVariantRef.current.text ?? '';
       const { start, end } = cursorRef.current;
       const next = cur.slice(0, start) + variable + cur.slice(end);
-      onUpdate({ ...variant, text: next });
+      latestOnUpdateRef.current({ ...latestVariantRef.current, text: next });
       requestAnimationFrame(() => {
         if (el) {
           el.focus();

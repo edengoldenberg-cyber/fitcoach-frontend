@@ -131,7 +131,7 @@ export default function AutomationHistoryDrawer({ automation, coachEmail, onClos
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   return (
-    <div className="fixed inset-0 z-50 flex" dir="rtl">
+    <div className="fixed inset-0 z-[200] flex" dir="rtl">
       <div className="flex-1 bg-black/40" onClick={onClose} />
 
       <div className="w-full max-w-md bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-200">

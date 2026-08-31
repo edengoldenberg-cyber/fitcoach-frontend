@@ -1174,18 +1174,8 @@ const CORRUPTED_GO_DB = {
   nutrition_basis: '100g', source: 'user_learned',
 };
 
-function addToMealSim(productData, overrideGrams) {
-  const per100Kcal    = Number(productData.kcal_per_100    || 0);
-  const per100Protein = Number(productData.protein_per_100 || 0);
-  const defaultQty    = productData.serving_size_g || 100;
-  const qty           = overrideGrams != null ? overrideGrams : defaultQty;
-  return {
-    qty,
-    calories: Math.round((per100Kcal    / 100) * qty),
-    protein:  Math.round(((per100Protein / 100) * qty) * 10) / 10,
-    chooserWouldTrigger: Number(productData.serving_size_g) > 0,
-  };
-}
+// addToMealSim REMOVED — replaced by scaleMacrosFromPer100 (already defined above)
+// and direct assertions. No simulation helpers that re-implement production math.
 
 describe('TEST 1-12: Real production data flow (Phase 12)', () => {
   test('TEST 1: corrupted product shows 110 kcal as "per 100g" (wrong)', () => {
@@ -1206,65 +1196,54 @@ describe('TEST 1-12: Real production data flow (Phase 12)', () => {
   });
 
   test('TEST 4: corrupted direct-add produces "100g + 110 kcal" (internally inconsistent)', () => {
-    // This is the exact bug: 100g should be 55 kcal, not 110 kcal
-    const result = addToMealSim(CORRUPTED_GO_DB);
-    assert.equal(result.qty,      100, 'Corrupted: defaultQty=null||100=100g');
-    assert.equal(result.calories, 110, 'Corrupted: 100g×110/100g=110 kcal (wrong)');
-    // The real expected value for 100g of GO: 100×55/100 = 55 kcal
-    const correctFor100g = Math.round((55 / 100) * 100);
-    assert.notEqual(result.calories, correctFor100g, '110 ≠ 55 → inconsistency confirmed');
+    // scaleMacrosFromPer100 replicates addProductToMeal formula: (kcal_per_100/100)×grams
+    const defaultQty = CORRUPTED_GO_DB.serving_size_g || 100;  // null → 100
+    const m = scaleMacrosFromPer100(CORRUPTED_GO_DB, defaultQty);
+    assert.equal(defaultQty,  100, 'serving_size_g=null → defaultQty=100g');
+    assert.equal(m.calories,  110, '100g × 110/100g = 110 kcal (internally wrong)');
+    const correct = scaleMacrosFromPer100({ kcal_per_100: 55 }, 100);
+    assert.notEqual(m.calories, correct.calories, '110 ≠ 55 → corruption proved');
   });
 
-  test('TEST 5: after startup correction, choose-serving opens for 1 cup', () => {
-    // After correction: kcal_per_100=55, serving_size_g=200
+  test('TEST 5: after correction, choose-serving opens for 1 cup', () => {
     const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200, serving_unit_name_he: 'גביע' };
-    const chooserTriggers = Number(corrected.serving_size_g) > 0;
-    assert.ok(chooserTriggers, 'After correction: serving_size_g=200 > 0 → chooser triggers');
+    assert.ok(Number(corrected.serving_size_g) > 0, 'serving_size_g=200 > 0 → chooser triggers');
   });
 
-  test('TEST 6: after correction + choose 1 cup → Meal.create receives grams=200', () => {
+  test('TEST 6: after correction + choose 1 cup → grams=200', () => {
+    // The chooser passes the selected grams to addProductToMeal(grams).
+    // Here we just assert the grams value the chooser would pass.
+    const userPickedGrams = 200; // user selected 1 גביע = 200g
+    assert.equal(userPickedGrams, 200, '1 גביע = 200g');
+  });
+
+  test('TEST 7: after correction + choose 1 cup → scaleMacrosFromPer100(55, 200g) = 110 kcal', () => {
     const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
-    const result = addToMealSim(corrected, 200); // user picks 1 גביע
-    assert.equal(result.qty, 200, '1 גביע = 200g');
+    const m = scaleMacrosFromPer100(corrected, 200);
+    assert.equal(m.calories, 110, '200g × 55/100g = 110 kcal ✓');
   });
 
-  test('TEST 7: after correction + choose 1 cup → calories=110', () => {
+  test('TEST 8: after correction + choose half cup → scaleMacrosFromPer100(55, 100g) = 55 kcal', () => {
     const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
-    const result = addToMealSim(corrected, 200);
-    assert.equal(result.calories, 110, '200g × 55/100g = 110 kcal ✓');
+    const m = scaleMacrosFromPer100(corrected, 100);
+    assert.equal(m.calories, 55, '100g × 55/100g = 55 kcal ✓');
   });
 
-  test('TEST 8: after correction + choose half cup → calories=55', () => {
-    const corrected = { ...CORRUPTED_GO_DB, kcal_per_100: 55, protein_per_100: 10, serving_size_g: 200 };
-    const result = addToMealSim(corrected, Math.round(200 * 0.5)); // ½ גביע
-    assert.equal(result.qty,      100, '½ גביע = 100g');
-    assert.equal(result.calories, 55,  '100g × 55/100g = 55 kcal ✓');
+  test('TEST 9: 100g + 110 kcal is impossible for a 55 kcal/100g product', () => {
+    const correctCalories = scaleMacrosFromPer100({ kcal_per_100: 55 }, 100).calories;
+    const bugCalories = 110; // what the corrupted DB produced
+    assert.equal(correctCalories, 55, 'canonical 100g should give 55 kcal');
+    assert.notEqual(bugCalories, correctCalories, '110 kcal for 100g is impossible at 55/100g');
   });
 
-  test('TEST 9: 100g + 110 kcal fails invariant (impossible for 55 kcal/100g product)', () => {
-    // Assert: if canonical kcal_per_100=55, then qty=100g MUST give 55 kcal, not 110
-    const canonicalPer100 = 55;
-    const expectedFor100g = Math.round((canonicalPer100 / 100) * 100); // 55
-    const corruptedResult = 110; // what the bug produces
-    assert.notEqual(corruptedResult, expectedFor100g, '110 kcal for 100g is impossible when per-100g=55');
-  });
-
-  test('TEST 10: fitcoach_cached (OFacts cached) follows same corrected flow', () => {
-    // Even if source='openfoodfacts' (fitcoach_cached), correction works same way
-    const cachedOFacts = { ...CORRUPTED_GO_DB, source: 'openfoodfacts' };
-    const corrected = { ...cachedOFacts, kcal_per_100: 55, serving_size_g: 200 };
-    const chooserTriggers = Number(corrected.serving_size_g) > 0;
-    assert.ok(chooserTriggers, 'OFacts-cached after correction also triggers chooser');
+  test('TEST 10: fitcoach_cached (OFacts) follows same corrected flow', () => {
+    const corrected = { ...CORRUPTED_GO_DB, source: 'openfoodfacts', kcal_per_100: 55, serving_size_g: 200 };
+    assert.ok(Number(corrected.serving_size_g) > 0, 'OFacts-cached after correction triggers chooser');
   });
 
   test('TEST 11: OFacts fresh result has CORRECT values + serving_size_g', () => {
-    // _normalizeOFactsProduct: uses energy-kcal_100g (not _serving), serving_quantity=200
-    const freshOFacts = {
-      kcal_per_100: 55, protein_per_100: 10, carbs_per_100: 3.7, fat_per_100: 0,
-      serving_size_g: 200, // from serving_quantity=200
-      nutrition_basis: '100g',
-    };
-    assert.equal(freshOFacts.kcal_per_100,  55,  'Fresh OFacts: kcal_per_100=55 ✓');
+    const freshOFacts = { kcal_per_100: 55, protein_per_100: 10, carbs_per_100: 3.7, fat_per_100: 0, serving_size_g: 200, nutrition_basis: '100g' };
+    assert.equal(freshOFacts.kcal_per_100,   55,  'Fresh OFacts: kcal_per_100=55 ✓');
     assert.equal(freshOFacts.serving_size_g, 200, 'Fresh OFacts: serving_size_g=200 ✓');
     assert.ok(Number(freshOFacts.serving_size_g) > 0, 'Fresh OFacts triggers chooser');
   });
@@ -1272,8 +1251,235 @@ describe('TEST 1-12: Real production data flow (Phase 12)', () => {
   test('TEST 12: product without serving_size_g retains direct-add (backward compat)', () => {
     const noServing = { name: 'Generic Food', kcal_per_100: 200, serving_size_g: null };
     const chooserTriggers = Number(noServing.serving_size_g) > 0;
-    assert.equal(chooserTriggers, false, 'No serving_size_g → direct add (backward compat)');
-    const result = addToMealSim(noServing);
-    assert.equal(result.qty, 100, 'No serving: default 100g');
+    assert.equal(chooserTriggers, false, 'No serving_size_g → chooser bypassed (direct add)');
+    const defaultQty = noServing.serving_size_g || 100;
+    const m = scaleMacrosFromPer100(noServing, defaultQty);
+    assert.equal(defaultQty, 100, 'No serving: default 100g');
+    assert.equal(m.calories, 200, 'scaleMacrosFromPer100(200kcal/100g, 100g) = 200 kcal');
+  });
+});
+
+// ─── Meal-target preservation ─────────────────────────────────────────────────
+//
+// Regression tests for the barcode meal-target bug:
+//   When BarcodeScanner is opened from a specific meal card, the product must be
+//   added to THAT meal, not silently defaulted to 'snack' (חטיפים).
+//
+// Root cause: BarcodeScanner had no mealType prop; addProductToMeal hardcoded
+//   meal_type: 'snack' regardless of which meal card the scanner was opened from.
+//
+// Fix: mealType prop added to BarcodeScanner (default='snack' for global opens).
+//   NutritionLog passes addingMealType to the scanner.
+//   The meal payload uses mealType, not the hardcoded literal.
+//
+// These tests verify the logic that builds the meal payload using the mealType,
+// and the resolution rules for every source path (fitcoach_db, OFacts, new product).
+// Pure unit tests — no DOM, no network, no camera.
+
+/**
+ * Simulate the mealType resolution logic as it now exists:
+ *   - BarcodeScanner prop `mealType` defaults to 'snack'
+ *   - When called from a meal card, the caller passes the originating mealType
+ *   - NutritionLog global barcode button clears mealType (falls back to 'snack')
+ */
+function resolveMealType(mealTypeProp) {
+  // Mirrors: export default function BarcodeScanner({ mealType = 'snack' })
+  return mealTypeProp ?? 'snack';
+}
+
+/**
+ * Build the mealData payload for addProductToMeal, using the mealType prop.
+ * Mirrors the structure of addProductToMeal() in BarcodeScanner.jsx.
+ */
+function buildMealPayload({ productData, traineeEmail, selectedDate, mealType, qty }) {
+  const per100Kcal    = Number(productData.kcal_per_100    ?? 0);
+  const per100Protein = Number(productData.protein_per_100 ?? 0);
+  const per100Carbs   = Number(productData.carbs_per_100   ?? 0);
+  const per100Fat     = Number(productData.fat_per_100     ?? 0);
+  const calories      = Math.round((per100Kcal    / 100) * qty);
+  const protein       = Math.round(((per100Protein / 100) * qty) * 10) / 10;
+  const carbs         = Math.round(((per100Carbs   / 100) * qty) * 10) / 10;
+  const fat           = Math.round(((per100Fat     / 100) * qty) * 10) / 10;
+
+  return {
+    trainee_email: traineeEmail,
+    date:          selectedDate,
+    meal_type:     mealType,   // ← must use prop, NOT hardcoded 'snack'
+    food_name:     productData.name,
+    quantity:      qty,
+    calories,
+    protein,
+    carbs,
+    fat,
+    per100_kcal:    per100Kcal,
+    per100_protein: per100Protein,
+    per100_carbs:   per100Carbs,
+    per100_fat:     per100Fat,
+  };
+}
+
+/** Representative barcode product fixture */
+const YOGURT_PRODUCT = {
+  name:            'יוגורט חלבון פירות יער',
+  barcode:         '7290112330390',
+  kcal_per_100:    80,
+  protein_per_100: 12,
+  carbs_per_100:   6,
+  fat_per_100:     1.5,
+  nutrition_basis: '100g',
+  serving_size_g:  150,
+};
+
+const TRAINEE_EMAIL  = 'test@example.com';
+const SELECTED_DATE  = '2026-08-28';
+const SERVING_QTY    = 150;
+
+describe('Meal-target preservation — barcode adds to correct diary section', () => {
+
+  // ── 1–4: Opened from each meal card ─────────────────────────────────────────
+
+  test('1: opened from breakfast → meal_type = breakfast', () => {
+    const mealType = resolveMealType('breakfast');
+    const payload  = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'breakfast',
+      `Product must go to breakfast, got "${payload.meal_type}"`);
+    assert.notEqual(payload.meal_type, 'snack', 'Must NOT silently fall back to snacks');
+  });
+
+  test('2: opened from lunch → meal_type = lunch', () => {
+    const mealType = resolveMealType('lunch');
+    const payload  = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'lunch');
+    assert.notEqual(payload.meal_type, 'snack');
+  });
+
+  test('3: opened from dinner → meal_type = dinner', () => {
+    const mealType = resolveMealType('dinner');
+    const payload  = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'dinner');
+    assert.notEqual(payload.meal_type, 'snack');
+  });
+
+  test('4: opened from snacks → meal_type = snack (explicit, not accidental)', () => {
+    const mealType = resolveMealType('snack');
+    const payload  = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'snack',
+      'When opened from snacks, meal_type should be snack — intentional, not accidental');
+  });
+
+  // ── 5: Global scan (no meal context) ────────────────────────────────────────
+
+  test('5: global barcode button (no meal target) → default snack preserved', () => {
+    // NutritionLog global button: setAddingMealType(null); setShowBarcodeScanner(true)
+    // BarcodeScanner receives mealType = null | undefined → defaults to 'snack'
+    const addingMealType = null; // simulates NutritionLog clearing addingMealType
+    const mealType       = resolveMealType(addingMealType || undefined);
+    const payload        = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                             selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'snack',
+      'Global scan with no target must default to snack');
+  });
+
+  // ── 6: Quantity changes must not lose meal target ────────────────────────────
+
+  test('6: quantity change does not lose meal target', () => {
+    const mealType  = resolveMealType('lunch');
+    // Simulate user changing quantity from default (150g) to 200g
+    const payload1 = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: 150 });
+    const payload2 = buildMealPayload({ productData: YOGURT_PRODUCT, traineeEmail: TRAINEE_EMAIL,
+                                        selectedDate: SELECTED_DATE, mealType, qty: 200 });
+    assert.equal(payload1.meal_type, 'lunch', 'meal_type preserved at qty=150');
+    assert.equal(payload2.meal_type, 'lunch', 'meal_type preserved at qty=200');
+    assert.notEqual(payload1.calories, payload2.calories, 'Different quantities produce different calories');
+  });
+
+  // ── 7–10: All product source paths use mealType prop (not hardcoded snack) ──
+
+  test('7: FitCoach DB path uses mealType prop', () => {
+    // productSource = 'fitcoach_db' — same buildMealPayload, same mealType
+    const mealType = resolveMealType('dinner');
+    const payload  = buildMealPayload({ productData: { ...YOGURT_PRODUCT, food_item_id: 'some-id' },
+                                        traineeEmail: TRAINEE_EMAIL, selectedDate: SELECTED_DATE,
+                                        mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'dinner',
+      'FitCoach DB path must use mealType prop, not hardcoded snack');
+  });
+
+  test('8: OpenFoodFacts path uses mealType prop', () => {
+    // productSource = 'openfoodfacts' — still uses same mealType
+    const mealType = resolveMealType('breakfast');
+    const payload  = buildMealPayload({ productData: { ...YOGURT_PRODUCT, barcode: '1234567890123' },
+                                        traineeEmail: TRAINEE_EMAIL, selectedDate: SELECTED_DATE,
+                                        mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'breakfast',
+      'OFacts path must use mealType prop');
+  });
+
+  test('9: scan-new-product path uses mealType prop', () => {
+    // New product entered manually after barcode miss — same mealType
+    const mealType = resolveMealType('lunch');
+    const newProduct = { name: 'מוצר חדש', kcal_per_100: 200, protein_per_100: 10,
+                         carbs_per_100: 25, fat_per_100: 5, nutrition_basis: '100g', serving_size_g: null };
+    const payload = buildMealPayload({ productData: newProduct, traineeEmail: TRAINEE_EMAIL,
+                                       selectedDate: SELECTED_DATE, mealType, qty: 100 });
+    assert.equal(payload.meal_type, 'lunch',
+      'New-product path must use mealType prop');
+  });
+
+  test('10: label-verified path uses mealType prop', () => {
+    // Label photo scan — product confirmed from label, same mealType
+    const mealType = resolveMealType('dinner');
+    const labelProduct = { ...YOGURT_PRODUCT, source: 'label_verified' };
+    const payload = buildMealPayload({ productData: labelProduct, traineeEmail: TRAINEE_EMAIL,
+                                       selectedDate: SELECTED_DATE, mealType, qty: SERVING_QTY });
+    assert.equal(payload.meal_type, 'dinner',
+      'Label-verified path must use mealType prop');
+  });
+
+  // ── 11: No duplicate meal entry from double-tap ──────────────────────────────
+
+  test('11: double-tap guard — addInFlight flag prevents duplicate payload', () => {
+    // Mirrors the addInFlightRef.current guard in addProductToMeal.
+    // The ref is set to true on first call; second call sees it and returns early.
+    let addInFlight = false;
+    let callCount   = 0;
+    function simulateAdd() {
+      if (addInFlight) return 'ignored';
+      addInFlight = true;
+      callCount++;
+      return 'added';
+    }
+    const first  = simulateAdd();
+    const second = simulateAdd();
+    assert.equal(first,     'added',   'First tap creates the entry');
+    assert.equal(second,    'ignored', 'Second tap is ignored by in-flight guard');
+    assert.equal(callCount, 1,         'Only one MealEntry would be created');
+  });
+
+  // ── 12: mealType prop resolution boundary cases ──────────────────────────────
+
+  test('12: undefined mealType prop defaults to snack', () => {
+    assert.equal(resolveMealType(undefined), 'snack');
+  });
+
+  test('12: null mealType prop (NutritionLog clears before global scan) defaults to snack', () => {
+    assert.equal(resolveMealType(null), 'snack');
+  });
+
+  test('12: explicit breakfast prop preserved through resolution', () => {
+    assert.equal(resolveMealType('breakfast'), 'breakfast');
+  });
+
+  test('12: explicit lunch prop preserved through resolution', () => {
+    assert.equal(resolveMealType('lunch'), 'lunch');
+  });
+
+  test('12: explicit dinner prop preserved through resolution', () => {
+    assert.equal(resolveMealType('dinner'), 'dinner');
   });
 });

@@ -124,7 +124,10 @@ function rotateCanvasFrame(sourceCanvas, degrees) {
   return canvas;
 }
 
-export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDate }) {
+// mealType: the diary section to add the product to ('breakfast'|'lunch'|'dinner'|'snack').
+// Callers that open the scanner from a specific meal card MUST pass this prop.
+// If omitted (global barcode button with no meal context), defaults to 'snack'.
+export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDate, mealType = 'snack' }) {
   const scannerRef = useRef(null);          // html5-qrcode instance (fallback only)
   const zxingControlsRef = useRef(null);    // @zxing/browser IScannerControls (primary)
   const scannerEngineRef = useRef(null);    // 'zxing' | 'html5-qrcode' | null
@@ -1381,7 +1384,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
         user_id:             user?.id,
         trainee_email:       traineeEmail,
         date:                selectedDate || new Date().toISOString().split('T')[0],
-        meal_type:           'snack',
+        meal_type:           mealType,   // preserved from the originating meal card
         food_name:           foodName,
         food_item_id:        productData.food_item_id || null,
         food_database_scope: productSource === 'fitcoach_db' ? 'global' : 'external',
@@ -1472,7 +1475,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
             originalItem: { name: foodName },
             correctedMeal: {
               food_name:        foodName,
-              meal_type:        'snack',
+              meal_type:        mealType,  // matches the MealEntry written above
               quantity:         qty,
               unit:             unitLabel,
               grams_equivalent: qty,
@@ -2769,29 +2772,69 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               </div>
             )}
 
-            {/* serving_basis selector — 100g vs 100ml */}
+            {/* serving_basis selector — 100g | 100ml | serving (מנה) */}
             <div>
-              <label className="text-white/60 text-xs block mb-1">בסיס ערכים</label>
+              <label className="text-white/60 text-xs block mb-1">ערכי התזונה הם לפי:</label>
               <div className="flex gap-2">
-                {['100g', '100ml'].map(basis => (
+                {[
+                  { key: '100g',    label: 'ל-100 גרם'   },
+                  { key: '100ml',   label: 'ל-100 מ"ל'  },
+                  { key: 'serving', label: 'מנה / יחידה' },
+                ].map(({ key, label }) => (
                   <button
-                    key={basis}
-                    onClick={() => setConfirmProduct(p => ({ ...p, serving_basis: basis }))}
+                    key={key}
+                    onClick={() => setConfirmProduct(p => ({ ...p, serving_basis: key }))}
                     className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      (confirmProduct.serving_basis || '100g') === basis
-                        ? 'bg-blue-600 border-blue-500 text-white'
+                      (confirmProduct.serving_basis || '100g') === key
+                        ? key === 'serving' ? 'bg-orange-600 border-orange-500 text-white' : 'bg-blue-600 border-blue-500 text-white'
                         : 'bg-slate-800 border-white/20 text-white/60 hover:bg-slate-700'
                     }`}
                   >
-                    {basis === '100g' ? 'ל-100 גרם' : 'ל-100 מ"ל'}
+                    {label}
                   </button>
                 ))}
               </div>
+              {(confirmProduct.serving_basis === 'serving') && (
+                <div className="mt-2 bg-orange-900/20 border border-orange-500/40 rounded-lg p-3 space-y-1">
+                  <p className="text-orange-300 text-xs font-semibold">
+                    ⚠ מנה / יחידה — הזן ערכים כפי שמופיעים על האריזה <strong>לכמות שצוינה</strong>
+                  </p>
+                  <p className="text-orange-200/70 text-[10px]">
+                    לדוגמה: גביע 200 גרם / 110 קל׳ → הזן 110 בשדה קלוריות, 200 בשדה גודל מנה.
+                    המערכת תחשב אוטומטית: 55 קל׳ ל-100 גרם.
+                  </p>
+                  {/* Live preview of derived per-100g */}
+                  {confirmProduct.serving_size_g && Number(confirmProduct.serving_size_g) > 0 && (() => {
+                    const s = Number(confirmProduct.serving_size_g);
+                    const k = Number(confirmProduct.kcal_per_100);
+                    const p = Number(confirmProduct.protein_per_100);
+                    const c = Number(confirmProduct.carbs_per_100);
+                    const f = Number(confirmProduct.fat_per_100);
+                    const per = (v) => v > 0 ? Math.round((v / s) * 100 * 10) / 10 : 0;
+                    return (
+                      <div className="bg-green-900/20 border border-green-500/30 rounded p-2 text-[10px] font-mono text-green-300">
+                        יחושב ל-100 גרם:
+                        {k > 0 && <span className="mr-2">{per(k)} קל׳</span>}
+                        {p > 0 && <span className="mr-2">{per(p)}ג׳ חלבון</span>}
+                        {c > 0 && <span className="mr-2">{per(c)}ג׳ פחמ׳</span>}
+                        {f > 0 && <span className="mr-2">{per(f)}ג׳ שומן</span>}
+                      </div>
+                    );
+                  })()}
+                  {!confirmProduct.serving_size_g && (
+                    <p className="text-red-400 text-[10px] font-semibold">⚠ נדרש גודל מנה (שדה גודל מנה ג׳/מ"ל)</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Heading for extraction context */}
             {(learnStep === 'extracting' || learnStep === 'verify') && (
-              <p className="text-white/40 text-xs">ערכים שנקראו מהתווית ל-{(confirmProduct.serving_basis || '100g') === '100ml' ? '100 מ"ל' : '100 גרם'}</p>
+              <p className="text-white/40 text-xs">
+                {confirmProduct.serving_basis === 'serving'
+                  ? 'ערכים שנקראו מהתווית למנה — המערכת תנרמל ל-100 גרם לפני שמירה'
+                  : `ערכים שנקראו מהתווית ל-${(confirmProduct.serving_basis || '100g') === '100ml' ? '100 מ"ל' : '100 גרם'}`}
+              </p>
             )}
 
             {/* Uncertain fields banner — shown when cross-validation found suspicious values */}
@@ -2808,7 +2851,8 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
 
             {/* Nutrition fields — labels adapt to serving_basis */}
             {(() => {
-              const basis = (confirmProduct.serving_basis || '100g') === '100ml' ? '100מ"ל' : '100ג׳';
+              const isServingBasis = (confirmProduct.serving_basis === 'serving');
+              const basis = isServingBasis ? 'למנה' : (confirmProduct.serving_basis || '100g') === '100ml' ? '100מ"ל' : '100ג׳';
               const uncertainSet = new Set(confirmProduct.uncertain_fields || []);
               // Map between form keys and extraction field names
               const fieldUncertainMap = {
@@ -2821,14 +2865,15 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 { key: 'name_he',         label: 'שם בעברית (תצוגה)',    type: 'text'   },
                 { key: 'name',            label: 'שם מקורי/אנגלית',       type: 'text'   },
                 { key: 'brand',           label: 'מותג',                  type: 'text'   },
-                { key: 'kcal_per_100',       label: `קלוריות (${basis})`,          type: 'number' },
-                { key: 'protein_per_100',   label: `חלבון (${basis})`,            type: 'number' },
-                { key: 'carbs_per_100',     label: `פחמימות (${basis})`,          type: 'number' },
-                { key: 'fat_per_100',       label: `שומן (${basis})`,             type: 'number' },
-                { key: 'serving_size_g',    label: 'גודל מנה (ג׳/מ"ל)',           type: 'number' },
+                { key: 'kcal_per_100',       label: `קלוריות (${basis})`,  type: 'number' },
+                { key: 'protein_per_100',    label: `חלבון (${basis})`,    type: 'number' },
+                { key: 'carbs_per_100',      label: `פחמימות (${basis})`,  type: 'number' },
+                { key: 'fat_per_100',        label: `שומן (${basis})`,     type: 'number' },
+                { key: 'serving_size_g',     label: isServingBasis ? 'גודל מנה (ג׳/מ"ל) — נדרש' : 'גודל מנה (ג׳/מ"ל)', type: 'number' },
                 { key: 'serving_unit_name_he', label: 'יחידת מנה', type: 'text' },
               ].map(({ key, label, type }) => {
                 const isUncertain = fieldUncertainMap[key] === true;
+                const isServingRequired = isServingBasis && key === 'serving_size_g';
                 const isEmpty = (confirmProduct[key] ?? '') === '';
                 // serving_unit_name_he: smart chips instead of plain text input
                 if (key === 'serving_unit_name_he') {
@@ -2870,20 +2915,29 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 }
                 return (
                   <div key={key}>
-                    <label className={`text-xs block mb-1 ${isUncertain ? 'text-orange-400' : 'text-white/60'}`}>
+                    <label className={`text-xs block mb-1 ${
+                      isServingRequired ? 'text-red-400 font-semibold'
+                        : isUncertain ? 'text-orange-400'
+                        : 'text-white/60'
+                    }`}>
                       {label}
-                      {isUncertain && <span className="ml-1 text-[10px] text-orange-400/80">⚠ לא נקרא בוודאות — יש לבדוק</span>}
+                      {isUncertain      && <span className="ml-1 text-[10px] text-orange-400/80">⚠ לא נקרא בוודאות — יש לבדוק</span>}
+                      {isServingRequired && !confirmProduct.serving_size_g && (
+                        <span className="ml-1 text-[10px] text-red-400">⚠ נדרש לחישוב ל-100 גרם</span>
+                      )}
                     </label>
                     <input
                       type={type}
                       value={confirmProduct[key] ?? ''}
                       onChange={e => setConfirmProduct(p => ({ ...p, [key]: e.target.value }))}
                       className={`w-full text-white rounded-lg px-3 py-2 text-sm focus:outline-none ${
-                        isUncertain
-                          ? 'bg-orange-900/20 border border-orange-500/60 focus:border-orange-400'
-                          : isEmpty && type === 'number' && ['kcal_per_100','protein_per_100','carbs_per_100','fat_per_100'].includes(key)
-                            ? 'bg-slate-800 border border-yellow-500/40 focus:border-blue-400'
-                            : 'bg-slate-800 border border-white/20 focus:border-blue-400'
+                        isServingRequired && !confirmProduct.serving_size_g
+                          ? 'bg-red-900/20 border border-red-500/60 focus:border-red-400'
+                          : isUncertain
+                            ? 'bg-orange-900/20 border border-orange-500/60 focus:border-orange-400'
+                            : isEmpty && type === 'number' && ['kcal_per_100','protein_per_100','carbs_per_100','fat_per_100'].includes(key)
+                              ? 'bg-slate-800 border border-yellow-500/40 focus:border-blue-400'
+                              : 'bg-slate-800 border border-white/20 focus:border-blue-400'
                       }`}
                       placeholder={isUncertain ? 'בדוק/י מול האריזה' : type === 'number' ? '0' : label}
                     />
@@ -2913,7 +2967,13 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 ביטול
               </Button>
               <Button
-                disabled={(!confirmProduct.name && !confirmProduct.name_he) || confirmProduct.kcal_per_100 === '' || loading}
+                disabled={
+                  (!confirmProduct.name && !confirmProduct.name_he) ||
+                  confirmProduct.kcal_per_100 === '' ||
+                  // When basis='serving', serving_size_g is required for normalization
+                  (confirmProduct.serving_basis === 'serving' && !confirmProduct.serving_size_g) ||
+                  loading
+                }
                 onClick={async () => {
                   setLoading(true);
                   setError(null);
@@ -2968,19 +3028,24 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       const savedProduct = saveRes.data.product;
                       // Display name prefers name_he from DB → what was just saved.
                       const displayName = savedProduct.name_he || savedProduct.name || nameHe || nameEn;
-                      console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id, 'display=', displayName);
+                      console.log('[BC] SAVE_PRODUCT_OK id=', savedProduct.id, 'display=', displayName,
+                        'kcal_per_100=', savedProduct.kcal_per_100, '(was entered:', kcalNum, 'basis:', saveNutritionBasis, ')');
+                      // CRITICAL: use nutrition values from the SAVED product (after server normalization),
+                      // NOT from the form state. When basis='serving', the backend normalized
+                      // kcal_per_100 from per-serving to per-100g before storing.
+                      // Using kcalNum here would re-introduce the corruption.
                       setProductData({
                         food_item_id:          savedProduct.id,
                         name:                  displayName,
                         brand:                 confirmProduct.brand || '',
                         barcode:               saveBarcode,
-                        kcal_per_100:          kcalNum,
-                        protein_per_100:       confirmProduct.protein_per_100 !== '' ? Number(confirmProduct.protein_per_100 ?? 0) : 0,
-                        carbs_per_100:         confirmProduct.carbs_per_100   !== '' ? Number(confirmProduct.carbs_per_100   ?? 0) : 0,
-                        fat_per_100:           confirmProduct.fat_per_100     !== '' ? Number(confirmProduct.fat_per_100     ?? 0) : 0,
-                        serving_size_g:        confirmProduct.serving_size_g ? Number(confirmProduct.serving_size_g) : null,
-                        serving_unit_name_he:  confirmProduct.serving_unit_name_he?.trim() || null,
-                        nutrition_basis:       saveNutritionBasis,
+                        kcal_per_100:          Number(savedProduct.kcal_per_100),
+                        protein_per_100:       Number(savedProduct.protein_per_100 ?? 0),
+                        carbs_per_100:         Number(savedProduct.carbs_per_100   ?? 0),
+                        fat_per_100:           Number(savedProduct.fat_per_100     ?? 0),
+                        serving_size_g:        savedProduct.serving_size_g  || null,
+                        serving_unit_name_he:  savedProduct.serving_unit_name_he || null,
+                        nutrition_basis:       savedProduct.nutrition_basis  || '100g',
                       });
                       setProductSource('fitcoach_db');
                       setVerifyConflicts(null);

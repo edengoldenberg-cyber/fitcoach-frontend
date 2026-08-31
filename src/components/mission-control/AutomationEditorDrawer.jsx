@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import MessageVariationEditor from './MessageVariationEditor';
 import FollowUpEditor from './FollowUpEditor';
+import { resolveSaveEnabled, validateAutomation, describeSaveOutcome } from './automationSaveLogic';
 
 // ── Trigger meta ───────────────────────────────────────────────────────────────
 const TRIGGER_META = {
@@ -213,6 +214,40 @@ function MemberPicker({ coachEmail, selectedIds, onChange, mode }) {
         </div>
       </div>
 
+      {/* Selected member chips — always visible, unaffected by search */}
+      {selectedSet.size > 0 && members.length > 0 && (() => {
+        const chips = members.filter(m => selectedSet.has(m.arbox_user_id));
+        const LIMIT = 10;
+        const shown = chips.slice(0, LIMIT);
+        const extra = chips.length - LIMIT;
+        return (
+          <div className="px-3 pt-2.5 pb-2 border-t border-teal-100 bg-teal-50/40">
+            <p className="text-[10px] font-semibold text-teal-600 uppercase tracking-wide mb-1.5">
+              {chips.length} {mode === 'selected' ? 'נבחרו' : 'מוחרגים'}
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {shown.map(m => (
+                <span key={m.arbox_user_id}
+                  className="inline-flex items-center gap-1 text-xs rounded-full px-2.5 py-0.5 bg-white border border-teal-300 text-teal-800 font-medium shadow-sm max-w-[180px]">
+                  <span className="truncate">{m.first_name} {m.last_name}</span>
+                  <button
+                    type="button"
+                    onClick={() => toggleOne(m.arbox_user_id)}
+                    className="flex-shrink-0 text-teal-400 hover:text-red-500 transition-colors font-bold leading-none"
+                    aria-label={`הסר ${m.first_name} ${m.last_name}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {extra > 0 && (
+                <span className="text-xs text-slate-400 self-center">+{extra} נוספים</span>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Member list */}
       <div className="max-h-64 overflow-y-auto divide-y divide-slate-100 border-t border-slate-100">
         {isLoading ? (
@@ -311,23 +346,43 @@ export default function AutomationEditorDrawer({
       ? JSON.stringify(form.follow_up_config) : null,
   });
 
+  // Maps the pure validator's scrollKey → the matching section ref.
+  const SCROLL_REFS = { when: whenRef, who: whoRef, what: whatRef, then: thenRef };
+
+  // Thin wrapper over the pure validator (automationSaveLogic) — attaches a
+  // scrollRef so a failed check can focus the offending section.
+  const validate = (activating) => {
+    const res = validateAutomation(form, activating);
+    return res.ok ? res : { ...res, scrollRef: SCROLL_REFS[res.scrollKey] };
+  };
+
+  // Live activation readiness — only meaningful while the switch is ON.
+  // Drives the inline hint shown next to the Section-1 enable switch.
+  const activationCheck = form.enabled ? validate(true) : { ok: true };
+
+  // Single save path. The Section-1 switch (form.enabled) is the ONLY thing that
+  // decides the enabled state — no button label or action ever flips it. Full
+  // activation validation runs whenever the record will be persisted enabled,
+  // BEFORE the write. A disabled draft only needs a name.
   const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('נא להזין שם לאוטומציה'); return; }
-    const enabledVariants = (form.message_variants || []).filter(v => v.enabled && v.text?.trim());
-    if (!form.message_template.trim() && !enabledVariants.length) {
-      toast.error('נא להזין תוכן הודעה'); return;
+    const willBeEnabled = resolveSaveEnabled(form);
+    const v = validate(willBeEnabled);
+    if (!v.ok) {
+      toast.error(v.message);
+      if (v.scrollRef) scrollTo(v.scrollRef);
+      return;
     }
     setSaving(true);
     try {
       const payload = buildPayload();
+      payload.enabled = willBeEnabled; // explicit: mirrors form.enabled, never overridden by the action
       delete payload.id; delete payload.created_at; delete payload.updated_at; delete payload.last_run_at;
       if (isNew) {
         await base44.entities.WhatsAppAutomation.create(payload);
-        toast.success('אוטומציה נוצרה ✅');
       } else {
         await base44.entities.WhatsAppAutomation.update(automation.id, payload);
-        toast.success('שינויים נשמרו ✅');
       }
+      toast.success(describeSaveOutcome(form, isNew));
       onSaved?.();
       onClose();
     } catch (e) {
@@ -379,7 +434,7 @@ export default function AutomationEditorDrawer({
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex" dir="rtl">
+    <div className="fixed inset-0 z-[200] flex" dir="rtl">
       {/* Backdrop */}
       <div className="flex-1 bg-black/40" onClick={onClose} />
 
@@ -439,7 +494,8 @@ export default function AutomationEditorDrawer({
                   placeholder="לדוגמה: תזכורת חזרה אחרי 7 ימים" className="text-sm" dir="rtl" />
               </div>
 
-              {/* Active toggle */}
+              {/* Active toggle — this switch is the single control for the
+                  automation's enabled state. Saving never changes it on its own. */}
               <div className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 bg-slate-50">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
@@ -448,11 +504,20 @@ export default function AutomationEditorDrawer({
                   <p className="text-xs text-slate-500 mt-0.5">
                     {form.enabled
                       ? 'הודעות יישלחו אוטומטית לפי הגדרות הטריגר'
-                      : 'הודעות לא יישלחו עד להפעלה'}
+                      : 'הודעות לא יישלחו עד שתפעילו את המתג הזה'}
                   </p>
                 </div>
                 <Switch checked={form.enabled} onCheckedChange={v => update('enabled', v)} />
               </div>
+
+              {/* Activation blockers — shown only while the switch is ON and the
+                  form is not yet ready to be saved as active. */}
+              {form.enabled && !activationCheck.ok && (
+                <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>{activationCheck.message}. אפשר גם לכבות את המתג ולשמור כטיוטה.</span>
+                </div>
+              )}
 
               {/* Trigger card */}
               <div className="rounded-xl border border-slate-200 overflow-hidden">
@@ -467,7 +532,7 @@ export default function AutomationEditorDrawer({
                     <SelectTrigger className="text-sm">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent dir="rtl">
+                    <SelectContent dir="rtl" className="z-[210]">
                       {Object.entries(TRIGGER_META).map(([val, meta]) => (
                         <SelectItem key={val} value={val}>
                           <span className="flex items-center gap-2">{meta.icon} {meta.label}</span>
@@ -632,26 +697,52 @@ export default function AutomationEditorDrawer({
             </div>
           )}
 
-          <div className="h-4" />
+          <div className="h-8" />
         </div>
 
-        {/* ── Sticky footer ────────────────────────────────────── */}
-        <div className="border-t border-slate-200 px-5 py-3.5 flex items-center gap-4 flex-shrink-0 bg-white shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-          {isDirty ? (
-            <span className="text-xs text-amber-600 flex items-center gap-1.5 flex-shrink-0">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
-              יש שינויים שלא נשמרו
-            </span>
-          ) : (
-            !isNew && <span className="text-xs text-slate-400 flex-shrink-0">אין שינויים</span>
-          )}
-          <div className="flex gap-3 mr-auto">
-            <Button variant="outline" onClick={onClose} className="min-w-[80px]">ביטול</Button>
+        {/* ── Sticky action footer ──────────────────────────────── */}
+        <div className="border-t border-slate-200 px-5 py-4 flex items-center gap-3 flex-shrink-0 bg-white shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+          {/* Resulting state + dirty indicator. The save button never changes the
+              enabled state on its own — it only persists the switch value. */}
+          <div className="flex-1 min-w-0 space-y-1">
+            <p className="text-xs font-medium flex items-center gap-1.5">
+              {form.enabled ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                  <span className="text-green-700">תישמר כאוטומציה פעילה</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" />
+                  <span className="text-slate-500">תישמר ככבויה (טיוטה)</span>
+                </>
+              )}
+            </p>
+            {isDirty ? (
+              <span className="text-[11px] text-amber-600 flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+                יש שינויים שלא נשמרו
+              </span>
+            ) : (
+              !isNew && <span className="text-[11px] text-slate-400">אין שינויים</span>
+            )}
+          </div>
+
+          {/* Single save action. Enabled state is controlled only by the switch
+              in section 1 — deliberately no separate draft/activate buttons. */}
+          <div className="flex gap-2.5 flex-shrink-0">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              disabled={saving}
+              className="text-sm text-slate-600 border-slate-300 hover:bg-slate-50 min-w-[88px]">
+              ביטול
+            </Button>
             <Button
               onClick={handleSave}
               disabled={saving || (!isNew && !isDirty)}
-              className="min-w-[150px] text-white gap-2"
-              style={{ backgroundColor: (saving || (!isNew && !isDirty)) ? '#cbd5e1' : '#79DBD6' }}>
+              className="text-sm text-white font-semibold gap-2 min-w-[170px] shadow-sm"
+              style={{ backgroundColor: (saving || (!isNew && !isDirty)) ? '#94a3b8' : (form.enabled ? '#10b981' : '#0f766e') }}>
               <Save className="w-4 h-4" />
               {saving ? 'שומר...' : isNew ? 'צור אוטומציה' : 'שמור שינויים'}
             </Button>

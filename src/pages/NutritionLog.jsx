@@ -765,7 +765,12 @@ export default function NutritionLog() {
             </Button>
             <Button
               data-testid="open-barcode-scanner"
-              onClick={() => setShowBarcodeScanner(true)}
+              onClick={() => {
+                // Global scan: clear any stale meal target so the product defaults
+                // to snack (the BarcodeScanner default), not a previous meal card.
+                setAddingMealType(null);
+                setShowBarcodeScanner(true);
+              }}
               className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg text-xs px-1"
             >
               <ScanBarcode className="w-3.5 h-3.5 mr-0.5 flex-shrink-0" />
@@ -835,7 +840,7 @@ export default function NutritionLog() {
                         per100_protein: food.per100_protein,
                         per100_carbs: food.per100_carbs,
                         per100_fat: food.per100_fat,
-                        meal_type: 'snack'
+                        meal_type: addingMealType || 'snack'
                       });
                       setBarcodeSearchResult(null);
                       setShowMealDialog(true);
@@ -1164,7 +1169,9 @@ export default function NutritionLog() {
        />
        {/* BarcodeScanner — reuses existing Dialog component.
            traineeEmail uses trainee.user_email so CoachAsTrainee writes to the
-           preview trainee's account, not the logged-in coach's account. */}
+           preview trainee's account, not the logged-in coach's account.
+           mealType preserves the originating meal card so the product lands in
+           the correct diary section (breakfast/lunch/dinner/snack). */}
        <BarcodeScanner
          open={showBarcodeScanner}
          onClose={() => {
@@ -1173,6 +1180,7 @@ export default function NutritionLog() {
          }}
          traineeEmail={trainee?.user_email || user?.email}
          selectedDate={dateStr}
+         mealType={addingMealType || 'snack'}
        />
        </div>
       </RouteGuard>
