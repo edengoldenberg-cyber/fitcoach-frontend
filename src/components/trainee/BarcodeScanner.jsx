@@ -1228,55 +1228,39 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
       setLoading(true);
       setDebugInfo(prev => ({ ...prev, decodeMode: 'image' }));
 
-      // הצגת preview
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        setImagePreview(event.target.result);
-      };
-      reader.readAsDataURL(file);
+      // Show preview while decoding
+      const previewReader = new FileReader();
+      previewReader.onload = (event) => setImagePreview(event.target.result);
+      previewReader.readAsDataURL(file);
 
-      // barcode-reader-image is a persistent hidden div always in the Dialog DOM —
-      // it's safe to construct here regardless of mode.
+      // Ensure Html5Qrcode instance exists for the fallback pass
       if (!scannerRef.current) {
         scannerRef.current = new Html5Qrcode('barcode-reader-image');
       }
 
-      // Timeout של 6 שניות
-      const timeoutPromise = new Promise((_, reject) => {
-        scanTimeoutRef.current = setTimeout(() => reject(new Error('Timeout')), 6000);
+      // V2 multi-pass decoder: full × 4 rotations → crop × 4 rotations → H5Q fallback
+      const { decodeBarcodeFromImage } = await import('@/lib/decodeBarcodeFromImage');
+      const barcode = await decodeBarcodeFromImage(file, {
+        html5QrcodeFallback: scannerRef.current,
       });
 
-      // showImage=false — no need to render to the hidden div
-      const decodePromise = scannerRef.current.scanFile(file, false);
-
-      const barcode = await Promise.race([decodePromise, timeoutPromise]);
-      
-      if (scanTimeoutRef.current) {
-        clearTimeout(scanTimeoutRef.current);
-        scanTimeoutRef.current = null;
-      }
-
-      console.log("BARCODE:", barcode);
       addLog('success', 'barcode', 'scan_success', { barcode });
       setLoading(false);
       setDebugInfo(prev => ({ ...prev, lastDetectedBarcode: barcode }));
       handleBarcodeDetected(barcode);
 
     } catch (err) {
-      if (scanTimeoutRef.current) {
-        clearTimeout(scanTimeoutRef.current);
-        scanTimeoutRef.current = null;
-      }
-
       setLoading(false);
+      const errType = err.type || 'not_found';
       setDebugInfo(prev => ({ ...prev, lastDecodeError: err.message }));
-      
-      addLog('error', 'barcode', 'scan_fail', {
-        reason: err.message === 'Timeout' ? 'timeout' : 'decode_failed'
-      });
-      
-      if (err.message === 'Timeout') {
-        setError('⏱️ לא הצלחנו לפענח ברקוד מהתמונה תוך 6 שניות.');
+      addLog('error', 'barcode', 'scan_fail', { reason: errType });
+
+      if (errType === 'heic') {
+        setError('❌ פורמט HEIC אינו נתמך. שמור/י את התמונה כ-JPG ונסה/י שוב.');
+      } else if (errType === 'timeout') {
+        setError('⏱️ לא הצלחנו לפענח ברקוד תוך הזמן הקצוב.');
+      } else if (errType === 'load_failed') {
+        setError('❌ לא ניתן לטעון את התמונה. נסה/י פורמט אחר.');
       } else {
         setError('❌ לא זוהה ברקוד בתמונה. ודא/י שהברקוד ברור ומואר היטב.');
       }
@@ -1876,7 +1860,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       onClick={toggleTorch}
                       variant="outline"
                       size="icon"
-                      className="border-white/30 text-white hover:bg-white/10 pointer-events-auto"
+                      className="bg-transparent border-white/30 text-white hover:bg-white/10 pointer-events-auto"
                     >
                       {torchEnabled ? <FlashlightOff className="w-5 h-5" /> : <Flashlight className="w-5 h-5" />}
                     </Button>
@@ -1884,14 +1868,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   <Button
                     onClick={() => setMode('manual')}
                     variant="outline"
-                    className="border-white/30 text-white hover:bg-white/10 pointer-events-auto"
+                    className="bg-transparent border-white/30 text-white hover:bg-white/10 pointer-events-auto"
                   >
                     הזנה ידנית
                   </Button>
                   <Button
                     onClick={async () => { await cleanup(); setMode('choose'); }}
                     variant="outline"
-                    className="border-white/30 text-white hover:bg-white/10 pointer-events-auto"
+                    className="bg-transparent border-white/30 text-white hover:bg-white/10 pointer-events-auto"
                   >
                     סגור
                   </Button>
@@ -2021,7 +2005,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                   <Button
                     onClick={() => setMode('manual')}
                     variant="outline"
-                    className="flex-1 border-white/30 text-white hover:bg-white/10"
+                    className="flex-1 bg-transparent border-white/30 text-white hover:bg-white/10"
                   >
                     הקלד/י ידנית
                   </Button>
@@ -2070,7 +2054,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               <Button
                 onClick={() => setMode('choose')}
                 variant="outline"
-                className="flex-1 border-white/30 text-white hover:bg-white/10"
+                className="flex-1 bg-transparent border-white/30 text-white hover:bg-white/10"
               >
                 חזור
               </Button>
@@ -2553,7 +2537,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     setMode('choose');
                   }}
                   variant="outline"
-                  className="border-white/30 text-white hover:bg-white/10"
+                  className="bg-transparent border-white/30 text-white hover:bg-white/10"
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
                   Clear
@@ -2565,7 +2549,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     alert('הדוח הועתק');
                   }}
                   variant="outline"
-                  className="border-white/30 text-white hover:bg-white/10"
+                  className="bg-transparent border-white/30 text-white hover:bg-white/10"
                 >
                   <Copy className="w-4 h-4 mr-2" />
                   Copy
@@ -2662,7 +2646,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     setLearnStep('manual-entry');
                     setConfirmProduct({ barcode: scannedBarcode || '', name_he: '', name: '', brand: '', kcal_per_100: '', protein_per_100: '', carbs_per_100: '', fat_per_100: '', serving_size_g: '', serving_basis: '100g' });
                     setMode('confirm-product');
-                  }} variant="outline" className="border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
+                  }} variant="outline" className="bg-transparent border-white/30 text-white hover:bg-white/10">הזן ידנית</Button>
                 </div>
 
                 {/* Admin/coach-only diagnostic panel for label extraction failures */}
@@ -3189,7 +3173,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
               <Button
                 onClick={handleClose}
                 variant="outline"
-                className="flex-1 border-white/30 text-white hover:bg-white/10"
+                className="flex-1 bg-transparent border-white/30 text-white hover:bg-white/10"
               >
                 סגור
               </Button>
