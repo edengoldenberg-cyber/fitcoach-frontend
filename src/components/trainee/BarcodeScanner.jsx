@@ -124,6 +124,15 @@ function rotateCanvasFrame(sourceCanvas, degrees) {
   return canvas;
 }
 
+// Returns true iff `v` represents a finite positive number suitable as a
+// serving size in grams/ml. Rejects "", "0", 0, negative, NaN, Infinity,
+// and non-numeric strings — all of which would cause divide-by-zero or
+// corrupt normalization when nutrition_basis='serving'.
+function isValidServingSize(v) {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0;
+}
+
 // mealType: the diary section to add the product to ('breakfast'|'lunch'|'dinner'|'snack').
 // Callers that open the scanner from a specific meal card MUST pass this prop.
 // If omitted (global barcode button with no meal context), defaults to 'snack'.
@@ -2954,8 +2963,9 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                 disabled={
                   (!confirmProduct.name && !confirmProduct.name_he) ||
                   confirmProduct.kcal_per_100 === '' ||
-                  // When basis='serving', serving_size_g is required for normalization
-                  (confirmProduct.serving_basis === 'serving' && !confirmProduct.serving_size_g) ||
+                  // When basis='serving', a finite positive serving_size_g is required.
+                  // isValidServingSize rejects "", "0", 0, negatives, NaN, Infinity.
+                  (confirmProduct.serving_basis === 'serving' && !isValidServingSize(confirmProduct.serving_size_g)) ||
                   loading
                 }
                 onClick={async () => {
@@ -2969,6 +2979,14 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                       return;
                     }
 
+                    // Independent handler guard — prevents sending an invalid
+                    // serving_size_g even if the button-disabled UI is bypassed.
+                    const saveNutritionBasis = confirmProduct.serving_basis || '100g';
+                    if (saveNutritionBasis === 'serving' && !isValidServingSize(confirmProduct.serving_size_g)) {
+                      setError('גודל המנה חייב להיות מספר חיובי (גדול מ-0) לחישוב ל-100 גרם');
+                      return;
+                    }
+
                     // Source reflects HOW the user confirmed the product data:
                     // 'verify'       → label_verified (rank 3.5): photographed label to correct known OFacts data
                     // 'extracting'   → user_learned  (rank 3):   AI extracted from label, user reviewed & confirmed
@@ -2976,7 +2994,7 @@ export default function BarcodeScanner({ open, onClose, traineeEmail, selectedDa
                     // All three outrank openfoodfacts (rank 2) and are protected against OFacts overwrite.
                     const confirmSource = learnStep === 'verify' ? 'label_verified' : 'user_learned';
                     const saveBarcode        = confirmProduct.barcode || scannedBarcode;
-                    const saveNutritionBasis = confirmProduct.serving_basis || '100g';
+                    // saveNutritionBasis declared above (needed for serving guard)
                     // Canonical display name: Hebrew if provided, else fall back to English/original.
                     const nameHe  = confirmProduct.name_he?.trim() || '';
                     const nameEn  = confirmProduct.name?.trim()    || nameHe;
