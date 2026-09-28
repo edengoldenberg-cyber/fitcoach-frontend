@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import { base44 } from '@/api/client';
+import { install as installSessionExpiryHandler } from '@/lib/sessionExpiryHandler';
 
 const AuthContext = createContext();
 
@@ -20,22 +21,11 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     checkAppState();
 
-    // When base44Client exhausts the refresh attempt (JWT expired + refresh failed),
-    // it dispatches this event. We redirect to login instead of leaving the user
-    // silently stuck inside a broken session (the "Sarah Attias" failure mode).
-    const onSessionExpired = () => {
-      console.warn('[AuthContext] session_expired event — redirecting to login');
-      setUser(null);
-      setIsAuthenticated(false);
-      try { localStorage.removeItem('fitcoach_token'); } catch { /* */ }
-      // Small delay so any in-flight state updates settle before navigation
-      setTimeout(() => {
-        window.location.href = '/LoginWithPassword';
-      }, 100);
-    };
-
-    window.addEventListener('fitcoach:session_expired', onSessionExpired);
-    return () => window.removeEventListener('fitcoach:session_expired', onSessionExpired);
+    // sessionExpiryHandler: handles fitcoach:session_expired events from base44Client.
+    // Performs a confirming auth.me() before redirecting — prevents false logouts
+    // on iOS when the camera return causes a transient refresh timeout.
+    const uninstall = installSessionExpiryHandler();
+    return uninstall;
   }, []);
 
   useEffect(() => {

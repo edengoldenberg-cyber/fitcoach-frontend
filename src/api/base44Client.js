@@ -26,19 +26,78 @@ let _accessToken = typeof localStorage !== 'undefined'
 // all waiters receive the same result.
 let _refreshInFlight = null;
 
+// ─── Transient vs definitive refresh failure ──────────────────────────────────
+// Transient: network failure, timeout, 429, 5xx — worth retrying, must NOT
+//            emit session_expired (prevents false logout on iOS camera return).
+// Definitive: 401, 403, other 4xx, or 200 with no usable token.
+export class RefreshTransientError extends Error {
+  constructor(msg) {
+    super(msg);
+    this.name = 'RefreshTransientError';
+  }
+}
+
+const REFRESH_TIMEOUT_MS = 8000;
+
+// _refreshOnce: one raw refresh attempt.
+// Returns the new access token string on success.
+// Returns null for definitive rejection (bad creds, no token).
+// Throws RefreshTransientError for transient failures.
+// NOTE: Promise.race timeout — no AbortController (iOS/SW incompatible).
+async function _refreshOnce() {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(
+      () => reject(new RefreshTransientError('refresh timeout')),
+      REFRESH_TIMEOUT_MS
+    )
+  );
+
+  let res;
+  try {
+    res = await Promise.race([
+      fetch(`${API_BASE}/api/auth/refresh`, { method: 'POST', credentials: 'include' }),
+      timeout,
+    ]);
+  } catch (e) {
+    if (e instanceof RefreshTransientError) throw e;
+    // Network / fetch failure
+    throw new RefreshTransientError(`network: ${e.message}`);
+  }
+
+  const { status } = res;
+
+  // Transient: rate-limited or server error — worth retrying
+  if (status === 429 || status >= 500) throw new RefreshTransientError(`http ${status}`);
+
+  // Definitive: any other non-OK (401, 403, other 4xx)
+  if (!res.ok) return null;
+
+  // HTTP 200: need a usable token
+  let data;
+  try { data = await res.json(); } catch { return null; }
+  return data?.access_token || null;
+}
+
 // ─── Session expiry notification ──────────────────────────────────────────────
-// Dispatched when refresh fails so AuthContext can redirect to login.
-// Components must NOT redirect themselves — only AuthContext does.
+// Dispatched when refresh definitively fails so sessionExpiryHandler can
+// confirm and redirect to login. Components must NOT redirect themselves.
 function _notifySessionExpired() {
   try {
-    // Don't redirect if already on a public auth page — avoids redirect loops
-    // when AuthContext's /me call gets 401 during the login flow itself.
     const isAuthPage = /\/(LoginWithPassword|AccessLink|SetPassword|ResetPassword|AccessCodeLogin)/i
       .test(window.location.pathname);
     if (!isAuthPage) {
       window.dispatchEvent(new CustomEvent('fitcoach:session_expired'));
     }
   } catch { /* SSR or non-browser env */ }
+}
+
+// ─── clearLocalSession ────────────────────────────────────────────────────────
+// Clears this module's in-memory token and the localStorage key it owns.
+// Does NOT touch other session state (pending_access_token, coachAsTrainee, etc.)
+// — those are AuthContext's responsibility.
+export function clearLocalSession() {
+  _accessToken = '';
+  try { localStorage.removeItem('fitcoach_token'); } catch { /* */ }
 }
 
 // ─── Core fetch helper ───────────────────────────────────────────────────────
@@ -81,6 +140,12 @@ async function apiFetch(method, path, body = null, extraHeaders = {}, signal = n
           credentials: 'include',
           body: body != null ? JSON.stringify(body) : undefined,
         });
+        // Refreshed token immediately rejected — definitive session expiry
+        if (retry.status === 401) {
+          _notifySessionExpired();
+          const errData = await retry.json().catch(() => ({}));
+          throw Object.assign(new Error('Unauthorized'), { status: 401, data: errData });
+        }
         if (!retry.ok) {
           const errData = await retry.json().catch(() => ({}));
           const err = Object.assign(new Error(errData.error || retry.statusText), {
@@ -91,8 +156,8 @@ async function apiFetch(method, path, body = null, extraHeaders = {}, signal = n
         }
         return retry.json();
       }
-      // Had a token, refresh failed — session is dead. Notify AuthContext.
-      _notifySessionExpired();
+      // _tryRefresh returned false; if failure was definitive, session_expired
+      // was already dispatched inside _tryRefresh → _notifySessionExpired.
     }
 
     const errData = await res.json().catch(() => ({}));
@@ -116,27 +181,42 @@ async function apiFetch(method, path, body = null, extraHeaders = {}, signal = n
 }
 
 async function _tryRefresh() {
-  // Deduplicate: if a refresh is already in flight, wait for it instead of
-  // sending a second request. This prevents rate-limit (429) hits when multiple
-  // API calls fail simultaneously on token expiry.
+  // Deduplicate: concurrent 401s share one refresh attempt so we don't hammer
+  // the rate limiter with 4-6 simultaneous POST /api/auth/refresh calls.
   if (_refreshInFlight) return _refreshInFlight;
 
   _refreshInFlight = (async () => {
     try {
-      const res = await fetch(`${API_BASE}/api/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!res.ok) return false;
-      const data = await res.json();
-      if (data.access_token) {
-        _accessToken = data.access_token;
-        try { localStorage.setItem('fitcoach_token', _accessToken); } catch { /* */ }
-        return true;
+      let token;
+
+      try {
+        token = await _refreshOnce();
+      } catch (e) {
+        if (e instanceof RefreshTransientError) {
+          // Retry once after 500ms — transient blips often resolve quickly
+          await new Promise(r => setTimeout(r, 500));
+          try {
+            token = await _refreshOnce();
+          } catch {
+            // Both attempts transient — fail silently; do NOT emit session_expired
+            // (returning false here lets the caller throw the original 401 without
+            // triggering a logout — the right behaviour for an iOS camera return)
+            return false;
+          }
+        } else {
+          return false;
+        }
       }
-      return false;
-    } catch {
-      return false;
+
+      if (token === null) {
+        // Definitive rejection (401/403/no-token) — notify so handler can confirm
+        _notifySessionExpired();
+        return false;
+      }
+
+      _accessToken = token;
+      try { localStorage.setItem('fitcoach_token', _accessToken); } catch { /* */ }
+      return true;
     } finally {
       _refreshInFlight = null;
     }

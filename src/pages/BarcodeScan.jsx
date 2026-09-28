@@ -43,6 +43,7 @@ export default function BarcodeScan() {
 
   const isAdmin = user?.role === 'admin';
   const returnTo = searchParams.get('returnTo') || 'NutritionLog';
+  const originatingMealType = searchParams.get('mealType') || null;
 
   useEffect(() => {
     return () => {
@@ -265,7 +266,9 @@ export default function BarcodeScan() {
   // CONTINUE TO PRODUCT SEARCH
   // ============================================
   const continueToProductSearch = () => {
-    navigate(createPageUrl(returnTo) + `?barcode=${detectedBarcode}`);
+    const params = new URLSearchParams({ barcode: detectedBarcode });
+    if (originatingMealType) params.set('mealType', originatingMealType);
+    navigate(createPageUrl(returnTo) + '?' + params.toString());
   };
 
   return (

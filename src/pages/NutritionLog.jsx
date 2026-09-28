@@ -44,6 +44,7 @@ import DuplicateFoodDialog from '@/components/trainee/DuplicateFoodDialog';
 import BarcodeScanner from '@/components/trainee/BarcodeScanner';
 import { batchUpdateNutritionMemory, normalizeFoodName, recordDeletedFoodInMemory, recordQuickFoodUse } from '@/components/trainee/nutritionLearning';
 import { buildCanonicalTraineeFields, getIsraelDateString, invalidateCoachTraineeSyncQueries, logSyncEvent, nutritionRecordMatchesTrainee } from '@/utils/nutritionSync';
+import { normalizeMealTarget } from '@/lib/mealTarget';
 
 // Module-level debounce queue for TraineeNutritionProfile updates.
 // Collects all MealEntry creates that arrive within 600ms (one logical meal event)
@@ -406,10 +407,14 @@ export default function NutritionLog() {
     setSearchParams(nextParams, { replace: true });
   }, [searchParams, setSearchParams]);
 
-  // Handle barcode search from URL parameter
+  // Handle barcode search from URL parameter (may carry mealType from BarcodeScan page)
   React.useEffect(() => {
     const barcode = searchParams.get('barcode');
     if (!barcode || !user?.email) return;
+
+    // Restore originating meal target forwarded by BarcodeScan page
+    const mealTypeParam = searchParams.get('mealType');
+    if (mealTypeParam) setAddingMealType(normalizeMealTarget(mealTypeParam));
 
     const searchBarcode = async () => {
       setBarcodeSearching(true);
@@ -457,9 +462,11 @@ export default function NutritionLog() {
         });
       } finally {
         setBarcodeSearching(false);
-        // Remove barcode from URL
-        searchParams.delete('barcode');
-        setSearchParams(searchParams, { replace: true });
+        // Remove barcode + mealType from URL after consuming them
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('barcode');
+        nextParams.delete('mealType');
+        setSearchParams(nextParams, { replace: true });
       }
     };
 
@@ -885,7 +892,11 @@ export default function NutritionLog() {
                     size="sm"
                     className="flex-1"
                     variant="outline"
-                    onClick={() => navigate(createPageUrl('BarcodeScan') + '?returnTo=NutritionLog')}
+                    onClick={() => {
+                      const ps = new URLSearchParams({ returnTo: 'NutritionLog' });
+                      if (addingMealType) ps.set('mealType', addingMealType);
+                      navigate(createPageUrl('BarcodeScan') + '?' + ps.toString());
+                    }}
                   >
                     נסה שוב
                   </Button>
@@ -1176,6 +1187,7 @@ export default function NutritionLog() {
          open={showBarcodeScanner}
          onClose={() => {
            setShowBarcodeScanner(false);
+           setAddingMealType(null); // don't leak stale target into a later scan
            queryClient.invalidateQueries({ queryKey: ['meals'] });
          }}
          traineeEmail={trainee?.user_email || user?.email}
