@@ -24,7 +24,7 @@ import { Badge }    from '@/components/ui/badge';
 import { Card }     from '@/components/ui/card';
 import {
   AlertCircle, CheckCircle2, Pause, Play, Trash2, Send,
-  RefreshCw, ShieldAlert, Zap, PackageOpen, Gauge,
+  RefreshCw, ShieldAlert, Zap, PackageOpen, Gauge, Ban,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -45,11 +45,13 @@ function StatusBadge({ paused }) {
 export default function WhatsAppKillSwitch() {
   const qc = useQueryClient();
 
-  const [discardConfirm,   setDiscardConfirm]   = useState(false);
-  const [releaseConfirm,   setReleaseConfirm]   = useState(null); // null | batchSize number
-  const [testPhone,        setTestPhone]         = useState('');
-  const [testMessage,      setTestMessage]       = useState('');
-  const [pauseReason,      setPauseReason]       = useState('');
+  const [discardConfirm,     setDiscardConfirm]     = useState(false);
+  const [releaseConfirm,     setReleaseConfirm]     = useState(null); // null | batchSize number
+  const [clearQueueConfirm,  setClearQueueConfirm]  = useState(false);
+  const [clearQueueResult,   setClearQueueResult]   = useState(null); // null | result object
+  const [testPhone,          setTestPhone]           = useState('');
+  const [testMessage,        setTestMessage]         = useState('');
+  const [pauseReason,        setPauseReason]         = useState('');
 
   // ── Status query ─────────────────────────────────────────────────────────
   const { data: statusRes, isLoading, refetch } = useQuery({
@@ -151,6 +153,36 @@ export default function WhatsAppKillSwitch() {
         refreshAll();
       } else {
         toast.error('שגיאה במחיקה: ' + (res?.error || 'unknown'));
+      }
+    },
+    onError: (e) => toast.error('שגיאה: ' + e.message),
+  });
+
+  // ── Clear All Pending Queue mutation ──────────────────────────────────────
+  // Safety-critical: soft-cancels ALL old sendable messages (not just held).
+  // Returns safe_to_reconnect=true only when verification confirms zero old
+  // sendable/in-flight/retryable messages remain.
+  const clearAllQueueMut = useMutation({
+    mutationFn: () => invoke('adminClearAllPendingQueue', { reason: 'Admin clear all pending queue' }),
+    onSuccess: (res) => {
+      setClearQueueConfirm(false);
+      if (res?.ok && res.data?.safe_to_reconnect) {
+        setClearQueueResult({ success: true, data: res.data });
+        toast.success(
+          `✅ התור נוקה בהצלחה — ${res.data.cancelled} הודעות בוטלו. ניתן לחבר מחדש את WhatsApp.`,
+          { duration: 10000 }
+        );
+        refreshAll();
+      } else if (res?.data) {
+        // Partial / in-flight warning
+        setClearQueueResult({ success: false, data: res.data });
+        toast.error(
+          `⚠️ ניקוי לא הושלם בבטחה — ${res.data.in_flight ?? 0} הודעות עדיין בתהליך. אין לחבר WhatsApp.`,
+          { duration: 12000 }
+        );
+        refreshAll();
+      } else {
+        toast.error('שגיאה בניקוי התור: ' + (res?.error || 'unknown'));
       }
     },
     onError: (e) => toast.error('שגיאה: ' + e.message),
@@ -462,6 +494,112 @@ export default function WhatsAppKillSwitch() {
         </Card>
 
       </div>
+
+      {/* ── Clear All Pending Queue (zero-send guarantee) ────────────────────── */}
+      <Card className="p-4 border-2 border-red-600 bg-red-50 space-y-3">
+        <div className="flex items-center gap-2 text-red-800 font-bold">
+          <Ban className="w-5 h-5 text-red-700" />
+          נקה תור הודעות — ביטול סופי
+        </div>
+        <p className="text-xs text-red-700">
+          מבטל לצמיתות את כל ההודעות הישנות שעלולות להישלח — כולל ממתינות, מוקפאות, מתוזמנות עתידיות, ובתהליך שליחה.
+          לא מוחק רשומות. היסטוריית שליחות נשמרת. לאחר ניקוי מוצלח, ניתן לחבר מחדש.
+        </p>
+        <div className="bg-amber-50 border border-amber-300 rounded px-3 py-2 text-xs text-amber-800">
+          ⚠️ פעולה זו שונה מ"מחיקת מוקפאות". היא מבטלת <strong>כל</strong> הודעה ישנה הניתנת לשליחה,
+          ללא תלות במצב השהייה.
+        </div>
+
+        {/* Pending / pickable count */}
+        <div className="flex items-center gap-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-red-700">{queuedCount}</div>
+            <div className="text-xs text-slate-500">הודעות בתור</div>
+          </div>
+          <div className="text-center">
+            <div className={`text-2xl font-bold ${pickable > 0 ? 'text-red-700' : 'text-green-700'}`}>{pickable}</div>
+            <div className="text-xs text-slate-500">ניתנות לאיסוף מיידי</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-700">{sendingCount}</div>
+            <div className="text-xs text-slate-500">בשליחה (in-flight)</div>
+          </div>
+        </div>
+
+        {/* Success result panel */}
+        {clearQueueResult?.success === true && (
+          <div className="rounded-lg border-2 border-green-400 bg-green-50 p-3 space-y-1">
+            <p className="text-sm font-bold text-green-800 text-center">✅ התור נוקה בהצלחה</p>
+            <p className="text-xs text-green-700 text-center">
+              בוטלו {clearQueueResult.data.cancelled} הודעות.
+              לא נותרו הודעות ישנות שיכולות להישלח.
+            </p>
+            <p className="text-xs text-green-700 font-bold text-center">
+              ניתן לחבר מחדש את WhatsApp.
+            </p>
+          </div>
+        )}
+
+        {/* Partial / failure result panel */}
+        {clearQueueResult?.success === false && (
+          <div className="rounded-lg border-2 border-orange-400 bg-orange-50 p-3 space-y-1">
+            <p className="text-sm font-bold text-orange-800 text-center">⚠️ ניקוי לא הושלם בבטחה</p>
+            <p className="text-xs text-orange-700 text-center">
+              בוטלו {clearQueueResult.data.cancelled} הודעות,
+              אך {clearQueueResult.data.in_flight} הודעות עדיין בתהליך.
+            </p>
+            <p className="text-xs text-red-700 font-bold text-center">
+              ⛔ אין לחבר מחדש את WhatsApp.
+            </p>
+          </div>
+        )}
+
+        {/* Confirmation dialog */}
+        {!clearQueueConfirm ? (
+          <Button
+            className="w-full bg-red-700 hover:bg-red-800 text-white font-bold"
+            disabled={clearAllQueueMut.isPending || queuedCount === 0}
+            onClick={() => { setClearQueueResult(null); setClearQueueConfirm(true); }}
+          >
+            {queuedCount === 0 ? 'אין הודעות לביטול' : 'נקה תור הודעות'}
+          </Button>
+        ) : (
+          <div className="border-2 border-red-500 rounded-lg p-4 bg-white space-y-3">
+            <p className="text-sm font-bold text-red-800 text-center">⛔ אישור נדרש — פעולה בלתי הפיכה</p>
+            <div className="text-xs text-slate-700 space-y-2 leading-relaxed" dir="rtl">
+              <p>כעת ממתינות <strong>{queuedCount}</strong> הודעות לשליחה.</p>
+              <p>
+                ניקוי התור יבטל לצמיתות את כל ההודעות הישנות שעדיין עשויות להישלח,
+                כולל הודעות שממתינות לניסיון חוזר.
+              </p>
+              <p>
+                הודעות שכבר נשלחו והיסטוריית השליחה לא יימחקו.
+              </p>
+              <p>
+                לאחר ניקוי מוצלח, חיבור WhatsApp מחדש לא ישלח אף הודעה מהתור הישן.
+              </p>
+              <p className="font-bold text-red-800">האם לנקות את כל תור ההודעות?</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                className="flex-1 bg-red-700 hover:bg-red-800 text-white text-sm font-bold"
+                disabled={clearAllQueueMut.isPending}
+                onClick={() => clearAllQueueMut.mutate()}
+              >
+                {clearAllQueueMut.isPending ? 'מנקה...' : 'נקה את כל התור'}
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1 text-sm"
+                disabled={clearAllQueueMut.isPending}
+                onClick={() => setClearQueueConfirm(false)}
+              >
+                ביטול
+              </Button>
+            </div>
+          </div>
+        )}
+      </Card>
 
       {/* ── Release Held (controlled batch) ──────────────────────────────────── */}
       {heldCount > 0 && (
