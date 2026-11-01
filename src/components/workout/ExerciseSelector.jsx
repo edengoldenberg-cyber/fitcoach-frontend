@@ -28,9 +28,11 @@ const SkeletonRow = () => (
 // Memoised exercise row
 const ExerciseRow = React.memo(function ExerciseRow({ exercise, onSelect }) {
   const nameHe = exercise?.name_he || exercise?.name || 'תרגיל ללא שם';
-  const muscle = exercise?.muscle_group_primary || exercise?.category || '';
+  // muscle_group is the correct schema field; muscle_group_primary is the pre-remapped alias
+  const muscle = exercise?.muscle_group || exercise?.muscle_group_primary || exercise?.category || '';
   const equipmentRaw = exercise?.equipment || [];
-  const equipFirst = Array.isArray(equipmentRaw) ? equipmentRaw[0] : equipmentRaw || '';
+  const equipFirst = Array.isArray(equipmentRaw) ? equipmentRaw[0] : (typeof equipmentRaw === 'string' ? equipmentRaw.split(',')[0].trim() : '');
+  const hasImage = !!exercise?.image_url;
 
   const handleSelect = useCallback(() => {
     onSelect(exercise);
@@ -42,7 +44,15 @@ const ExerciseRow = React.memo(function ExerciseRow({ exercise, onSelect }) {
       onSelect={handleSelect}
       className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-orange-50 data-[selected=true]:bg-orange-50 rounded-lg"
     >
-      <Dumbbell className="w-4 h-4 text-slate-400 shrink-0" />
+      {hasImage ? (
+        <img
+          src={exercise.image_url}
+          alt={nameHe}
+          className="w-8 h-8 rounded-md object-cover shrink-0"
+        />
+      ) : (
+        <Dumbbell className="w-4 h-4 text-slate-400 shrink-0" />
+      )}
       <div className="flex-1 min-w-0">
         <p className="font-medium text-slate-800 text-sm leading-tight">{nameHe}</p>
         <div className="flex gap-1.5 mt-0.5 flex-wrap">

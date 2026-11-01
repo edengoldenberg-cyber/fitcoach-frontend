@@ -342,48 +342,26 @@ function TraineeHomeContent() {
     ? todayTemplatesRaw.filter(t => t.id !== todayDailyWorkout.id)
     : todayTemplatesRaw;
 
+  // OnlineDailyWorkout entity no longer exists — replaced by GroupWorkoutSession.
+  // Show today's published group workout sessions (Open Gym) from the coach.
   const { data: onlineDailyWorkout } = useQuery({
-    queryKey: ['onlineDailyWorkout', user?.email, today],
+    queryKey: ['todayGroupSessions', trainee?.coach_email, today],
     queryFn: async () => {
-      const workouts = await base44.entities.OnlineDailyWorkout.filter({ trainee_email: user?.email, workout_date: today });
-      return workouts[0] || null;
+      if (!trainee?.coach_email) return null;
+      const sessions = await base44.entities.GroupWorkoutSession.filter({
+        coach_email: trainee.coach_email,
+        date: today,
+        status: 'published',
+      }).catch(() => []);
+      return sessions[0] || null;
     },
-    enabled: !!user?.email,
+    enabled: !!trainee?.coach_email,
   });
 
+  // Rotation programs not yet implemented — return null to avoid 404 errors.
   const { data: rotationSessionToday } = useQuery({
     queryKey: ['rotationSessionToday', user?.email, today],
-    queryFn: async () => {
-      
-      // Get active assignments
-      const assignments = await base44.entities.RotationAssignment.filter({ 
-        trainee_email: user?.email,
-        status: 'active'
-      });
-      
-      if (assignments.length === 0) return null;
-
-      // Get today's session instance
-      const sessions = await base44.entities.RotationSessionInstance.filter({
-        assignment_id: assignments[0].id,
-        date: today
-      });
-
-      if (sessions.length === 0) return null;
-
-      const session = sessions[0];
-
-      // Get exercises for this category
-      const exercises = await base44.entities.RotationCategoryExercise.filter({
-        category_id: session.category_id
-      });
-      
-      return {
-        ...session,
-        exercises: exercises.sort((a, b) => a.order_index - b.order_index),
-        assignment: assignments[0]
-      };
-    },
+    queryFn: async () => null, // Phase 5 — RotationProgram not yet implemented
     enabled: !!user?.email,
   });
 

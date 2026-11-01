@@ -82,7 +82,8 @@ const MainPage = mainPageKey && Pages[mainPageKey] ? Pages[mainPageKey] : null;
 // Without this, any logged-in trainee can navigate to e.g. /CoachDashboard.
 const COACH_ONLY_PAGES = new Set([
   'CoachDashboard', 'CoachAutomations', 'CoachDailyAlert', 'CoachDailyWorkout',
-  'CoachExternalMembers', 'CoachGroupWorkouts', 'CoachInsights', 'CoachNutrition',
+  'CoachExerciseLibrary', 'CoachExternalMembers', 'CoachGroupWorkouts', 'CoachInsights', 'CoachNutrition',
+  'CoachTrainingPrograms',
   'CoachRecommendedFoods', 'CoachReports', 'CoachSettings', 'CoachWorkouts',
   'ManageTrainees', 'MessagingCenter', 'MissionControl', 'WhatsAppAutomations',
   'WhatsAppManager', 'CreateDailyPersonal', 'CreateProgram', 'CreateRotationProgram',

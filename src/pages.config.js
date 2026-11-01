@@ -20,7 +20,9 @@ import CoachDailyAlert from './pages/CoachDailyAlert';
 import CoachDailyWorkout from './pages/CoachDailyWorkout';
 import CoachDashboard from './pages/CoachDashboard';
 import CoachExternalMembers from './pages/CoachExternalMembers';
+import CoachExerciseLibrary from './pages/CoachExerciseLibrary';
 import CoachGroupWorkouts from './pages/CoachGroupWorkouts';
+import CoachTrainingPrograms from './pages/CoachTrainingPrograms';
 import CoachInsights from './pages/CoachInsights';
 import CoachNutrition from './pages/CoachNutrition';
 import CoachRecommendedFoods from './pages/CoachRecommendedFoods';
@@ -67,6 +69,7 @@ import TraineeCard360 from './pages/TraineeCard360';
 import TraineeDailyWorkout from './pages/TraineeDailyWorkout';
 import TraineeGroupWorkouts from './pages/TraineeGroupWorkouts';
 import TraineeHome from './pages/TraineeHome';
+import TraineePrograms from './pages/TraineePrograms';
 import TraineeManagement from './pages/TraineeManagement';
 import TraineeNotifications from './pages/TraineeNotifications';
 import TraineeOnlineTraining from './pages/TraineeOnlineTraining';
@@ -105,7 +108,9 @@ export const PAGES = {
     "CoachDailyWorkout": CoachDailyWorkout,
     "CoachDashboard": CoachDashboard,
     "CoachExternalMembers": CoachExternalMembers,
+    "CoachExerciseLibrary": CoachExerciseLibrary,
     "CoachGroupWorkouts": CoachGroupWorkouts,
+    "CoachTrainingPrograms": CoachTrainingPrograms,
     "CoachInsights": CoachInsights,
     "CoachNutrition": CoachNutrition,
     "CoachRecommendedFoods": CoachRecommendedFoods,
@@ -154,6 +159,7 @@ export const PAGES = {
     "TraineeManagement": TraineeManagement,
     "TraineeNotifications": TraineeNotifications,
     "TraineeOnlineTraining": TraineeOnlineTraining,
+    "TraineePrograms": TraineePrograms,
     "TraineeOnlineWorkouts": TraineeOnlineWorkouts,
     "TraineeAnalytics": TraineeAnalytics,
     "TraineeProfile": TraineeProfile,

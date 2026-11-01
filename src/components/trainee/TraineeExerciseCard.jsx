@@ -78,6 +78,24 @@ export default function TraineeExerciseCard({
   return (
     <>
       <Card className={`card-premium ${isSaved ? 'border-2 border-green-400 bg-green-50' : ''}`}>
+        {/* Exercise image (full width, when available) */}
+        {exercise.image_url && (
+          <div
+            className="relative w-full h-40 overflow-hidden rounded-t-xl cursor-pointer"
+            onClick={() => {
+              // Open enlarged preview in a new tab / lightbox
+              const w = window.open('', '_blank');
+              w.document.write(`<img src="${exercise.image_url}" style="max-width:100%;max-height:100vh;display:block;margin:auto" />`);
+            }}
+          >
+            <img
+              src={exercise.image_url}
+              alt={exercise.exercise_name}
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent" />
+          </div>
+        )}
         <div className="mb-4">
           {/* Header with Remove Button */}
           <div className="flex justify-between items-start mb-3">

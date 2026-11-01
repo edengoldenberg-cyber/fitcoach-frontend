@@ -10,7 +10,6 @@ import { createPageUrl } from '@/utils';
 import { toast } from 'sonner';
 import AddWorkoutDialog from '../components/trainee/AddWorkoutDialog';
 import AddWorkoutFromPhoto from '../components/trainee/AddWorkoutFromPhoto';
-import ExerciseCardV2 from '../components/trainee/ExerciseCardV2';
 import WorkoutExerciseList from '../components/trainee/WorkoutExerciseList';
 import ExercisePickerSheet from '../components/trainee/ExercisePickerSheet';
 import WorkoutSessionBar from '../components/trainee/WorkoutSessionBar';
@@ -157,8 +156,9 @@ export default function WorkoutLog() {
     queryKey: ['allTraineeExercises', traineeWorkouts.map(w => w.id)],
     queryFn: async () => {
       if (!traineeWorkouts.length) return [];
-      
-      const exercisesPromises = traineeWorkouts.map(workout => 
+      // TraineeWorkoutExercise entity removed — return empty (exercises embedded in JSON field)
+      return [];
+      const exercisesPromises = traineeWorkouts.map(workout =>
         base44.entities.TraineeWorkoutExercise.filter({ trainee_workout_id: workout.id })
       );
       
@@ -173,12 +173,8 @@ export default function WorkoutLog() {
     queryFn: async () => {
       if (!allTraineeExercises.length) return [];
       
-      const setsPromises = allTraineeExercises.map(exercise => 
-        base44.entities.TraineeWorkoutSet.filter({ trainee_workout_exercise_id: exercise.id })
-      );
-      
-      const setsArrays = await Promise.all(setsPromises);
-      return setsArrays.flat();
+      // TraineeWorkoutSet entity removed — exercises are empty so this is unreachable
+      return [];
     },
     enabled: allTraineeExercises.length > 0,
   });
@@ -323,11 +319,8 @@ export default function WorkoutLog() {
     return weeks.size;
   }, [workouts]);
 
-  const { data: exerciseHistoryAll = [] } = useQuery({
-    queryKey: ['exerciseHistoryAll', user?.email],
-    queryFn: () => base44.entities.ExerciseHistory.filter({ trainee_email: user?.email }),
-    enabled: !!user?.email,
-  });
+  // ExerciseHistory entity removed — progress chart uses WorkoutSession fallback path below
+  const exerciseHistoryAll = [];
 
   const exerciseProgressData = useMemo(() => {
     if (!selectedExercise) return [];

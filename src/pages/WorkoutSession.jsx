@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+/**
+ * WorkoutSession — view and edit a completed or in-progress workout session.
+ * Uses WorkoutSession + embedded WorkoutSet records (no WorkoutExerciseLine dependency).
+ * Access: /WorkoutSession?id=<session_id>
+ */
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Plus, Minus, CheckCircle2, ChevronLeft } from 'lucide-react';
+import { ChevronLeft, Save, Dumbbell, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 export default function WorkoutSession() {
   const navigate = useNavigate();
@@ -15,298 +21,197 @@ export default function WorkoutSession() {
   const params = new URLSearchParams(window.location.search);
   const sessionId = params.get('id');
 
-  const [sets, setSets] = useState({});
+  // Local editable state: exerciseName → array of {weight, reps, set_number}
+  const [editableSets, setEditableSets] = useState({});
+  const [isDirty, setIsDirty] = useState(false);
 
-  const { data: session } = useQuery({
+  const { data: user } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
+  // WorkoutSession with embedded sets (buildInclude returns sets: true)
+  const { data: session, isLoading } = useQuery({
     queryKey: ['workoutSession', sessionId],
-    queryFn: async () => {
-      const sessions = await base44.entities.WorkoutSession.filter({ id: sessionId });
-      return sessions[0];
-    },
+    queryFn: () => base44.entities.WorkoutSession.get(sessionId),
     enabled: !!sessionId,
   });
 
-  const { data: lines = [] } = useQuery({
-    queryKey: ['sessionLines', sessionId],
-    queryFn: () => base44.entities.WorkoutExerciseLine.filter({ workout_session_id: sessionId }),
-    enabled: !!sessionId,
-  });
+  // Group sets by exercise_name for display
+  useEffect(() => {
+    if (!session?.sets) return;
+    const grouped = {};
+    for (const s of session.sets) {
+      const key = s.exercise_name || 'Unknown';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push({ ...s });
+    }
+    // Sort each exercise's sets by set_number
+    for (const key of Object.keys(grouped)) {
+      grouped[key].sort((a, b) => (a.set_number || 0) - (b.set_number || 0));
+    }
+    setEditableSets(grouped);
+    setIsDirty(false);
+  }, [session?.id]);
 
-  const { data: allSets = [] } = useQuery({
-    queryKey: ['sessionSets', lines.map(l => l.id)],
-    queryFn: async () => {
-      const setsPromises = lines.map(line =>
-        base44.entities.WorkoutSet.filter({ exercise_line_id: line.id })
-      );
-      const results = await Promise.all(setsPromises);
-      const flatSets = results.flat();
-      
-      // Initialize local state
-      const setsObj = {};
-      flatSets.forEach(set => {
-        if (!setsObj[set.exercise_line_id]) setsObj[set.exercise_line_id] = [];
-        setsObj[set.exercise_line_id].push(set);
-      });
-      setSets(setsObj);
-      
-      return flatSets;
-    },
-    enabled: lines.length > 0,
-  });
-
-  const { data: exercises = [] } = useQuery({
-    queryKey: ['exercises'],
-    queryFn: () => base44.entities.Exercise.list(),
-  });
-
-  const updateSet = (lineId, setIndex, field, value) => {
-    setSets(prev => {
-      const lineSets = [...(prev[lineId] || [])];
-      const setIdx = lineSets.findIndex(s => s.set_index === setIndex);
-      if (setIdx !== -1) {
-        lineSets[setIdx] = { ...lineSets[setIdx], [field]: value };
-      }
-      return { ...prev, [lineId]: lineSets };
+  const updateSet = (exerciseName, idx, field, value) => {
+    setEditableSets(prev => {
+      const updated = { ...prev };
+      updated[exerciseName] = [...(updated[exerciseName] || [])];
+      updated[exerciseName][idx] = { ...updated[exerciseName][idx], [field]: value };
+      return updated;
     });
+    setIsDirty(true);
   };
 
-  const addSet = async (lineId) => {
-    const lineSets = sets[lineId] || [];
-    const newSetIndex = lineSets.length + 1;
-    
-    const newSet = await base44.entities.WorkoutSet.create({
-      exercise_line_id: lineId,
-      set_index: newSetIndex,
-      weight: 0,
-      reps: 0
-    });
-
-    setSets(prev => ({
-      ...prev,
-      [lineId]: [...(prev[lineId] || []), newSet]
-    }));
-  };
-
-  const removeSet = async (lineId) => {
-    const lineSets = sets[lineId] || [];
-    if (lineSets.length <= 1) return;
-    
-    const lastSet = lineSets[lineSets.length - 1];
-    await base44.entities.WorkoutSet.delete(lastSet.id);
-    
-    setSets(prev => ({
-      ...prev,
-      [lineId]: prev[lineId].slice(0, -1)
-    }));
-  };
-
-  const saveWorkout = useMutation({
+  const saveMutation = useMutation({
     mutationFn: async () => {
-      for (const lineId in sets) {
-        for (const set of sets[lineId]) {
-          await base44.entities.WorkoutSet.update(set.id, {
-            weight: parseFloat(set.weight) || 0,
-            reps: parseInt(set.reps) || 0
-          });
-        }
+      const traineeEmail = session?.trainee_email || user?.email;
+      const date = session?.date || new Date().toISOString().slice(0, 10);
+
+      for (const [exerciseName, sets] of Object.entries(editableSets)) {
+        const validSets = sets.filter(s => (parseFloat(s.weight) > 0) || (parseInt(s.reps) > 0));
+        if (validSets.length === 0) continue;
+        await base44.functions.invoke('saveExerciseProgress', {
+          trainee_email: traineeEmail,
+          date,
+          exercise_name: exerciseName,
+          exercise_id: sets[0]?.exercise_id || null,
+          sets: validSets.map(s => ({
+            weight: parseFloat(s.weight) || 0,
+            reps: parseInt(s.reps) || 0,
+          })),
+        });
       }
-
-      // ── PHASE 3: mirror to ExerciseHistory after set saves ───────────
-      if (session) {
-        for (const line of lines) {
-          const lineSets = sets[line.id] || [];
-          const validSets = lineSets.filter(s => (parseFloat(s.weight) > 0) || (parseInt(s.reps) > 0));
-          if (validSets.length === 0) continue;
-
-          const exerciseName = getExerciseName(line).trim().toLowerCase();
-          const maxWeight = Math.max(...validSets.map(s => parseFloat(s.weight) || 0));
-          const avgReps = Math.round(validSets.reduce((sum, s) => sum + (parseInt(s.reps) || 0), 0) / validSets.length);
-          const setsJson = JSON.stringify(validSets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })));
-          const workoutDate = session.date;
-
-          try {
-            const existing = await base44.entities.ExerciseHistory.filter({
-              trainee_email: session.trainee_email,
-              exercise_name: exerciseName,
-              date: workoutDate
-            });
-            if (existing.length > 0) {
-              await base44.entities.ExerciseHistory.update(existing[0].id, {
-                sets: validSets.length, reps: avgReps, weight: maxWeight, notes: setsJson
-              });
-            } else {
-              await base44.entities.ExerciseHistory.create({
-                trainee_email: session.trainee_email,
-                exercise_name: exerciseName,
-                date: workoutDate,
-                sets: validSets.length, reps: avgReps, weight: maxWeight, notes: setsJson
-              });
-            }
-          } catch (histErr) {
-            console.error(`⚠️ ExerciseHistory upsert failed for "${exerciseName}":`, histErr.message);
-          }
-        }
-      }
-      // ── END PHASE 3 ──────────────────────────────────────────────────
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['sessionSets'] });
-      alert('✅ האימון נשמר בהצלחה');
-    }
-  });
-
-  const completeWorkout = useMutation({
-    mutationFn: async () => {
-      await saveWorkout.mutateAsync();
-      await base44.entities.WorkoutSession.update(sessionId, {
-        status: 'completed'
-      });
+      queryClient.invalidateQueries({ queryKey: ['workoutSession', sessionId] });
+      queryClient.invalidateQueries({ queryKey: ['workoutSessions'] });
+      setIsDirty(false);
+      toast.success('האימון נשמר');
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workoutSession'] });
-      alert('🎉 אימון הושלם!');
-      navigate(createPageUrl('WorkoutLog'));
-    }
+    onError: (err) => toast.error(`שגיאה בשמירה: ${err.message}`),
   });
 
-  const getExerciseName = (line) => {
-    if (line.custom_name) return line.custom_name;
-    const exercise = exercises.find(e => e.id === line.exercise_id);
-    return exercise?.name_he || 'תרגיל';
-  };
-
-  if (!session) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <p className="text-slate-500">טוען...</p>
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-orange-500 rounded-full animate-spin" />
       </div>
     );
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50 pb-20" dir="rtl">
-      <div className="max-w-4xl mx-auto p-4">
-        <Button
-          variant="ghost"
-          onClick={() => navigate(createPageUrl('WorkoutLog'))}
-          className="mb-4"
-        >
+  if (!session) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 p-6 text-center" dir="rtl">
+        <Dumbbell className="w-12 h-12 text-slate-300" />
+        <p className="text-slate-500 font-medium">אימון לא נמצא</p>
+        <Button variant="outline" onClick={() => navigate(createPageUrl('WorkoutLog'))}>
           <ChevronLeft className="w-4 h-4 ml-2" />
-          חזור
+          חזור ליומן
         </Button>
+      </div>
+    );
+  }
 
-        <div className="bg-white rounded-lg p-4 mb-4 shadow-sm">
-          <h1 className="text-2xl font-bold text-slate-800">{session.title}</h1>
-          <p className="text-sm text-slate-500">
-            {session.status === 'completed' ? '✅ הושלם' : '⏳ בתהליך'}
-          </p>
+  const exerciseNames = Object.keys(editableSets);
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-24" dir="rtl">
+      <div className="max-w-2xl mx-auto p-4">
+
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate(createPageUrl('WorkoutLog'))}>
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">{session.title || 'אימון'}</h1>
+            <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+              <Calendar className="w-3 h-3" />
+              {session.date ? format(new Date(session.date), 'dd/MM/yyyy') : ''}
+              <span className={`px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                session.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}>
+                {session.status === 'completed' ? '✅ הושלם' : '⏳ בתהליך'}
+              </span>
+            </div>
+          </div>
         </div>
 
-        <div className="space-y-4 mb-20">
-          {lines
-            .sort((a, b) => a.order_index - b.order_index)
-            .map((line, idx) => {
-              const lineSets = (sets[line.id] || []).sort((a, b) => a.set_index - b.set_index);
+        {/* Exercises */}
+        {exerciseNames.length === 0 ? (
+          <Card className="p-8 text-center">
+            <Dumbbell className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="text-slate-500">לא נרשמו תרגילים באימון זה</p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {exerciseNames.map((exName) => {
+              const sets = editableSets[exName];
               return (
-                <Card key={line.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-slate-800">
-                          {idx + 1}. {getExerciseName(line)}
-                        </h3>
-                        {(line.target_reps_min || line.target_reps_max) && (
-                          <p className="text-sm text-blue-600">
-                            🎯 יעד: {line.target_reps_min}-{line.target_reps_max} חזרות
-                          </p>
-                        )}
-                        {line.notes && (
-                          <p className="text-xs text-slate-600 bg-blue-50 p-2 rounded mt-1">
-                            💡 {line.notes}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => addSet(line.id)}
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => removeSet(line.id)}
-                          disabled={lineSets.length <= 1}
-                        >
-                          <Minus className="w-4 h-4" />
-                        </Button>
-                      </div>
+                <Card key={exName} className="overflow-hidden">
+                  <div className="bg-slate-50 border-b px-4 py-3">
+                    <h3 className="font-bold text-slate-800">{exName}</h3>
+                    <p className="text-xs text-slate-500">{sets.length} סטים</p>
+                  </div>
+                  <CardContent className="p-4 space-y-2">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 font-medium mb-1">
+                      <span className="text-center">סט</span>
+                      <span className="text-center">משקל (ק״ג)</span>
+                      <span className="text-center">חזרות</span>
                     </div>
-
-                    <div className="space-y-2">
-                      {lineSets.map((set, setIdx) => (
-                        <div key={set.id} className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-slate-600 w-12">
-                            סט {set.set_index}
+                    {sets.map((s, idx) => (
+                      <div key={idx} className="grid grid-cols-3 gap-2 items-center">
+                        <div className="flex items-center justify-center">
+                          <span className="w-7 h-7 rounded-full bg-orange-100 text-orange-700 text-xs font-bold flex items-center justify-center">
+                            {s.set_number || idx + 1}
                           </span>
-                          <Input
-                            type="number"
-                            value={set.weight}
-                            onChange={(e) => updateSet(line.id, set.set_index, 'weight', e.target.value)}
-                            placeholder="משקל"
-                            className="flex-1"
-                          />
-                          <span className="text-xs text-slate-500">ק"ג</span>
-                          <Select
-                            value={String(set.reps)}
-                            onValueChange={(val) => updateSet(line.id, set.set_index, 'reps', val)}
-                          >
-                            <SelectTrigger className="flex-1">
-                              <SelectValue placeholder="חזרות" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {[...Array(20)].map((_, i) => (
-                                <SelectItem key={i + 1} value={String(i + 1)}>
-                                  {i + 1}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
                         </div>
-                      ))}
-                    </div>
+                        <Input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={s.weight ?? ''}
+                          onChange={(e) => updateSet(exName, idx, 'weight', e.target.value)}
+                          className="text-center h-9"
+                          placeholder="0"
+                        />
+                        <Input
+                          type="number"
+                          min="0"
+                          value={s.reps ?? ''}
+                          onChange={(e) => updateSet(exName, idx, 'reps', e.target.value)}
+                          className="text-center h-9"
+                          placeholder="0"
+                        />
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
               );
             })}
-        </div>
+          </div>
+        )}
 
-        {/* Fixed Bottom Actions */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4 space-y-2">
-          <Button
-            onClick={() => saveWorkout.mutate()}
-            disabled={saveWorkout.isPending}
-            className="w-full"
-            variant="outline"
-          >
-            <Save className="w-4 h-4 ml-2" />
-            {saveWorkout.isPending ? 'שומר...' : 'שמור אימון'}
-          </Button>
-          
-          {session.status !== 'completed' && (
+        {/* Save button */}
+        {isDirty && (
+          <div className="fixed bottom-4 right-4 left-4 max-w-2xl mx-auto">
             <Button
-              onClick={() => completeWorkout.mutate()}
-              disabled={completeWorkout.isPending}
-              className="w-full"
-              style={{ backgroundColor: '#79DBD6' }}
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+              className="w-full bg-orange-500 hover:bg-orange-600 text-white h-14 text-base shadow-lg"
             >
-              <CheckCircle2 className="w-4 h-4 ml-2" />
-              {completeWorkout.isPending ? 'משלים...' : 'סמן אימון הושלם'}
+              {saveMutation.isPending ? (
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin ml-2" />
+              ) : (
+                <Save className="w-5 h-5 ml-2" />
+              )}
+              שמור שינויים
             </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
