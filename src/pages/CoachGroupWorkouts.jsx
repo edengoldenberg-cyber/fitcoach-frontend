@@ -5,11 +5,10 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  Plus, Edit2, Copy, Trash2, Send, Users, Clock, Search, X,
-  Archive, ArchiveRestore, Eye, EyeOff, Calendar, Dumbbell,
+  Plus, Edit2, Copy, Trash2, Send, Clock, Search,
+  Archive, ArchiveRestore, EyeOff, Calendar, Dumbbell,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
