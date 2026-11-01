@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Users, Clock, CheckCircle, Play } from 'lucide-react';
+import { Users, Clock, CheckCircle, Play, Dumbbell } from 'lucide-react';
 import { toast } from 'sonner';
 import TraineeExerciseCard from '../components/trainee/TraineeExerciseCard';
 import { TraineeCardSkeleton } from '../components/shared/LoadingSkeleton';
@@ -38,7 +38,7 @@ export default function TraineeGroupWorkouts() {
       const sessions = await base44.entities.GroupWorkoutSession.filter({
         coach_email: trainee?.coach_email,
         date: today,
-        status: 'published'
+        status: 'published',
       });
       return sessions.sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
     },
@@ -48,33 +48,43 @@ export default function TraineeGroupWorkouts() {
   const openSession = async (session) => {
     setCurrentSession(session);
 
-    const exercises = await base44.entities.GroupWorkoutSessionExercise.filter({
-      session_id: session.id
-    });
+    // Use embedded exercises from buildInclude if available, otherwise fetch
+    let exercises = Array.isArray(session.exercises) && session.exercises.length > 0
+      ? session.exercises
+      : await base44.entities.GroupWorkoutSessionExercise.filter({ session_id: session.id });
 
-    const sortedExercises = exercises.sort((a, b) => a.order_index - b.order_index);
+    exercises = exercises.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
-    // Load last performance for each
-    const enriched = await Promise.all(sortedExercises.map(async (ex) => {
-      const history = await base44.entities.ExerciseHistory.filter({
-        trainee_email: trainee.user_email,
-        exercise_name: ex.exercise_name
-      });
-      const lastPerformance = history.sort((a, b) => new Date(b.date) - new Date(a.date))[0];
-
-      return {
-        ...ex,
-        current_sets: ex.sets,
-        current_reps: lastPerformance?.reps || parseInt(ex.reps) || 10,
-        current_weight: lastPerformance?.weight || ex.weight_kg || 0,
-        last_performance: lastPerformance ? {
-          date: lastPerformance.date,
-          sets: lastPerformance.sets,
-          reps: lastPerformance.reps,
-          weight: lastPerformance.weight
-        } : null
-      };
-    }));
+    // Load last performance for each exercise using unified tracking
+    const traineeEmail = trainee?.user_email || user?.email;
+    const enriched = await Promise.all(
+      exercises.map(async (ex) => {
+        try {
+          const res = await base44.functions.invoke('getLastExercisePerformance', {
+            trainee_email: traineeEmail,
+            exercise_id: ex.exercise_id || null,
+            exercise_name: ex.exercise_name || null,
+            date: today,
+          });
+          const perf = res?.data?.data;
+          return {
+            ...ex,
+            current_sets: ex.sets || 3,
+            current_reps: parseInt(ex.reps) || 10,
+            current_weight: perf?.sets?.[0]?.weight || ex.weight_kg || 0,
+            last_performance: perf?.date ? perf : null,
+          };
+        } catch {
+          return {
+            ...ex,
+            current_sets: ex.sets || 3,
+            current_reps: parseInt(ex.reps) || 10,
+            current_weight: ex.weight_kg || 0,
+            last_performance: null,
+          };
+        }
+      })
+    );
 
     setWorkoutExercises(enriched);
     setShowWorkout(true);
@@ -82,27 +92,25 @@ export default function TraineeGroupWorkouts() {
 
   const updateExerciseData = (index, field, value) => {
     const updated = [...workoutExercises];
-    updated[index][field] = value;
+    updated[index] = { ...updated[index], [field]: value };
     setWorkoutExercises(updated);
   };
 
   const completeWorkoutMutation = useMutation({
     mutationFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const traineeEmail = trainee?.user_email || user?.email;
 
-      // Save all exercises to history
+      // Save each exercise's performance via unified tracking (WorkoutSession + WorkoutSet)
       for (const ex of workoutExercises) {
-        await base44.entities.ExerciseHistory.create({
-          trainee_email: trainee.user_email,
-          exercise_id: ex.exercise_id,
-          exercise_name: ex.exercise_name,
+        await base44.functions.invoke('saveExerciseProgress', {
+          trainee_email: traineeEmail,
           date: today,
-          sets: ex.current_sets,
-          reps: ex.current_reps,
-          weight: ex.current_weight,
-          rest_seconds: ex.rest_seconds,
-          notes: ex.notes || '',
-          source: 'STUDIO'
+          exercise_name: ex.exercise_name || null,
+          exercise_id: ex.exercise_id || null,
+          sets: Array.from({ length: ex.current_sets || 1 }, () => ({
+            weight: ex.current_weight || 0,
+            reps: ex.current_reps || 0,
+          })),
         });
       }
     },
@@ -112,6 +120,9 @@ export default function TraineeGroupWorkouts() {
       setWorkoutExercises([]);
       setCurrentSession(null);
       queryClient.invalidateQueries({ queryKey: ['exerciseHistory'] });
+    },
+    onError: (err) => {
+      toast.error(`שגיאה בשמירה: ${err.message}`);
     },
   });
 
@@ -130,82 +141,86 @@ export default function TraineeGroupWorkouts() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 pb-20" dir="rtl">
       <div className="max-w-4xl mx-auto p-6">
         <div className="mb-8">
-          <h1 className="title-large mb-2">אימוני סטודיו</h1>
-          <p className="body-text text-slate-600">האימונים הקבוצתיים שלך להיום</p>
+          <h1 className="text-2xl font-bold text-slate-800 mb-1">אימוני סטודיו</h1>
+          <p className="text-sm text-slate-500">האימונים הקבוצתיים שלך להיום</p>
         </div>
 
         {todaySessions.length === 0 ? (
-          <Card className="card-premium border-2 border-dashed border-slate-300">
-            <div className="empty-state">
-              <Users className="empty-state-icon" />
-              <h3 className="empty-state-title">אין אימונים קבוצתיים</h3>
-              <p className="empty-state-description">המאמן טרם פרסם אימון להיום</p>
-            </div>
+          <Card className="border-2 border-dashed border-slate-200 p-12 text-center">
+            <Users className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <h3 className="font-semibold text-slate-600">אין אימונים קבוצתיים להיום</h3>
+            <p className="text-sm text-slate-400 mt-1">המאמן טרם פרסם אימון להיום</p>
           </Card>
         ) : (
           <div className="space-y-4">
-            {todaySessions.map(session => (
-              <Card key={session.id} className="card-premium">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
-                        <Users className="w-6 h-6 text-teal-600" />
+            {todaySessions.map(session => {
+              const exCount = Array.isArray(session.exercises) ? session.exercises.length : '?';
+              return (
+                <Card key={session.id} className="bg-white border border-slate-200 p-5 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center shrink-0">
+                        <Dumbbell className="w-6 h-6 text-teal-600" />
                       </div>
-                      <div>
-                        <h3 className="title-medium">{session.title}</h3>
-                        {session.group_tag && (
-                          <Badge variant="outline" className="mt-1">
-                            {session.group_tag}
-                          </Badge>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-bold text-slate-800 text-lg">{session.title}</h3>
+                          {session.group_tag && (
+                            <Badge variant="outline" className="text-xs">
+                              {session.group_tag}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                          {session.start_time && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {session.start_time}{session.end_time ? ` – ${session.end_time}` : ''}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <Dumbbell className="w-3 h-3" />
+                            {exCount} תרגילים
+                          </span>
+                        </div>
+                        {session.description && (
+                          <p className="text-sm text-slate-500 mt-1 line-clamp-2">{session.description}</p>
                         )}
                       </div>
                     </div>
 
-                    {session.start_time && (
-                      <div className="flex items-center gap-2 small-text text-slate-600 mb-2">
-                        <Clock className="w-4 h-4" />
-                        {session.start_time}
-                        {session.end_time && ` - ${session.end_time}`}
-                      </div>
-                    )}
-
-                    {session.description && (
-                      <p className="small-text text-slate-600">{session.description}</p>
-                    )}
+                    <Button
+                      onClick={() => openSession(session)}
+                      className="bg-teal-600 hover:bg-teal-700 text-white shrink-0"
+                    >
+                      <Play className="w-4 h-4 ml-2" />
+                      פתח
+                    </Button>
                   </div>
-
-                  <Button
-                    onClick={() => openSession(session)}
-                    className="btn-primary h-14 px-8"
-                  >
-                    <Play className="w-5 h-5 ml-2" />
-                    פתח אימון
-                  </Button>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
 
         {/* Workout Execution Dialog */}
-        <Dialog open={showWorkout} onOpenChange={setShowWorkout}>
-          <DialogContent dir="rtl" className="max-w-3xl max-h-[90vh] flex flex-col p-0">
-            <DialogHeader className="p-6 pb-4 border-b">
+        <Dialog open={showWorkout} onOpenChange={(open) => {
+          if (!open) { setShowWorkout(false); setWorkoutExercises([]); setCurrentSession(null); }
+        }}>
+          <DialogContent dir="rtl" className="max-w-2xl max-h-[90vh] flex flex-col p-0">
+            <DialogHeader className="p-5 pb-4 border-b">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-teal-100 flex items-center justify-center">
-                  <Users className="w-6 h-6 text-teal-600" />
+                <div className="w-10 h-10 rounded-full bg-teal-100 flex items-center justify-center">
+                  <Dumbbell className="w-5 h-5 text-teal-600" />
                 </div>
                 <div>
-                  <DialogTitle className="text-2xl">{currentSession?.title}</DialogTitle>
-                  <p className="small-text text-slate-500 mt-1">
-                    {workoutExercises.length} תרגילים
-                  </p>
+                  <DialogTitle className="text-xl">{currentSession?.title}</DialogTitle>
+                  <p className="text-xs text-slate-400 mt-0.5">{workoutExercises.length} תרגילים</p>
                 </div>
               </div>
             </DialogHeader>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {workoutExercises.map((ex, i) => (
                 <TraineeExerciseCard
                   key={i}
@@ -217,16 +232,16 @@ export default function TraineeGroupWorkouts() {
               ))}
             </div>
 
-            <div className="p-6 pt-4 border-t bg-white sticky bottom-0">
+            <div className="p-5 border-t bg-white">
               <Button
-                className="btn-success w-full h-16 text-lg"
+                className="w-full bg-green-600 hover:bg-green-700 text-white h-14 text-base"
                 onClick={() => completeWorkoutMutation.mutate()}
                 disabled={completeWorkoutMutation.isPending}
               >
-                <CheckCircle className="w-6 h-6 ml-2" />
+                <CheckCircle className="w-5 h-5 ml-2" />
                 {completeWorkoutMutation.isPending ? 'שומר...' : '✅ סיימתי את האימון'}
               </Button>
-              <p className="small-text text-center text-slate-500 mt-3">
+              <p className="text-xs text-center text-slate-400 mt-2">
                 הביצוע שלך ישמר והמאמן יוכל לעקוב
               </p>
             </div>

@@ -24,32 +24,24 @@ export default function CoachWorkouts() {
     enabled: !!user?.email,
   });
 
+  // WorkoutSession.filter returns sessions with embedded sets (via buildInclude).
+  // Exercise count comes from sets deduped by exercise_name.
   const { data: workouts = [] } = useQuery({
     queryKey: ['traineeWorkouts', selectedTrainee?.user_email],
-    queryFn: () => base44.entities.WorkoutSession.filter({ 
-      trainee_email: selectedTrainee?.user_email 
+    queryFn: () => base44.entities.WorkoutSession.filter({
+      trainee_email: selectedTrainee?.user_email,
     }),
     enabled: !!selectedTrainee,
-  });
-
-  const { data: exerciseLines = [] } = useQuery({
-    queryKey: ['exerciseLines', workouts.map(w => w.id)],
-    queryFn: async () => {
-      const allLines = await Promise.all(
-        workouts.map(w => base44.entities.WorkoutExerciseLine.filter({ workout_session_id: w.id }))
-      );
-      return allLines.flat();
-    },
-    enabled: workouts.length > 0,
   });
 
   const filteredTrainees = trainees.filter(t =>
     t.full_name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const getWorkoutStats = (workoutId) => {
-    const lines = exerciseLines.filter(l => l.workout_session_id === workoutId);
-    return { exercises: lines.length };
+  const getWorkoutStats = (workout) => {
+    const sets = workout.sets || [];
+    const uniqueExercises = new Set(sets.map(s => s.exercise_id || s.exercise_name)).size;
+    return { exercises: uniqueExercises };
   };
 
   if (selectedTrainee) {
@@ -81,7 +73,7 @@ export default function CoachWorkouts() {
               workouts
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                 .map((workout) => {
-                  const stats = getWorkoutStats(workout.id);
+                  const stats = getWorkoutStats(workout);
                   return (
                     <Link
                       key={workout.id}
