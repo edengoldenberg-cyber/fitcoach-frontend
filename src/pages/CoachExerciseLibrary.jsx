@@ -39,13 +39,34 @@ const DIFFICULTY_LABELS = {
 
 // ── Image upload helper ───────────────────────────────────────────────────────
 
-function readFileAsDataURL(file) {
+// Compress image to max 600×600px JPEG at 75% quality before storing as base64.
+// Keeps DB rows small (~15-30KB per image) while preserving display quality.
+function compressImage(file, maxDim = 600, quality = 0.75) {
   return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = (e) => resolve(e.target.result);
-    r.onerror = () => reject(new Error('Failed to read file'));
-    r.readAsDataURL(file);
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Failed to decode image'));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
   });
+}
+
+function readFileAsDataURL(file) {
+  return compressImage(file);
 }
 
 // ── ExerciseCard ──────────────────────────────────────────────────────────────
@@ -167,9 +188,9 @@ function ExerciseForm({ exercise, onSave, onClose, isPending }) {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const MAX_SIZE = 2 * 1024 * 1024; // 2 MB
+    const MAX_SIZE = 10 * 1024 * 1024; // 10 MB before compression
     if (file.size > MAX_SIZE) {
-      toast.error('תמונה גדולה מדי — מקסימום 2MB');
+      toast.error('תמונה גדולה מדי — מקסימום 10MB לפני דחיסה');
       return;
     }
     if (!file.type.startsWith('image/')) {

@@ -176,6 +176,8 @@ export default function TraineeGroupWorkouts() {
       await base44.functions.invoke('saveExerciseProgress', {
         trainee_email: traineeEmail,
         date: today,
+        source: 'open_gym',
+        template_id: currentSession?.id || null,
         exercise_name: exercise.exercise_name || null,
         exercise_id: exercise.exercise_id   || null,
         sets: sets.map(s => ({

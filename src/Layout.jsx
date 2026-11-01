@@ -13,7 +13,6 @@ import BootErrorHandler, { initBootErrorHandler } from './components/shared/Boot
 import DiagnosticsPanel from './components/shared/DiagnosticsPanel';
 import { Toaster } from '@/components/ui/sonner';
 import SuperAICoach from './components/trainee/SuperAICoach';
-import { format } from 'date-fns';
 
 // Initialize boot error handler
 if (typeof window !== 'undefined') {
@@ -121,11 +120,12 @@ export default function Layout({ children }) {
   );
 
   const traineeMoreItems = [
-    { icon: Scale, label: 'מדדים', page: 'Metrics', module: 'metrics' },
-    { icon: Dumbbell, label: 'אונליין', page: 'TraineeOnlineTraining' },
-    { icon: BookOpen, label: 'תפריט', page: 'MyMealPlan' },
-    { icon: Star, label: 'מתכונים', page: 'Recipes' },
-    { icon: Bell, label: 'הגדרות התראות', page: 'AutomationSettings', alwaysShow: true },
+    { icon: Scale,    label: 'מדדים',            page: 'Metrics',              module: 'metrics' },
+    { icon: Dumbbell, label: 'Open Gym',          page: 'TraineeGroupWorkouts', alwaysShow: true },
+    { icon: Dumbbell, label: 'תוכנית אימונים',    page: 'TraineePrograms',      alwaysShow: true },
+    { icon: BookOpen, label: 'תפריט',             page: 'MyMealPlan' },
+    { icon: Star,     label: 'מתכונים',           page: 'Recipes' },
+    { icon: Bell,     label: 'הגדרות התראות',     page: 'AutomationSettings',   alwaysShow: true },
   ].filter(item => !item.module || item.alwaysShow || visibleModules[item.module] !== false);
 
   const coachNavItems = [
@@ -141,10 +141,12 @@ export default function Layout({ children }) {
       { icon: Users, label: 'פאנל מתאמנים', page: 'CoachDashboard' },
     ]},
     { category: 'אימונים', icon: Dumbbell, items: [
-      { icon: Users, label: 'אימון קבוצתי', page: 'CoachDailyWorkout' },
-      { icon: Users, label: '📋 ניהול אימוני סטודיו', page: 'CoachGroupWorkouts' },
-      { icon: Dumbbell, label: 'אימונים', page: 'CoachWorkouts' },
-      { icon: Dumbbell, label: '🌐 אימון אונליין V2', page: 'OnlineTrainingCoach' },
+      { icon: Users, label: 'אימון קבוצתי (יומי)', page: 'CoachDailyWorkout' },
+      { icon: Users, label: '📋 אימוני סטודיו (Open Gym)', page: 'CoachGroupWorkouts' },
+      { icon: Dumbbell, label: '🏋️ תוכניות אימונים אישיות', page: 'CoachTrainingPrograms' },
+      { icon: Database, label: '📚 מאגר תרגילים', page: 'CoachExerciseLibrary' },
+      { icon: TrendingUp, label: '📊 ניתוח ביצועים', page: 'TraineeAnalytics' },
+      { icon: Dumbbell, label: '📈 אימונים מתאמנים', page: 'CoachWorkouts' },
     ]},
     { category: 'ניתוח ובקרה', icon: Activity, items: [
       { icon: LayoutDashboard, label: 'מרכז בקרה', page: 'MissionControl' },

@@ -120,6 +120,8 @@ export default function TraineePrograms() {
       await base44.functions.invoke('saveExerciseProgress', {
         trainee_email: traineeEmail,
         date: today,
+        source: 'program',
+        template_id: activeWorkout?.id || null,
         exercise_name: exercise.exercise_name || null,
         exercise_id:   exercise.exercise_id   || null,
         sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),

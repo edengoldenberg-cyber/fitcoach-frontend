@@ -152,32 +152,11 @@ export default function WorkoutLog() {
     return true;
   });
 
-  const { data: allTraineeExercises = [] } = useQuery({
-    queryKey: ['allTraineeExercises', traineeWorkouts.map(w => w.id)],
-    queryFn: async () => {
-      if (!traineeWorkouts.length) return [];
-      // TraineeWorkoutExercise entity removed — return empty (exercises embedded in JSON field)
-      return [];
-      const exercisesPromises = traineeWorkouts.map(workout =>
-        base44.entities.TraineeWorkoutExercise.filter({ trainee_workout_id: workout.id })
-      );
-      
-      const exercisesArrays = await Promise.all(exercisesPromises);
-      return exercisesArrays.flat();
-    },
-    enabled: traineeWorkouts.length > 0,
-  });
-
-  const { data: allTraineeSets = [] } = useQuery({
-    queryKey: ['allTraineeSets', allTraineeExercises.map(e => e.id)],
-    queryFn: async () => {
-      if (!allTraineeExercises.length) return [];
-      
-      // TraineeWorkoutSet entity removed — exercises are empty so this is unreachable
-      return [];
-    },
-    enabled: allTraineeExercises.length > 0,
-  });
+  // TraineeWorkoutExercise / TraineeWorkoutSet were never in the DB schema.
+  // All TraineeWorkout records store exercises as a JSON array in the exercises field.
+  // The combined workout builder below reads that JSON field directly.
+  const allTraineeExercises = [];
+  const allTraineeSets = [];
 
   const addWorkoutMutation = useMutation({
     mutationFn: async (data) => {
