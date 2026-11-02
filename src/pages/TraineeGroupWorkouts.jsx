@@ -34,6 +34,7 @@ export default function TraineeGroupWorkouts() {
   const [activeTab, setActiveTab]               = useState('today'); // 'today' | 'history'
   const [showWorkout, setShowWorkout]           = useState(false);
   const [currentSession, setCurrentSession]     = useState(null);
+  const [executionSessionId, setExecutionSessionId] = useState(null); // unique ID per execution
   const [workoutExercises, setWorkoutExercises] = useState([]);
   const [savedExercises, setSavedExercises]     = useState(new Set()); // indices saved
 
@@ -90,6 +91,41 @@ export default function TraineeGroupWorkouts() {
 
     const traineeEmail = trainee?.user_email || user?.email;
 
+    // Restore draft if exists (draft may have a previous execution session_id)
+    const draftKey = DRAFT_KEY(traineeEmail, session.id);
+    const rawDraft = localStorage.getItem(draftKey);
+    let restoredDraft = null;
+    if (rawDraft) {
+      try {
+        const parsed = JSON.parse(rawDraft);
+        if (Date.now() - parsed.savedAt < 86400000) restoredDraft = parsed;
+      } catch { /* ignore corrupt draft */ }
+    }
+
+    // Use the draft's execution session_id to resume the same execution,
+    // or start a brand-new execution if no draft exists.
+    let execId = restoredDraft?.executionSessionId || null;
+    if (!execId) {
+      try {
+        const res = await base44.functions.invoke('startWorkoutSession', {
+          trainee_email: traineeEmail,
+          date: today,
+          source: 'open_gym',
+          template_id: session.id,
+          title: session.title || 'Open Gym',
+        });
+        execId = res?.data?.session_id || null;
+      } catch { /* fall back to legacy mode */ }
+    }
+    setExecutionSessionId(execId);
+
+    if (restoredDraft) {
+      setWorkoutExercises(restoredDraft.exercises);
+      toast.info('אימון קודם שוחזר — המשך מהמקום שהפסקת');
+      setShowWorkout(true);
+      return;
+    }
+
     // Load previous performance for each exercise
     const enriched = await Promise.all(
       rawExercises.map(async (ex) => {
@@ -119,7 +155,6 @@ export default function TraineeGroupWorkouts() {
           current_reps: parseInt(ex.reps) || 10,
           current_weight: lastPerf?.sets?.[0]?.weight || ex.weight_kg || 0,
           last_performance: lastPerf,
-          // performed_sets: array to fill in set-by-set
           performed_sets: Array.from({ length: targetSets }, (_, j) => ({
             set_number: j + 1,
             weight: lastPerf?.sets?.[j]?.weight || null,
@@ -129,34 +164,21 @@ export default function TraineeGroupWorkouts() {
       })
     );
 
-    // Restore draft if exists
-    const draftKey = DRAFT_KEY(traineeEmail, session.id);
-    const raw = localStorage.getItem(draftKey);
-    let finalExercises = enriched;
-    if (raw) {
-      try {
-        const draft = JSON.parse(raw);
-        if (Date.now() - draft.savedAt < 86400000) {
-          finalExercises = draft.exercises;
-          toast.info('אימון קודם שוחזר — המשך מהמקום שהפסקת');
-        }
-      } catch { /* ignore corrupt draft */ }
-    }
-
-    setWorkoutExercises(finalExercises);
+    setWorkoutExercises(enriched);
     setShowWorkout(true);
   }, [trainee, user, today]);
 
-  // Persist draft on every change
+  // Persist draft on every change (includes executionSessionId so resume uses the same execution)
   useEffect(() => {
     if (!showWorkout || !currentSession || workoutExercises.length === 0) return;
     const traineeEmail = trainee?.user_email || user?.email;
     const draftKey = DRAFT_KEY(traineeEmail, currentSession.id);
     localStorage.setItem(draftKey, JSON.stringify({
       exercises: workoutExercises,
+      executionSessionId,
       savedAt: Date.now(),
     }));
-  }, [workoutExercises, showWorkout, currentSession]);
+  }, [workoutExercises, showWorkout, currentSession, executionSessionId]);
 
   const updateExercise = useCallback((index, field, value) => {
     setWorkoutExercises(prev => {
@@ -177,9 +199,10 @@ export default function TraineeGroupWorkouts() {
         trainee_email: traineeEmail,
         date: today,
         source: 'open_gym',
-        template_id: currentSession?.id || null,
+        session_id: executionSessionId || undefined,
+        template_id: executionSessionId ? undefined : (currentSession?.id || null),
         exercise_name: exercise.exercise_name || null,
-        exercise_id: exercise.exercise_id   || null,
+        exercise_id:   exercise.exercise_id   || null,
         sets: sets.map(s => ({
           weight: parseFloat(s.weight) || 0,
           reps:   parseInt(s.reps)    || 0,
@@ -194,11 +217,10 @@ export default function TraineeGroupWorkouts() {
     onError: (err) => toast.error(`שגיאה: ${err.message}`),
   });
 
-  // Complete the full workout
+  // Complete the full workout: save any unsaved exercises, mark session completed, clear draft
   const completeWorkoutMutation = useMutation({
     mutationFn: async () => {
       const traineeEmail = trainee?.user_email || user?.email;
-      let anyError = false;
 
       for (const ex of workoutExercises) {
         const sets = (ex.performed_sets || []).filter(s => s.weight != null || s.reps != null);
@@ -207,17 +229,24 @@ export default function TraineeGroupWorkouts() {
           await base44.functions.invoke('saveExerciseProgress', {
             trainee_email: traineeEmail,
             date: today,
+            source: 'open_gym',
+            session_id: executionSessionId || undefined,
+            template_id: executionSessionId ? undefined : (currentSession?.id || null),
             exercise_name: ex.exercise_name || null,
             exercise_id:   ex.exercise_id   || null,
             sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
           });
-        } catch { anyError = true; }
+        } catch { /* individual save errors are non-fatal */ }
       }
 
-      if (anyError) toast.error('חלק מהתרגילים לא נשמרו — בדוק את החיבור');
+      if (executionSessionId) {
+        await base44.functions.invoke('completeWorkoutSession', {
+          trainee_email: traineeEmail,
+          session_id: executionSessionId,
+        });
+      }
     },
     onSuccess: () => {
-      // Clear draft
       const draftKey = DRAFT_KEY(trainee?.user_email || user?.email, currentSession?.id);
       localStorage.removeItem(draftKey);
 
@@ -227,13 +256,14 @@ export default function TraineeGroupWorkouts() {
       setSavedExercises(new Set());
       setWorkoutExercises([]);
       setCurrentSession(null);
+      setExecutionSessionId(null);
     },
     onError: (err) => toast.error(`שגיאה: ${err.message}`),
   });
 
   const handleCloseWorkout = () => {
     setShowWorkout(false);
-    // Draft is preserved — user can resume
+    // Draft + executionSessionId preserved — user can resume the same execution
   };
 
   if (isLoading) {

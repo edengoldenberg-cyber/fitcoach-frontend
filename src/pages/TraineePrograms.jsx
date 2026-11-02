@@ -24,6 +24,7 @@ export default function TraineePrograms() {
   const [expandedProgram, setExpandedProgram] = useState(null);
   const [showWorkout, setShowWorkout]         = useState(false);
   const [activeWorkout, setActiveWorkout]     = useState(null); // { label, exercises }
+  const [executionSessionId, setExecutionSessionId] = useState(null);
   const [workoutExercises, setWorkoutExercises] = useState([]);
   const [savedExercises, setSavedExercises]   = useState(new Set());
 
@@ -58,6 +59,20 @@ export default function TraineePrograms() {
     setSavedExercises(new Set());
 
     const traineeEmail = trainee?.user_email || user?.email;
+
+    // Start a fresh execution session for this workout
+    let execId = null;
+    try {
+      const res = await base44.functions.invoke('startWorkoutSession', {
+        trainee_email: traineeEmail,
+        date: today,
+        source: 'program',
+        template_id: programWorkout.id || null,
+        title: programWorkout.label || programWorkout.name || 'תוכנית אימונים',
+      });
+      execId = res?.data?.session_id || null;
+    } catch { /* fall back to legacy mode */ }
+    setExecutionSessionId(execId);
 
     // Load embedded exercises, or fetch if not available
     let rawExercises = programWorkout.exercises || [];
@@ -121,7 +136,8 @@ export default function TraineePrograms() {
         trainee_email: traineeEmail,
         date: today,
         source: 'program',
-        template_id: activeWorkout?.id || null,
+        session_id: executionSessionId || undefined,
+        template_id: executionSessionId ? undefined : (activeWorkout?.id || null),
         exercise_name: exercise.exercise_name || null,
         exercise_id:   exercise.exercise_id   || null,
         sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
@@ -144,10 +160,19 @@ export default function TraineePrograms() {
         await base44.functions.invoke('saveExerciseProgress', {
           trainee_email: traineeEmail,
           date: today,
+          source: 'program',
+          session_id: executionSessionId || undefined,
+          template_id: executionSessionId ? undefined : (activeWorkout?.id || null),
           exercise_name: ex.exercise_name || null,
           exercise_id:   ex.exercise_id   || null,
           sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
         }).catch(() => {});
+      }
+      if (executionSessionId) {
+        await base44.functions.invoke('completeWorkoutSession', {
+          trainee_email: traineeEmail,
+          session_id: executionSessionId,
+        });
       }
     },
     onSuccess: () => {
@@ -157,6 +182,7 @@ export default function TraineePrograms() {
       setSavedExercises(new Set());
       setWorkoutExercises([]);
       setActiveWorkout(null);
+      setExecutionSessionId(null);
     },
     onError: (err) => toast.error(`שגיאה: ${err.message}`),
   });
