@@ -208,8 +208,8 @@ export default function TraineeGroupWorkouts() {
           reps:   parseInt(s.reps)    || 0,
         })),
       });
-      if (saveRes?.data?.success === false) {
-        throw new Error(saveRes.data.error || 'שגיאה בשמירת התרגיל');
+      if (saveRes?.data?.success !== true) {
+        throw new Error(saveRes?.data?.error || 'שגיאה בשמירת התרגיל');
       }
       return index;
     },
@@ -241,7 +241,7 @@ export default function TraineeGroupWorkouts() {
             exercise_id:   ex.exercise_id   || null,
             sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
           });
-          if (res?.data?.success === false) {
+          if (res?.data?.success !== true) {
             failed.push(ex.exercise_name || 'תרגיל לא ידוע');
           }
         } catch {
@@ -258,8 +258,8 @@ export default function TraineeGroupWorkouts() {
           trainee_email: traineeEmail,
           session_id: executionSessionId,
         });
-        if (completeRes?.data?.success === false) {
-          throw new Error(completeRes.data.error || 'שגיאה בסיום האימון');
+        if (completeRes?.data?.success !== true) {
+          throw new Error(completeRes?.data?.error || 'שגיאה בסיום האימון');
         }
       }
     },
