@@ -195,7 +195,7 @@ export default function TraineeGroupWorkouts() {
       const sets = (exercise.performed_sets || []).filter(s => s.weight != null || s.reps != null);
       if (sets.length === 0) throw new Error('אין נתונים לשמירה');
 
-      await base44.functions.invoke('saveExerciseProgress', {
+      const saveRes = await base44.functions.invoke('saveExerciseProgress', {
         trainee_email: traineeEmail,
         date: today,
         source: 'open_gym',
@@ -208,6 +208,9 @@ export default function TraineeGroupWorkouts() {
           reps:   parseInt(s.reps)    || 0,
         })),
       });
+      if (saveRes?.data?.success === false) {
+        throw new Error(saveRes.data.error || 'שגיאה בשמירת התרגיל');
+      }
       return index;
     },
     onSuccess: (index) => {
