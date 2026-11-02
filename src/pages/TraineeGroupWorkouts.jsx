@@ -217,16 +217,18 @@ export default function TraineeGroupWorkouts() {
     onError: (err) => toast.error(`שגיאה: ${err.message}`),
   });
 
-  // Complete the full workout: save any unsaved exercises, mark session completed, clear draft
+  // Complete the full workout: save any unsaved exercises, mark session completed, clear draft.
+  // ALL saves must succeed before completion is marked — no silent data loss.
   const completeWorkoutMutation = useMutation({
     mutationFn: async () => {
       const traineeEmail = trainee?.user_email || user?.email;
+      const failed = [];
 
       for (const ex of workoutExercises) {
         const sets = (ex.performed_sets || []).filter(s => s.weight != null || s.reps != null);
         if (sets.length === 0) continue;
         try {
-          await base44.functions.invoke('saveExerciseProgress', {
+          const res = await base44.functions.invoke('saveExerciseProgress', {
             trainee_email: traineeEmail,
             date: today,
             source: 'open_gym',
@@ -236,7 +238,16 @@ export default function TraineeGroupWorkouts() {
             exercise_id:   ex.exercise_id   || null,
             sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
           });
-        } catch { /* individual save errors are non-fatal */ }
+          if (res?.data?.success === false) {
+            failed.push(ex.exercise_name || 'תרגיל לא ידוע');
+          }
+        } catch {
+          failed.push(ex.exercise_name || 'תרגיל לא ידוע');
+        }
+      }
+
+      if (failed.length > 0) {
+        throw new Error(`שמירת ${failed.length} תרגילים נכשלה: ${failed.join(', ')}. בדוק חיבור ונסה שוב.`);
       }
 
       if (executionSessionId) {
@@ -258,7 +269,7 @@ export default function TraineeGroupWorkouts() {
       setCurrentSession(null);
       setExecutionSessionId(null);
     },
-    onError: (err) => toast.error(`שגיאה: ${err.message}`),
+    onError: (err) => toast.error(err.message),
   });
 
   const handleCloseWorkout = () => {

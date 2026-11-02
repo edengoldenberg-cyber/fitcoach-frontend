@@ -8,7 +8,7 @@
  *   • Previous performance shown per exercise
  *   • Save each exercise and complete workout
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card } from '@/components/ui/card';
@@ -18,6 +18,9 @@ import { ChevronLeft, Play, CheckCircle, Target, ChevronDown, ChevronUp } from '
 import { toast } from 'sonner';
 import TraineeExerciseCard from '../components/trainee/TraineeExerciseCard';
 import { TraineeCardSkeleton } from '../components/shared/LoadingSkeleton';
+
+// localStorage key for in-progress program workout draft (keyed by workout template ID)
+const DRAFT_KEY = (email, workoutId) => `prog_draft_${email}_${workoutId}`;
 
 export default function TraineePrograms() {
   const queryClient = useQueryClient();
@@ -54,25 +57,58 @@ export default function TraineePrograms() {
     enabled: !!(trainee?.user_email || user?.email),
   });
 
+  // Persist draft on every exercise change so resume survives browser refresh
+  useEffect(() => {
+    if (!showWorkout || !activeWorkout || workoutExercises.length === 0) return;
+    const traineeEmail = trainee?.user_email || user?.email;
+    if (!traineeEmail) return;
+    const draftKey = DRAFT_KEY(traineeEmail, activeWorkout.id);
+    localStorage.setItem(draftKey, JSON.stringify({
+      exercises: workoutExercises,
+      executionSessionId,
+      savedAt: Date.now(),
+    }));
+  }, [workoutExercises, showWorkout, activeWorkout, executionSessionId, trainee, user]);
+
   const openWorkout = useCallback(async (programWorkout) => {
     setActiveWorkout(programWorkout);
     setSavedExercises(new Set());
 
     const traineeEmail = trainee?.user_email || user?.email;
 
-    // Start a fresh execution session for this workout
-    let execId = null;
-    try {
-      const res = await base44.functions.invoke('startWorkoutSession', {
-        trainee_email: traineeEmail,
-        date: today,
-        source: 'program',
-        template_id: programWorkout.id || null,
-        title: programWorkout.label || programWorkout.name || 'תוכנית אימונים',
-      });
-      execId = res?.data?.session_id || null;
-    } catch { /* fall back to legacy mode */ }
+    // Restore draft if it exists (within 24 h) — resume the same execution
+    const draftKey = DRAFT_KEY(traineeEmail, programWorkout.id);
+    const rawDraft = localStorage.getItem(draftKey);
+    let restoredDraft = null;
+    if (rawDraft) {
+      try {
+        const parsed = JSON.parse(rawDraft);
+        if (Date.now() - parsed.savedAt < 86400000) restoredDraft = parsed;
+      } catch { /* corrupt draft — ignore */ }
+    }
+
+    let execId = restoredDraft?.executionSessionId || null;
+    if (!execId) {
+      // No draft → start a fresh execution session
+      try {
+        const res = await base44.functions.invoke('startWorkoutSession', {
+          trainee_email: traineeEmail,
+          date: today,
+          source: 'program',
+          template_id: programWorkout.id || null,
+          title: programWorkout.label || programWorkout.name || 'תוכנית אימונים',
+        });
+        execId = res?.data?.session_id || null;
+      } catch { /* fall back to legacy mode */ }
+    }
     setExecutionSessionId(execId);
+
+    if (restoredDraft) {
+      setWorkoutExercises(restoredDraft.exercises);
+      toast.info('אימון קודם שוחזר — המשך מהמקום שהפסקת');
+      setShowWorkout(true);
+      return;
+    }
 
     // Load embedded exercises, or fetch if not available
     let rawExercises = programWorkout.exercises || [];
@@ -154,20 +190,34 @@ export default function TraineePrograms() {
   const completeWorkoutMutation = useMutation({
     mutationFn: async () => {
       const traineeEmail = trainee?.user_email || user?.email;
+      const failed = [];
+
       for (const ex of workoutExercises) {
         const sets = (ex.performed_sets || []).filter(s => s.weight != null || s.reps != null);
         if (sets.length === 0) continue;
-        await base44.functions.invoke('saveExerciseProgress', {
-          trainee_email: traineeEmail,
-          date: today,
-          source: 'program',
-          session_id: executionSessionId || undefined,
-          template_id: executionSessionId ? undefined : (activeWorkout?.id || null),
-          exercise_name: ex.exercise_name || null,
-          exercise_id:   ex.exercise_id   || null,
-          sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
-        }).catch(() => {});
+        try {
+          const res = await base44.functions.invoke('saveExerciseProgress', {
+            trainee_email: traineeEmail,
+            date: today,
+            source: 'program',
+            session_id: executionSessionId || undefined,
+            template_id: executionSessionId ? undefined : (activeWorkout?.id || null),
+            exercise_name: ex.exercise_name || null,
+            exercise_id:   ex.exercise_id   || null,
+            sets: sets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
+          });
+          if (res?.data?.success === false) {
+            failed.push(ex.exercise_name || 'תרגיל לא ידוע');
+          }
+        } catch {
+          failed.push(ex.exercise_name || 'תרגיל לא ידוע');
+        }
       }
+
+      if (failed.length > 0) {
+        throw new Error(`שמירת ${failed.length} תרגילים נכשלה: ${failed.join(', ')}. בדוק חיבור ונסה שוב.`);
+      }
+
       if (executionSessionId) {
         await base44.functions.invoke('completeWorkoutSession', {
           trainee_email: traineeEmail,
@@ -176,6 +226,9 @@ export default function TraineePrograms() {
       }
     },
     onSuccess: () => {
+      const draftKey = DRAFT_KEY(trainee?.user_email || user?.email, activeWorkout?.id);
+      localStorage.removeItem(draftKey);
+
       queryClient.invalidateQueries({ queryKey: ['workoutHistory'] });
       toast.success('כל הכבוד! האימון הושלם 💪');
       setShowWorkout(false);
@@ -184,7 +237,7 @@ export default function TraineePrograms() {
       setActiveWorkout(null);
       setExecutionSessionId(null);
     },
-    onError: (err) => toast.error(`שגיאה: ${err.message}`),
+    onError: (err) => toast.error(err.message),
   });
 
   if (isLoading) {
