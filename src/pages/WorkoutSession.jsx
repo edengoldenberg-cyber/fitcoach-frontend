@@ -69,12 +69,19 @@ export default function WorkoutSession() {
       const traineeEmail = session?.trainee_email || user?.email;
       const date = session?.date || new Date().toISOString().slice(0, 10);
 
+      // Pass the session's own template_id so saveExerciseProgress finds THIS session,
+      // not a different session created for a different workout execution on the same day.
+      const templateId = session?.template_id || null;
+      const source     = session?.source      || 'manual';
+
       for (const [exerciseName, sets] of Object.entries(editableSets)) {
         const validSets = sets.filter(s => (parseFloat(s.weight) > 0) || (parseInt(s.reps) > 0));
         if (validSets.length === 0) continue;
         await base44.functions.invoke('saveExerciseProgress', {
           trainee_email: traineeEmail,
           date,
+          source,
+          template_id: templateId,
           exercise_name: exerciseName,
           exercise_id: sets[0]?.exercise_id || null,
           sets: validSets.map(s => ({

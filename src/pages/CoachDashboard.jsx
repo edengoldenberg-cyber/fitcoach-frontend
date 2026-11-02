@@ -1408,6 +1408,49 @@ export default function CoachDashboard() {
           </Link>
         </div>
 
+        {/* Training Management */}
+        <div className="mb-4">
+          <h2 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 px-0.5">ניהול אימונים</h2>
+          <div className="grid grid-cols-3 gap-2">
+            <Link to={createPageUrl('CoachGroupWorkouts')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-purple-300 hover:bg-purple-50 transition-colors cursor-pointer">
+                <Dumbbell className="w-5 h-5 text-purple-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">אימוני סטודיו</p>
+              </div>
+            </Link>
+            <Link to={createPageUrl('CoachExerciseLibrary')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-blue-300 hover:bg-blue-50 transition-colors cursor-pointer">
+                <BookOpen className="w-5 h-5 text-blue-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">מאגר תרגילים</p>
+              </div>
+            </Link>
+            <Link to={createPageUrl('CoachTrainingPrograms')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-indigo-300 hover:bg-indigo-50 transition-colors cursor-pointer">
+                <Target className="w-5 h-5 text-indigo-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">תוכניות אישיות</p>
+              </div>
+            </Link>
+            <Link to={createPageUrl('CoachDailyWorkout')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-teal-300 hover:bg-teal-50 transition-colors cursor-pointer">
+                <Calendar className="w-5 h-5 text-teal-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">Open Gym</p>
+              </div>
+            </Link>
+            <Link to={createPageUrl('TraineeAnalytics')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-green-300 hover:bg-green-50 transition-colors cursor-pointer">
+                <BarChart2 className="w-5 h-5 text-green-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">ביצועי מתאמן</p>
+              </div>
+            </Link>
+            <Link to={createPageUrl('CoachWorkouts')} className="block">
+              <div className="bg-white border border-slate-200 rounded-xl p-3 text-center hover:border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer">
+                <TrendingUp className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+                <p className="text-[10px] text-slate-600 font-medium leading-tight">דשבורד מתאמן</p>
+              </div>
+            </Link>
+          </div>
+        </div>
+
         {/* Today Summary — 4 independent activity cards */}
         <Card className="p-4 mb-4 bg-gradient-to-br from-teal-50 to-emerald-50 border-teal-200">
           <div className="flex items-center justify-between mb-3">
