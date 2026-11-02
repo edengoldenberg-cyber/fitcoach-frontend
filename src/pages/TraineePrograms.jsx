@@ -219,10 +219,13 @@ export default function TraineePrograms() {
       }
 
       if (executionSessionId) {
-        await base44.functions.invoke('completeWorkoutSession', {
+        const completeRes = await base44.functions.invoke('completeWorkoutSession', {
           trainee_email: traineeEmail,
           session_id: executionSessionId,
         });
+        if (completeRes?.data?.success === false) {
+          throw new Error(completeRes.data.error || 'שגיאה בסיום האימון');
+        }
       }
     },
     onSuccess: () => {
